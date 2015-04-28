@@ -54,7 +54,7 @@ static struct pdf_sec {
    unsigned char ID[MAX_KEY_LEN];
    unsigned char O[MAX_STR_LEN], U[MAX_STR_LEN];
    int     V, R;
-   int64_t P;
+   int32_t P;
 
    struct {
      int use_aes;
@@ -87,8 +87,8 @@ pdf_enc_init (int use_aes, int encrypt_metadata)
   struct pdf_sec *p = &sec_data;
 
   srand((unsigned) time(NULL)); /* For AES IV */
-  p->setting.use_aes = 1;
-  p->setting.encrypt_metadata = 1;
+  p->setting.use_aes = use_aes;
+  p->setting.encrypt_metadata = encrypt_metadata;
 }
 
 #define PRODUCER \
@@ -320,6 +320,9 @@ pdf_enc_set_passwd (unsigned bits, unsigned perm,
   struct pdf_sec *p = &sec_data;
   char            opasswd[MAX_PWD_LEN], upasswd[MAX_PWD_LEN];
   char           *retry_passwd;
+  int             version;
+
+  version = pdf_get_version();
 
   if (oplain) {
     strncpy(opasswd, oplain, MAX_PWD_LEN);
@@ -355,7 +358,15 @@ pdf_enc_set_passwd (unsigned bits, unsigned perm,
     WARN("Key length %d unsupported.", bits);
     p->V = 2;
   }
-  p->P = (long) (perm | 0xC0U);
+  if (p->V > 2 && version < 4) {
+    WARN("Current encryption setting requires PDF version 1.4 or heigher.");
+    p->V = 1;
+    p->key_size = 5;
+  } else if (p->V ==4 && version < 5) {
+    WARN("Current encryption setting requires PDF version 1.5 or heigher.");
+    p->V = 2; 
+  }
+  p->P = (uint32_t) (perm | 0xC0U);
   switch (p->V) {
   case 1:
     p->R = (p->P < 0x100L) ? 2 : 3;
@@ -372,7 +383,7 @@ pdf_enc_set_passwd (unsigned bits, unsigned perm,
   }
 
   if (p->R >= 3)
-    p->P |= ~0xFFFL;
+    p->P |= 0xFFFFF000U;
 
   compute_owner_password(p, opasswd, upasswd);
   compute_user_password (p, upasswd);
