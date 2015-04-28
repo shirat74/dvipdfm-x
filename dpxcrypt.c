@@ -423,6 +423,14 @@ AES_cbc_encrypt (AES_CONTEXT *ctx,
   outptr += BLOCKSIZE;
 }
 
+/* The following section contains a Rijndael encryption implementation
+ * based on code from Philip J. Erdelsky's public domain one.
+ * They can be obtained from
+ *
+ *   http://www.efgh.com/software/rijndael.htm
+ *   http://www.efgh.com/software/rijndael.txt
+ */
+
 #define FULL_UNROLL
 
 static const u32 Te0[256] =
