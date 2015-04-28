@@ -45,9 +45,21 @@ void MD5_final (unsigned char *outbuf, MD5_CONTEXT *ctx);
 typedef struct {
   int idx_i, idx_j;
   unsigned char sbox[256];
-} ARC4_KEY;
+} ARC4_CONTEXT;
 
-void ARC4 (ARC4_KEY *ctx, unsigned long len, const unsigned char *inbuf, unsigned char *outbuf);
-void ARC4_set_key (ARC4_KEY *ctx, unsigned int keylen, const unsigned char *key);
+typedef uint32_t u32;
+typedef uint8_t  u8;
 
+typedef struct {
+  int  nrounds;
+  u32  rk[60];
+} AES_CONTEXT;
+
+void ARC4 (ARC4_CONTEXT *ctx, unsigned long len, const unsigned char *inbuf, unsigned char *outbuf);
+void ARC4_set_key (ARC4_CONTEXT *ctx, unsigned int keylen, const unsigned char *key);
+
+void AES_cbc_set_key (AES_CONTEXT *ctx, unsigned int keylen, const unsigned char *key);
+void AES_cbc_encrypt (AES_CONTEXT *ctx,
+                      const unsigned char *plain, size_t plain_len,
+                      unsigned char **cipher, size_t *cipher_len);
 #endif /* _DPXCRYPT_H_ */
