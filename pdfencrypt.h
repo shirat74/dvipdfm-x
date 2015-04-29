@@ -25,7 +25,7 @@
 
 #include "pdfobj.h"
 
-#define MAX_PWD_LEN 128
+#define MAX_PWD_LEN 127
 
 extern void pdf_enc_set_verbose (void);
 extern pdf_obj *pdf_enc_id_array (void);

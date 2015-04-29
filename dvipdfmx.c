@@ -597,7 +597,8 @@ do_args (int argc, char *argv[])
       case 'K': 
         CHECK_ARG(1, "encryption key length");
         key_bits = (unsigned) atoi(argv[1]);
-        if (key_bits < 40 || key_bits > 128 || (key_bits & 0x7))
+        if (!(key_bits >= 40 && key_bits <= 128 && (key_bits % 8 == 0)) &&
+              key_bits != 256)
           ERROR("Invalid encryption key length specified: %s", argv[1]);
         POP_ARG();
         break;
@@ -1035,19 +1036,25 @@ CDECL main (int argc, char *argv[])
 
     if (do_encryption)
       /* command line takes precedence */
-      dvi_scan_specials(0, &paper_width, &paper_height, &x_offset, &y_offset, &landscape_mode,
-			&ver_minor, NULL, NULL, NULL, NULL, NULL);
+      dvi_scan_specials(0,
+                        &paper_width, &paper_height,
+                        &x_offset, &y_offset, &landscape_mode,
+                        &ver_minor, NULL, NULL, NULL, NULL, NULL);
     else {
-      dvi_scan_specials(0, &paper_width, &paper_height, &x_offset, &y_offset, &landscape_mode,
-			&ver_minor, &do_encryption, &key_bits, &permission, owner_pw, user_pw);
+      dvi_scan_specials(0,
+                        &paper_width, &paper_height,
+                        &x_offset, &y_offset, &landscape_mode,
+                        &ver_minor, &do_encryption,
+                        &key_bits, &permission, owner_pw, user_pw);
       if (do_encryption) {
-	if (key_bits < 40 || key_bits > 128 || (key_bits & 0x7))
-	  ERROR("Invalid encryption key length specified: %u", key_bits);
-	else if (key_bits > 40 && pdf_get_version() < 4)
-	  ERROR("Chosen key length requires at least PDF 1.4. "
-		"Use \"-V 4\" to change.");
-	do_encryption = 1;
-	pdf_enc_set_passwd(key_bits, permission, owner_pw, user_pw);
+        if (!(key_bits >= 40 && key_bits <= 128 && (key_bits % 8 == 0)) &&
+              key_bits != 256)
+          ERROR("Invalid encryption key length specified: %u", key_bits);
+        else if (key_bits > 40 && pdf_get_version() < 4)
+          ERROR("Chosen key length requires at least PDF 1.4. " \
+                "Use \"-V 4\" to change.");
+        do_encryption = 1;
+        pdf_enc_set_passwd(key_bits, permission, owner_pw, user_pw);
       }
     }
     if (ver_minor >= PDF_VERSION_MIN && ver_minor <= PDF_VERSION_MAX) {

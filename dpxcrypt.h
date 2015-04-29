@@ -29,17 +29,32 @@
 # include <stdint.h>
 #endif
 
+typedef uint32_t u32;
+typedef uint8_t  u8;
+
 /* libgcrypt md5 */
 typedef struct {
-  uint32_t A,B,C,D; /* chaining variables */
-  unsigned long nblocks;
+  uint32_t      A, B, C, D; /* chaining variables */
+  size_t        nblocks;
   unsigned char buf[64];
-  int count;
+  int           count;
 } MD5_CONTEXT;
 
 void MD5_init (MD5_CONTEXT *ctx);
-void MD5_write (MD5_CONTEXT *ctx, const unsigned char *inbuf, unsigned long inlen);
-void MD5_final (unsigned char *outbuf, MD5_CONTEXT *ctx);
+void MD5_write(MD5_CONTEXT *ctx, const unsigned char *inbuf, unsigned long inlen);
+void MD5_final(unsigned char *outbuf, MD5_CONTEXT *ctx);
+
+typedef struct {
+  u32           h0,h1,h2,h3,h4,h5,h6,h7;
+  size_t        nblocks;
+  unsigned char buf[64];
+  int           count;
+} SHA256_CONTEXT;
+
+void SHA256_init (SHA256_CONTEXT *ctx);
+void SHA256_write(SHA256_CONTEXT *ctx,
+                  const unsigned char *inbuf, unsigned long inlen);
+void SHA256_final(unsigned char *outbuf, SHA256_CONTEXT *ctx);
 
 /* libgcrypt arcfour */
 typedef struct {
@@ -47,19 +62,26 @@ typedef struct {
   unsigned char sbox[256];
 } ARC4_CONTEXT;
 
-typedef uint32_t u32;
-typedef uint8_t  u8;
-
+#define AES_BLOCKSIZE 16
 typedef struct {
-  int  nrounds;
-  u32  rk[60];
+  int           nrounds;
+  u32           rk[60];
+  unsigned char iv[AES_BLOCKSIZE];
 } AES_CONTEXT;
 
 void ARC4 (ARC4_CONTEXT *ctx, unsigned long len, const unsigned char *inbuf, unsigned char *outbuf);
 void ARC4_set_key (ARC4_CONTEXT *ctx, unsigned int keylen, const unsigned char *key);
 
-void AES_cbc_set_key (AES_CONTEXT *ctx, unsigned int keylen, const unsigned char *key);
+void AES_ecb_set_key (AES_CONTEXT *ctx,
+                      unsigned int keylen, const unsigned char *key);
+void AES_ecb_encrypt (AES_CONTEXT *ctx,
+                      const unsigned char *plain, size_t plain_len,
+                      unsigned char **cipher, size_t *cipher_len);
+
+void AES_cbc_set_key (AES_CONTEXT *ctx,
+                      unsigned int keylen, const unsigned char *key);
 void AES_cbc_encrypt (AES_CONTEXT *ctx,
                       const unsigned char *plain, size_t plain_len,
                       unsigned char **cipher, size_t *cipher_len);
+
 #endif /* _DPXCRYPT_H_ */
