@@ -29,6 +29,7 @@
 # include <stdint.h>
 #endif
 
+typedef uint64_t u64;
 typedef uint32_t u32;
 typedef uint8_t  u8;
 
@@ -47,14 +48,38 @@ void MD5_final(unsigned char *outbuf, MD5_CONTEXT *ctx);
 typedef struct {
   u32           h0,h1,h2,h3,h4,h5,h6,h7;
   size_t        nblocks;
+  size_t        nblocks_high;
   unsigned char buf[64];
   int           count;
 } SHA256_CONTEXT;
+
+typedef struct
+{
+  u64 h0, h1, h2, h3, h4, h5, h6, h7;
+} SHA512_STATE;
+
+typedef struct
+{
+  SHA512_STATE  state;
+
+  size_t        nblocks;
+  size_t        nblocks_high;
+  unsigned char buf[128];
+  int           count;
+} SHA512_CONTEXT;
 
 void SHA256_init (SHA256_CONTEXT *ctx);
 void SHA256_write(SHA256_CONTEXT *ctx,
                   const unsigned char *inbuf, unsigned long inlen);
 void SHA256_final(unsigned char *outbuf, SHA256_CONTEXT *ctx);
+
+void SHA384_init (SHA512_CONTEXT *ctx);
+#define SHA384_write(c,b,l) SHA512_write((c),(b),(l))
+#define SHA384_final(b,c)   SHA512_final((b),(c))
+void SHA512_init (SHA512_CONTEXT *ctx);
+void SHA512_write(SHA512_CONTEXT *ctx,
+                  const unsigned char *inbuf, unsigned long inlen);
+void SHA512_final(unsigned char *outbuf, SHA512_CONTEXT *ctx);
 
 /* libgcrypt arcfour */
 typedef struct {
@@ -79,7 +104,8 @@ void AES_ecb_encrypt (AES_CONTEXT *ctx,
                       unsigned char **cipher, size_t *cipher_len);
 
 void AES_cbc_set_key (AES_CONTEXT *ctx,
-                      unsigned int keylen, const unsigned char *key);
+                      unsigned int keylen, const unsigned char *key,
+                      const unsigned char *iv);
 void AES_cbc_encrypt (AES_CONTEXT *ctx,
                       const unsigned char *plain, size_t plain_len,
                       unsigned char **cipher, size_t *cipher_len);

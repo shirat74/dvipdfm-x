@@ -36,9 +36,14 @@
 
 #include "system.h"
 #include "mem.h"
+#include "numbers.h"
 #include "error.h"
 #include "pdfobj.h"
 #include "dpxcrypt.h"
+
+#ifdef USE_ADOBE_EXTENSION
+#include "pdfdoc.h"
+#endif
 
 #include "pdfencrypt.h"
 
@@ -292,6 +297,83 @@ compute_user_password (struct pdf_sec *p, const char *uplain)
   memcpy(p->U, upasswd, MAX_STR_LEN);
 }
 
+/* Algorithm 2.B from ISO 32000-1 chapter 7: Computing a hash */
+static void
+compute_hash_V5 (unsigned char *hash,
+                 const char    *passwd,
+                 const unsigned char *K0, const unsigned char *user_key)
+{
+  unsigned char K[64];
+  size_t        K_len = 32;
+  int           nround = 0;
+
+  memcpy(K, K0, 32);
+  while (1) {
+    AES_CONTEXT    aes;
+    unsigned char *K1, *E, *E0;
+    size_t         K1_len, E_len;
+    int            i, c, E3 = 0;
+
+    nround++;
+
+    K1_len = strlen(passwd) + K_len + (user_key ? 48 : 0);
+    K1     = NEW(K1_len, unsigned char);
+
+    memcpy(K1, passwd, strlen(passwd));
+    memcpy(K1 + strlen(passwd), K, K_len);
+    if (user_key)
+      memcpy(K1 + strlen(passwd) + K_len, user_key, 48);
+
+    AES_cbc_set_key(&aes, 16, K, K + 16);
+    AES_cbc_encrypt(&aes, K1, K1_len, &E, &E_len);
+
+    E0 = E;
+    /* skip IV and chop padding */
+    E += AES_BLOCKSIZE; E_len -= 2 * AES_BLOCKSIZE;
+    for (i = 0; i < 16; i++)
+      E3 += E[i];
+    E3 %= 3;
+
+    switch (E3) {
+    case 0:
+      {
+        SHA256_CONTEXT sha;
+
+        SHA256_init (&sha);
+        SHA256_write(&sha, E, E_len);
+        SHA256_final(K, &sha);
+        K_len = 32;
+      }
+      break;
+    case 1:
+      {
+        SHA512_CONTEXT sha;
+ 
+        SHA384_init(&sha);
+        SHA384_write(&sha, E, E_len);
+        SHA384_final(K, &sha);
+        K_len = 48;
+      }
+      break;
+    case 2:
+      {
+        SHA512_CONTEXT sha;
+       
+        SHA512_init(&sha);
+        SHA512_write(&sha, E, E_len);
+        SHA512_final(K, &sha);
+        K_len = 64;
+      } 
+      break;
+    }
+    c = (uint8_t) E[E_len - 1];
+    RELEASE(E0);
+    if (nround >= 64 && c <= nround - 32)
+        break;
+  }
+  memcpy(hash, K, 32);
+}
+
 static void
 compute_owner_password_V5 (struct pdf_sec *p, const char *oplain)
 {
@@ -312,7 +394,10 @@ compute_owner_password_V5 (struct pdf_sec *p, const char *oplain)
   SHA256_write(&sha, vsalt, 8);
   SHA256_write(&sha, p->U, 48); /* Difference between UE and OE here */
   SHA256_final(hash, &sha);
-    
+
+  if (p->R == 6)
+    compute_hash_V5(hash, oplain, hash, p->U);
+
   memcpy(p->O,      hash,  32);
   memcpy(p->O + 32, vsalt,  8);
   memcpy(p->O + 40, ksalt,  8);
@@ -323,10 +408,13 @@ compute_owner_password_V5 (struct pdf_sec *p, const char *oplain)
   SHA256_write(&sha, p->U, 48); /* Difference between UE and OE here */
   SHA256_final(hash, &sha);
 
-  AES_cbc_set_key(&aes, 32, hash);
-  /* No paddin and zero IV */
+  if (p->R == 6)
+    compute_hash_V5(hash, oplain, hash, p->U);
+
+  /* No padding and zero IV */
+  AES_cbc_set_key(&aes, 32, hash, NULL);
   AES_cbc_encrypt(&aes, p->key, p->key_size, &OE, &OE_len);
-  memcpy(p->OE, OE, 32);
+  memcpy(p->OE, OE + AES_BLOCKSIZE, 32); /* skip IV */
   RELEASE(OE);
 }
 
@@ -344,12 +432,15 @@ compute_user_password_V5 (struct pdf_sec *p, const char *uplain)
     vsalt[i] = rand() % 256;
     ksalt[i] = rand() % 256;
   }
-    
+
   SHA256_init (&sha);
   SHA256_write(&sha, (const unsigned char *) uplain, strlen(uplain));
   SHA256_write(&sha, vsalt, 8);
   SHA256_final(hash, &sha);
-    
+
+  if (p->R == 6)
+    compute_hash_V5(hash, uplain, hash, NULL);
+
   memcpy(p->U,      hash,  32);
   memcpy(p->U + 32, vsalt,  8);
   memcpy(p->U + 40, ksalt,  8);
@@ -358,11 +449,14 @@ compute_user_password_V5 (struct pdf_sec *p, const char *uplain)
   SHA256_write(&sha, (const unsigned char *) uplain, strlen(uplain));
   SHA256_write(&sha, ksalt, 8);
   SHA256_final(hash, &sha);
-    
-  AES_cbc_set_key(&aes, 32, hash);
-  /* No padding and zero IV */
+
+  if (p->R == 6)
+    compute_hash_V5(hash, uplain, hash, NULL); 
+  
+  /* No padding and zero IV */   
+  AES_cbc_set_key(&aes, 32, hash, NULL);
   AES_cbc_encrypt(&aes, p->key, p->key_size, &UE, &UE_len);
-  memcpy(p->UE, UE, 32);
+  memcpy(p->UE, UE + AES_BLOCKSIZE, 32); /* skip IV */
   RELEASE(UE);
 }
 
@@ -389,7 +483,7 @@ getpass (const char *prompt)
 #endif
 
 void 
-pdf_enc_set_passwd (unsigned bits, unsigned perm,
+pdf_enc_set_passwd (unsigned int bits, unsigned int perm,
                     const char *oplain, const char *uplain)
 {
   struct pdf_sec *p = &sec_data;
@@ -462,7 +556,11 @@ pdf_enc_set_passwd (unsigned bits, unsigned perm,
     p->R = 4;
     break;
   case 5:
+#if USE_ADOBE_EXTENSION
+    p->R = 5;
+#else
     p->R = 6;
+#endif
     break;
   default:
     p->R = 3;
@@ -527,7 +625,7 @@ pdf_encrypt_data (const unsigned char *plain, size_t plain_len,
 
       *cipher_len = plain_len;
       *cipher     = NEW(*cipher_len, unsigned char);
-      ARC4_set_key(&arc4, (p->key_size + 5 > 16 ? 16 : p->key_size + 5), key);
+      ARC4_set_key(&arc4, MIN(16, p->key_size + 5), key);
       ARC4(&arc4, plain_len, plain, *cipher);
     }
     break;
@@ -535,16 +633,24 @@ pdf_encrypt_data (const unsigned char *plain, size_t plain_len,
     calculate_key(p, key);
     {
       AES_CONTEXT aes;
+      unsigned char iv[AES_BLOCKSIZE];
+      int  i;
 
-      AES_cbc_set_key(&aes, (p->key_size + 5 > 16 ? 16 : p->key_size + 5), key);
+      for (i = 0; i < AES_BLOCKSIZE; i++)
+        iv[i] = rand() % 0xff;
+      AES_cbc_set_key(&aes, MIN(16, p->key_size + 5), key, iv);
       AES_cbc_encrypt(&aes, plain, plain_len, cipher, cipher_len);
     }
     break;
   case 5:
     {
-      AES_CONTEXT aes;
+      AES_CONTEXT   aes;
+      unsigned char iv[AES_BLOCKSIZE];
+      int  i;
 
-      AES_cbc_set_key(&aes, 32, p->key);
+      for (i = 0; i < AES_BLOCKSIZE; i++)
+        iv[i] = rand() % 0xff;
+      AES_cbc_set_key(&aes, 32, p->key, iv);
       AES_cbc_encrypt(&aes, plain, plain_len, cipher, cipher_len);
     }
     break;
@@ -624,6 +730,19 @@ pdf_encrypt_obj (void)
                  pdf_new_name("Perms"), pdf_new_string(cipher, cipher_len));
     RELEASE(cipher);
   }
+
+#if USE_ADOBE_EXTENSION
+  if (p->R == 5) {
+    pdf_obj *catalog = pdf_doc_catalog();
+    pdf_obj *ext  = pdf_new_dict();
+    pdf_obj *adbe = pdf_new_dict();
+
+    pdf_add_dict(adbe, pdf_new_name("BaseVersion"), pdf_new_number(1.7));
+    pdf_add_dict(adbe, pdf_new_name("ExtensionLevel"), pdf_new_number(8));
+    pdf_add_dict(ext, pdf_new_name("ADBE"), adbe);
+    pdf_add_dict(catalog, pdf_new_name("Extensions"), ext);
+  }
+#endif
 
   return doc_encrypt;
 }
