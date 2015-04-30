@@ -41,6 +41,8 @@
 #include "pdfobj.h"
 #include "dpxcrypt.h"
 
+#define USE_ADOBE_EXTENSION 1
+
 #ifdef USE_ADOBE_EXTENSION
 #include "pdfdoc.h"
 #endif
@@ -299,42 +301,61 @@ compute_user_password (struct pdf_sec *p, const char *uplain)
 
 /* Algorithm 2.B from ISO 32000-1 chapter 7: Computing a hash */
 static void
-compute_hash_V5 (unsigned char *hash,
-                 const char    *passwd,
-                 const unsigned char *K0, const unsigned char *user_key)
+compute_hash_V5 (unsigned char       *hash,
+                 const char          *passwd,
+                 const unsigned char *salt,
+                 const unsigned char *user_key, int R /* revision */)
 {
-  unsigned char K[64];
-  size_t        K_len = 32;
-  int           nround = 0;
+  SHA256_CONTEXT sha;
+  unsigned char  K[64];
+  size_t         K_len;
+  int            nround;
 
-  memcpy(K, K0, 32);
-  while (1) {
-    AES_CONTEXT    aes;
-    unsigned char *K1, *E, *E0;
-    size_t         K1_len, E_len;
-    int            i, c, E3 = 0;
+  SHA256_init (&sha);
+  SHA256_write(&sha, (const unsigned char *)passwd, strlen(passwd));
+  SHA256_write(&sha, salt, 8);
+  if (user_key)
+    SHA256_write(&sha, user_key, 48);
+  SHA256_final(hash, &sha);
 
-    nround++;
+  ASSERT( R ==5 || R == 6 );
+
+  if (R == 5)
+    return;
+
+  memcpy(K, hash, 32); K_len = 32;
+  for (nround = 0; ; nround++) {
+    unsigned char K1[256], *E, *E0;
+    size_t        K1_len, E_len;
+    int           i, c, E_mod3 = 0;
 
     K1_len = strlen(passwd) + K_len + (user_key ? 48 : 0);
-    K1     = NEW(K1_len, unsigned char);
-
+    ASSERT(K1_len < 240);
     memcpy(K1, passwd, strlen(passwd));
     memcpy(K1 + strlen(passwd), K, K_len);
     if (user_key)
       memcpy(K1 + strlen(passwd) + K_len, user_key, 48);
-
-    AES_cbc_set_key(&aes, 16, K, K + 16);
-    AES_cbc_encrypt(&aes, K1, K1_len, &E, &E_len);
-
+#if 1
+    {
+    unsigned char iv[AES_BLOCKSIZE];
+    memcpy(iv, K + 16, AES_BLOCKSIZE);
+    for (i = 0; i < 64; i++) {
+      AES_cbc_encrypt(K, 16, iv, 0, K1, K1_len, &E, &E_len);
+      memcpy(K1, E, E_len);
+      memcpy(iv, E + E_len - 16, 16);
+      RELEASE(E);
+    }
+    AES_cbc_encrypt(K, 16, iv, 0, K1, K1_len, &E, &E_len);
+    }
+#else
+    AES_cbc_encrypt(K, 16, K + 16, 0, K1, K1_len, &E, &E_len);
+#endif
     E0 = E;
-    /* skip IV and chop padding */
-    E += AES_BLOCKSIZE; E_len -= 2 * AES_BLOCKSIZE;
     for (i = 0; i < 16; i++)
-      E3 += E[i];
-    E3 %= 3;
+      E_mod3 += E[i];
+    E_mod3 %= 3;
 
-    switch (E3) {
+    switch (E_mod3) {
     case 0:
       {
         SHA256_CONTEXT sha;
@@ -349,7 +370,7 @@ compute_hash_V5 (unsigned char *hash,
       {
         SHA512_CONTEXT sha;
  
-        SHA384_init(&sha);
+        SHA384_init (&sha);
         SHA384_write(&sha, E, E_len);
         SHA384_final(K, &sha);
         K_len = 48;
@@ -359,7 +380,7 @@ compute_hash_V5 (unsigned char *hash,
       {
         SHA512_CONTEXT sha;
        
-        SHA512_init(&sha);
+        SHA512_init (&sha);
         SHA512_write(&sha, E, E_len);
         SHA512_final(K, &sha);
         K_len = 64;
@@ -377,10 +398,8 @@ compute_hash_V5 (unsigned char *hash,
 static void
 compute_owner_password_V5 (struct pdf_sec *p, const char *oplain)
 {
-  SHA256_CONTEXT sha;
-  AES_CONTEXT    aes;
   unsigned char  vsalt[8], ksalt[8], hash[32];
-  unsigned char *OE;
+  unsigned char *OE, iv[AES_BLOCKSIZE];
   size_t         OE_len;
   int  i;
 
@@ -388,43 +407,24 @@ compute_owner_password_V5 (struct pdf_sec *p, const char *oplain)
     vsalt[i] = rand() % 256;
     ksalt[i] = rand() % 256;
   }
-    
-  SHA256_init (&sha);
-  SHA256_write(&sha, (const unsigned char *) oplain, strlen(oplain));
-  SHA256_write(&sha, vsalt, 8);
-  SHA256_write(&sha, p->U, 48); /* Difference between UE and OE here */
-  SHA256_final(hash, &sha);
 
-  if (p->R == 6)
-    compute_hash_V5(hash, oplain, hash, p->U);
-
+  compute_hash_V5(hash, oplain, vsalt, p->U, p->R);
   memcpy(p->O,      hash,  32);
   memcpy(p->O + 32, vsalt,  8);
   memcpy(p->O + 40, ksalt,  8);
-    
-  SHA256_init (&sha);
-  SHA256_write(&sha, (const unsigned char *) oplain, strlen(oplain));
-  SHA256_write(&sha, ksalt, 8);
-  SHA256_write(&sha, p->U, 48); /* Difference between UE and OE here */
-  SHA256_final(hash, &sha);
 
-  if (p->R == 6)
-    compute_hash_V5(hash, oplain, hash, p->U);
-
-  /* No padding and zero IV */
-  AES_cbc_set_key(&aes, 32, hash, NULL);
-  AES_cbc_encrypt(&aes, p->key, p->key_size, &OE, &OE_len);
-  memcpy(p->OE, OE + AES_BLOCKSIZE, 32); /* skip IV */
+  compute_hash_V5(hash, oplain, ksalt, p->U, p->R);
+  memset(iv, 0, AES_BLOCKSIZE);
+  AES_cbc_encrypt(hash, 32, iv, 0, p->key, p->key_size, &OE, &OE_len);
+  memcpy(p->OE, OE, 32);
   RELEASE(OE);
 }
 
 static void
 compute_user_password_V5 (struct pdf_sec *p, const char *uplain)
 {
-  SHA256_CONTEXT sha;
-  AES_CONTEXT    aes;
   unsigned char  vsalt[8], ksalt[8], hash[32];
-  unsigned char *UE;
+  unsigned char *UE, iv[AES_BLOCKSIZE];
   size_t         UE_len;
   int  i;
 
@@ -433,30 +433,15 @@ compute_user_password_V5 (struct pdf_sec *p, const char *uplain)
     ksalt[i] = rand() % 256;
   }
 
-  SHA256_init (&sha);
-  SHA256_write(&sha, (const unsigned char *) uplain, strlen(uplain));
-  SHA256_write(&sha, vsalt, 8);
-  SHA256_final(hash, &sha);
-
-  if (p->R == 6)
-    compute_hash_V5(hash, uplain, hash, NULL);
-
+  compute_hash_V5(hash, uplain, vsalt, NULL, p->R);
   memcpy(p->U,      hash,  32);
   memcpy(p->U + 32, vsalt,  8);
   memcpy(p->U + 40, ksalt,  8);
     
-  SHA256_init (&sha);
-  SHA256_write(&sha, (const unsigned char *) uplain, strlen(uplain));
-  SHA256_write(&sha, ksalt, 8);
-  SHA256_final(hash, &sha);
-
-  if (p->R == 6)
-    compute_hash_V5(hash, uplain, hash, NULL); 
-  
-  /* No padding and zero IV */   
-  AES_cbc_set_key(&aes, 32, hash, NULL);
-  AES_cbc_encrypt(&aes, p->key, p->key_size, &UE, &UE_len);
-  memcpy(p->UE, UE + AES_BLOCKSIZE, 32); /* skip IV */
+  compute_hash_V5(hash, uplain, ksalt, NULL, p->R);
+  memset(iv, 0, AES_BLOCKSIZE); 
+  AES_cbc_encrypt(hash, 32, iv, 0, p->key, p->key_size, &UE, &UE_len);
+  memcpy(p->UE, UE, 32);
   RELEASE(UE);
 }
 
@@ -557,7 +542,7 @@ pdf_enc_set_passwd (unsigned int bits, unsigned int perm,
     break;
   case 5:
 #if USE_ADOBE_EXTENSION
-    p->R = 5;
+    p->R = 6;
 #else
     p->R = 6;
 #endif
@@ -631,28 +616,12 @@ pdf_encrypt_data (const unsigned char *plain, size_t plain_len,
     break;
   case 4:
     calculate_key(p, key);
-    {
-      AES_CONTEXT aes;
-      unsigned char iv[AES_BLOCKSIZE];
-      int  i;
-
-      for (i = 0; i < AES_BLOCKSIZE; i++)
-        iv[i] = rand() % 0xff;
-      AES_cbc_set_key(&aes, MIN(16, p->key_size + 5), key, iv);
-      AES_cbc_encrypt(&aes, plain, plain_len, cipher, cipher_len);
-    }
+    AES_cbc_encrypt(key, MIN(16, p->key_size + 5), NULL, 1,
+                    plain, plain_len, cipher, cipher_len);
     break;
   case 5:
-    {
-      AES_CONTEXT   aes;
-      unsigned char iv[AES_BLOCKSIZE];
-      int  i;
-
-      for (i = 0; i < AES_BLOCKSIZE; i++)
-        iv[i] = rand() % 0xff;
-      AES_cbc_set_key(&aes, 32, p->key, iv);
-      AES_cbc_encrypt(&aes, plain, plain_len, cipher, cipher_len);
-    }
+    AES_cbc_encrypt(p->key, p->key_size, NULL, 1,
+                    plain, plain_len, cipher, cipher_len);
     break;
   default:
     ERROR("pdfencrypt: Unexpected V value: %d", p->V);
@@ -702,7 +671,6 @@ pdf_encrypt_obj (void)
   pdf_add_dict(doc_encrypt,	pdf_new_name("P"), pdf_new_number(p->P));
 
   if (p->V == 5) {
-    AES_CONTEXT   aes;
     unsigned char perms[16], *cipher = NULL;
     size_t        cipher_len = 0;
 
@@ -724,21 +692,21 @@ pdf_encrypt_obj (void)
     perms[13] = 0;
     perms[14] = 0;
     perms[15] = 0;
-    AES_ecb_set_key(&aes, p->key_size, p->key);
-    AES_ecb_encrypt(&aes, perms, 16, &cipher, &cipher_len);
+    AES_ecb_encrypt(p->key, p->key_size, perms, 16, &cipher, &cipher_len);
     pdf_add_dict(doc_encrypt,
                  pdf_new_name("Perms"), pdf_new_string(cipher, cipher_len));
     RELEASE(cipher);
   }
 
 #if USE_ADOBE_EXTENSION
-  if (p->R == 5) {
+  if (p->R > 5) {
     pdf_obj *catalog = pdf_doc_catalog();
     pdf_obj *ext  = pdf_new_dict();
     pdf_obj *adbe = pdf_new_dict();
 
     pdf_add_dict(adbe, pdf_new_name("BaseVersion"), pdf_new_number(1.7));
-    pdf_add_dict(adbe, pdf_new_name("ExtensionLevel"), pdf_new_number(8));
+    pdf_add_dict(adbe, pdf_new_name("ExtensionLevel"),
+                       pdf_new_number(p->R == 5 ? 3 : 8));
     pdf_add_dict(ext, pdf_new_name("ADBE"), adbe);
     pdf_add_dict(catalog, pdf_new_name("Extensions"), ext);
   }

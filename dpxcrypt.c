@@ -395,8 +395,7 @@ SHA256_init (SHA256_CONTEXT *hd)
   hd->h6 = 0x1f83d9ab;
   hd->h7 = 0x5be0cd19;
 
-  hd->nblocks      = 0;
-  hd->nblocks_high = 0;
+  hd->nblocks = 0;
   hd->count   = 0;
 }
 
@@ -538,8 +537,7 @@ void SHA256_write (SHA256_CONTEXT *hd, const unsigned char *inbuf, unsigned long
     stack_burn = _SHA256_transform(hd, hd->buf);
     _gcry_burn_stack(stack_burn);
     hd->count = 0;
-    if (!++hd->nblocks)
-      hd->nblocks_high++;
+    hd->nblocks++;
   }
   if (!inbuf) return;
   if (hd->count) {
@@ -554,8 +552,6 @@ void SHA256_write (SHA256_CONTEXT *hd, const unsigned char *inbuf, unsigned long
     stack_burn = _SHA256_transform(hd, inbuf);
     hd->count = 0;
     hd->nblocks++;
-    if (!++hd->nblocks)
-      hd->nblocks_high++;
     inlen -= 64;
     inbuf += 64;
   }
@@ -609,7 +605,7 @@ SHA256_final(unsigned char *outbuf, SHA256_CONTEXT *hd)
   /* append the 64 bit count */
   buf_put_be32(hd->buf + 56, msb);
   buf_put_be32(hd->buf + 60, lsb);
-  burn = _SHA256_transform (hd, hd->buf);
+  burn = _SHA256_transform(hd, hd->buf);
   _gcry_burn_stack(burn);
 
   p = outbuf;
@@ -672,9 +668,8 @@ SHA512_init (SHA512_CONTEXT *ctx)
   hd->h6 = U64_C(0x1f83d9abfb41bd6b);
   hd->h7 = U64_C(0x5be0cd19137e2179);
 
-  ctx->nblocks      = 0;
-  ctx->nblocks_high = 0;
-  ctx->count = 0;
+  ctx->nblocks = 0;
+  ctx->count   = 0;
 }
 
 void
@@ -691,8 +686,7 @@ SHA384_init (SHA512_CONTEXT *ctx)
   hd->h6 = U64_C(0xdb0c2e0d64f98fa7);
   hd->h7 = U64_C(0x47b5481dbefa4fa4);
 
-  ctx->nblocks      = 0;
-  ctx->nblocks_high = 0;
+  ctx->nblocks = 0;
   ctx->count   = 0;
 }
 
@@ -1032,8 +1026,7 @@ void SHA512_write (SHA512_CONTEXT *hd, const unsigned char *inbuf, unsigned long
     stack_burn = _SHA512_transform(hd, hd->buf);
     _gcry_burn_stack(stack_burn);
     hd->count = 0;
-    if (!++hd->nblocks)
-      hd->nblocks_high++;
+    hd->nblocks++;
   }
   if (!inbuf) return;
   if (hd->count) {
@@ -1048,8 +1041,6 @@ void SHA512_write (SHA512_CONTEXT *hd, const unsigned char *inbuf, unsigned long
     stack_burn = _SHA512_transform(hd, inbuf);
     hd->count = 0;
     hd->nblocks++;
-    if (!++hd->nblocks)
-      hd->nblocks_high++;
     inlen -= 128;
     inbuf += 128;
   }
@@ -1061,17 +1052,15 @@ void
 SHA512_final (unsigned char *outbuf, SHA512_CONTEXT *hd)
 {
   unsigned int   stack_burn_depth;
-  u64            t, th, msb, lsb;
+  u64            t, msb, lsb;
   unsigned char *p;
 
   SHA512_write(hd, NULL, 0); /* flush */ ;
 
   t  = hd->nblocks;
-  th = hd->nblocks_high;
-
   /* multiply by 128 to make a byte count */
   lsb = t << 7;
-  msb = (th << 7) | (t >> 57);
+  msb = t >> 57;
   /* add the count */
   t = lsb;
   if ((lsb += hd->count) < t)
@@ -1210,89 +1199,111 @@ static void rijndaelEncrypt(const u32 *rk, int nrounds,
 #define NROUNDS(keybits)   ((keybits)/32+6)
 
 #define KEYBITS   256
-#define BLOCKSIZE 16
 
-/* We don't need padding for ECB mode in PDF encryption. */
-void
-AES_ecb_set_key (AES_CONTEXT *ctx, unsigned int keylen, const unsigned char *key)
-{
-  ctx->nrounds = rijndaelSetupEncrypt(ctx->rk, key, keylen * 8);
-}
+typedef struct {
+  unsigned char key[256];
+  int           key_len;
+  int           padding;
+  int           random_iv;
+
+  int           nrounds;
+  u32           rk[60];
+  unsigned char iv[AES_BLOCKSIZE];
+} AES_CONTEXT;
 
 void
-AES_ecb_encrypt (AES_CONTEXT *ctx,
+AES_ecb_encrypt (const unsigned char *key,    size_t  key_len,
                  const unsigned char *plain,  size_t  plain_len,
                  unsigned char      **cipher, size_t *cipher_len)
 {
+  AES_CONTEXT *ctx, aes;
   const unsigned char *inptr;
   unsigned char *outptr;
   size_t len;
- 
- *cipher_len = plain_len;
- *cipher     = NEW(*cipher_len, unsigned char);
+
+  ctx = &aes;
+
+  *cipher_len = plain_len;
+  *cipher     = NEW(*cipher_len, unsigned char);
+
+  ctx->nrounds = rijndaelSetupEncrypt(ctx->rk, key, key_len * 8);
 
   inptr = plain; outptr = *cipher;
-  for (len = plain_len; len >= BLOCKSIZE; len -= BLOCKSIZE) {
+  for (len = plain_len; len >= AES_BLOCKSIZE; len -= AES_BLOCKSIZE) {
     rijndaelEncrypt(ctx->rk, ctx->nrounds, inptr, outptr);
-    inptr  += BLOCKSIZE;
-    outptr += BLOCKSIZE;
+    inptr  += AES_BLOCKSIZE;
+    outptr += AES_BLOCKSIZE;
   }
   if (len > 0) {
-    unsigned char block[BLOCKSIZE];
+    unsigned char block[AES_BLOCKSIZE];
 
-    memset(block, 0, BLOCKSIZE); /* ZeroBytePadding here */
     memcpy(block, inptr, len);
     rijndaelEncrypt(ctx->rk, ctx->nrounds, block, outptr);
     inptr  += len;
-    outptr += BLOCKSIZE;
+    outptr += AES_BLOCKSIZE;
   }
-} 
-
-void
-AES_cbc_set_key (AES_CONTEXT *ctx,
-                 unsigned int keylen, const unsigned char *key,
-                 const unsigned char *iv) /* FIXME */
-{
-  ctx->nrounds = rijndaelSetupEncrypt(ctx->rk, key, keylen * 8);
-  if (iv)
-    memcpy(ctx->iv, iv, AES_BLOCKSIZE);
-  else
-    memset(ctx->iv,  0, AES_BLOCKSIZE);
 }
 
+/* NULL iv means here "use random IV". */
 void
-AES_cbc_encrypt (AES_CONTEXT *ctx,
+AES_cbc_encrypt (const unsigned char *key,    size_t  key_len,
+                 const unsigned char *iv,     int     padding,
                  const unsigned char *plain,  size_t  plain_len,
                  unsigned char      **cipher, size_t *cipher_len)
 {
+  AES_CONTEXT *ctx, aes;
   const unsigned char *inptr;
   unsigned char *outptr, block[AES_BLOCKSIZE];
   size_t len;
   int    i;
-  int    padbytes = AES_BLOCKSIZE - (plain_len % AES_BLOCKSIZE);
+  int    padbytes;
 
-  *cipher_len = plain_len + AES_BLOCKSIZE + padbytes; /* IV and padding bytes */
+  ctx = &aes;
+
+  if (iv)
+    memcpy(ctx->iv, iv, AES_BLOCKSIZE);
+  else {
+    for (i = 0; i < AES_BLOCKSIZE; i++)
+      ctx->iv[i] = rand() % 256;
+  }
+  /* 16 bytes aligned.
+   * Note that when padding is enabled there can be excess 16-byte
+   * filled with 0x10. It occurs when size of the input data is multiple
+   * of 16.
+   */
+  padbytes = padding ? AES_BLOCKSIZE - (plain_len % AES_BLOCKSIZE) : \
+                       ((plain_len % AES_BLOCKSIZE) ? \
+                         AES_BLOCKSIZE - (plain_len % AES_BLOCKSIZE) : 0);
+
+  /* We do NOT write IV to the output stream if IV is explicitly specified. */
+  *cipher_len = plain_len + (iv ? 0 : AES_BLOCKSIZE) + padbytes;
   *cipher     = NEW(*cipher_len, unsigned char);
-  
+
+  ctx->nrounds = rijndaelSetupEncrypt(ctx->rk, key, key_len * 8);
+
   inptr = plain; outptr = *cipher;
-  memcpy(outptr, ctx->iv, AES_BLOCKSIZE);
-  outptr += AES_BLOCKSIZE;
+  if (!iv) {
+    memcpy(outptr, ctx->iv, AES_BLOCKSIZE);
+    outptr += AES_BLOCKSIZE;
+  }
   for (len = plain_len; len >= AES_BLOCKSIZE; len -= AES_BLOCKSIZE) {
     for (i = 0; i < AES_BLOCKSIZE; i++)
       block[i] = inptr[i] ^ ctx->iv[i];
     rijndaelEncrypt(ctx->rk, ctx->nrounds, block, outptr);
-    memcpy(ctx->iv, outptr, BLOCKSIZE);
-    inptr  += BLOCKSIZE;
-    outptr += BLOCKSIZE;
+    memcpy(ctx->iv, outptr, AES_BLOCKSIZE);
+    inptr  += AES_BLOCKSIZE;
+    outptr += AES_BLOCKSIZE;
   }
-  for (i = 0; i < len; i++)
-    block[i] = inptr[i] ^ ctx->iv[i];
-  for (i = len; i < AES_BLOCKSIZE; i++)
+  if (len > 0 || padding) {
+    for (i = 0; i < len; i++)
+      block[i] = inptr[i] ^ ctx->iv[i];
+    for (i = len; i < AES_BLOCKSIZE; i++)
       block[i] = padbytes ^ ctx->iv[i];
-  rijndaelEncrypt(ctx->rk, ctx->nrounds, block, outptr);
-  memcpy(ctx->iv, outptr, AES_BLOCKSIZE);
-  inptr  += BLOCKSIZE;
-  outptr += BLOCKSIZE;
+    rijndaelEncrypt(ctx->rk, ctx->nrounds, block, outptr);
+    memcpy(ctx->iv, outptr, AES_BLOCKSIZE);
+    inptr  += AES_BLOCKSIZE;
+    outptr += AES_BLOCKSIZE;
+  }
 }
 
 /* The following section contains a Rijndael encryption implementation
