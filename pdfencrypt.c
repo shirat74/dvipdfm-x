@@ -41,6 +41,7 @@
 #include "pdfobj.h"
 #include "dpxcrypt.h"
 
+/* PDF-2.0 is not published yet. */
 #define USE_ADOBE_EXTENSION 1
 
 #ifdef USE_ADOBE_EXTENSION
@@ -435,6 +436,7 @@ compute_user_password_V5 (struct pdf_sec *p, const char *uplain)
 }
 
 #ifdef WIN32
+/* Broken on mintty */
 static char *
 getpass (const char *prompt)
 {
