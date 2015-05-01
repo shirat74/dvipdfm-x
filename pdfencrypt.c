@@ -75,7 +75,7 @@ static struct pdf_sec {
    } label;
 } sec_data;
 
-static const unsigned char padding_bytes[MAX_STR_LEN] = {
+static const unsigned char padding_bytes[32] = {
   0x28, 0xbf, 0x4e, 0x5e, 0x4e, 0x75, 0x8a, 0x41,
   0x64, 0x00, 0x4e, 0x56, 0xff, 0xfa, 0x01, 0x08,
   0x2e, 0x2e, 0x00, 0xb6, 0xd0, 0x68, 0x3e, 0x80,
@@ -141,11 +141,11 @@ passwd_padding (const char *src, unsigned char *dst)
 {
   int len = strlen((char *)src);
 
-  if (len > MAX_STR_LEN)
-    len = MAX_STR_LEN;
+  if (len > 32)
+    len = 32;
 
   memcpy(dst, src, len);
-  memcpy(dst + len, padding_bytes, MAX_STR_LEN - len);
+  memcpy(dst + len, padding_bytes, 32 - len);
 }
 
 static void
@@ -153,7 +153,7 @@ compute_owner_password (struct pdf_sec *p,
                         const char *opasswd, const char *upasswd)
 {
   int  i, j;
-  unsigned char padded[MAX_STR_LEN];
+  unsigned char padded[32];
   MD5_CONTEXT   md5;
   ARC4_CONTEXT  arc4;
   unsigned char hash[16];
@@ -165,7 +165,7 @@ compute_owner_password (struct pdf_sec *p,
   passwd_padding((strlen(opasswd) > 0 ? opasswd : upasswd), padded);
  
   MD5_init (&md5);
-  MD5_write(&md5, padded, MAX_STR_LEN);
+  MD5_write(&md5, padded, 32);
   MD5_final(hash, &md5);
   if (p->R >= 3) {
     for (i = 0; i < 50; i++) {
@@ -181,36 +181,36 @@ compute_owner_password (struct pdf_sec *p,
   ARC4_set_key(&arc4, p->key_size, hash); 
   passwd_padding(upasswd, padded);
   {
-    unsigned char tmp1[MAX_STR_LEN], tmp2[MAX_STR_LEN];
+    unsigned char tmp1[32], tmp2[32];
     unsigned char key[16];
 
-    ARC4(&arc4, MAX_STR_LEN, padded, tmp1);
+    ARC4(&arc4, 32, padded, tmp1);
     if (p->R >= 3) {
       for (i = 1; i <= 19; i++) {
-        memcpy(tmp2, tmp1, MAX_STR_LEN);
+        memcpy(tmp2, tmp1, 32);
         for (j = 0; j < p->key_size; j++)
           key[j] = hash[j] ^ i;
         ARC4_set_key(&arc4, p->key_size, key);
-        ARC4(&arc4, MAX_STR_LEN, tmp2, tmp1);
+        ARC4(&arc4, 32, tmp2, tmp1);
       }
     }
   }
-  memcpy(p->O, hash, MAX_STR_LEN);
+  memcpy(p->O, hash, 32);
 }
 
 static void
 compute_encryption_key (struct pdf_sec *p, const char *passwd)
 {
   int  i;
-  unsigned char hash[MAX_STR_LEN], padded[MAX_STR_LEN];
+  unsigned char hash[32], padded[32];
   MD5_CONTEXT   md5;
   /*
    * Algorithm 3.2 Computing an encryption key
    */
   passwd_padding(passwd, padded);
   MD5_init (&md5);
-  MD5_write(&md5, padded, MAX_STR_LEN);
-  MD5_write(&md5, p->O, MAX_STR_LEN);
+  MD5_write(&md5, padded, 32);
+  MD5_write(&md5, p->O, 32);
   {
     unsigned char tmp[4];
 
@@ -250,7 +250,7 @@ compute_user_password (struct pdf_sec *p, const char *uplain)
   int           i, j;
   ARC4_CONTEXT  arc4;
   MD5_CONTEXT   md5;
-  unsigned char upasswd[MAX_STR_LEN];
+  unsigned char upasswd[32];
   /*
    * Algorithm 3.4 Computing the encryption dictionary's U (user password)
    *               value (Revision 2)
@@ -264,15 +264,15 @@ compute_user_password (struct pdf_sec *p, const char *uplain)
   switch (p->R) {
   case 2:
     ARC4_set_key(&arc4, p->key_size, p->key);
-    ARC4(&arc4, MAX_STR_LEN, padding_bytes, upasswd);
+    ARC4(&arc4, 32, padding_bytes, upasswd);
     break;
   case 3: case 4:
     {
-      unsigned char hash[MAX_STR_LEN];
-      unsigned char tmp1[MAX_STR_LEN], tmp2[MAX_STR_LEN];
+      unsigned char hash[32];
+      unsigned char tmp1[32], tmp2[32];
 
       MD5_init (&md5);
-      MD5_write(&md5, padding_bytes, MAX_STR_LEN);
+      MD5_write(&md5, padding_bytes, 32);
 
       MD5_write(&md5, p->ID, 16);
       MD5_final(hash, &md5);
@@ -289,14 +289,14 @@ compute_user_password (struct pdf_sec *p, const char *uplain)
         ARC4_set_key(&arc4, p->key_size, key);
         ARC4(&arc4, 16, tmp2, tmp1);
       }
-      memcpy(upasswd, tmp1, MAX_STR_LEN);
+      memcpy(upasswd, tmp1, 32);
     }
     break;
   default:
     ERROR("Invalid revision number.");
   }
 
-  memcpy(p->U, upasswd, MAX_STR_LEN);
+  memcpy(p->U, upasswd, 32);
 }
 
 /* Algorithm 2.B from ISO 32000-1 chapter 7: Computing a hash */
@@ -324,8 +324,8 @@ compute_hash_V5 (unsigned char       *hash,
     return;
 
   memcpy(K, hash, 32); K_len = 32;
-  for (nround = 0; ; nround++) {
-    unsigned char K1[256], *E, *E0;
+  for (nround = 1; ; nround++) {
+    unsigned char K1[256], Kr[15360], *E; /* 240*64 = 15360 */
     size_t        K1_len, E_len;
     int           i, c, E_mod3 = 0;
 
@@ -335,22 +335,11 @@ compute_hash_V5 (unsigned char       *hash,
     memcpy(K1 + strlen(passwd), K, K_len);
     if (user_key)
       memcpy(K1 + strlen(passwd) + K_len, user_key, 48);
-#if 1
-    {
-    unsigned char iv[AES_BLOCKSIZE];
-    memcpy(iv, K + 16, AES_BLOCKSIZE);
-    for (i = 0; i < 64; i++) {
-      AES_cbc_encrypt(K, 16, iv, 0, K1, K1_len, &E, &E_len);
-      memcpy(K1, E, E_len);
-      memcpy(iv, E + E_len - 16, 16);
-      RELEASE(E);
-    }
-    AES_cbc_encrypt(K, 16, iv, 0, K1, K1_len, &E, &E_len);
-    }
-#else
-    AES_cbc_encrypt(K, 16, K + 16, 0, K1, K1_len, &E, &E_len);
-#endif
-    E0 = E;
+ 
+    for (i = 0; i < 64; i++)
+      memcpy(Kr + i * K1_len, K1, K1_len);
+    AES_cbc_encrypt(K, 16, K + 16, 0, Kr, K1_len * 64, &E, &E_len);
+
     for (i = 0; i < 16; i++)
       E_mod3 += E[i];
     E_mod3 %= 3;
@@ -388,7 +377,7 @@ compute_hash_V5 (unsigned char       *hash,
       break;
     }
     c = (uint8_t) E[E_len - 1];
-    RELEASE(E0);
+    RELEASE(E);
     if (nround >= 64 && c <= nround - 32)
         break;
   }
@@ -544,7 +533,8 @@ pdf_enc_set_passwd (unsigned int bits, unsigned int perm,
 #if USE_ADOBE_EXTENSION
     p->R = 6;
 #else
-    p->R = 6;
+    WARN("Encryption V 5 unsupported.");
+    p->R = 4; p->V = 4;
 #endif
     break;
   default:
@@ -600,7 +590,7 @@ pdf_encrypt_data (const unsigned char *plain, size_t plain_len,
                   unsigned char **cipher, size_t *cipher_len)
 {
   struct pdf_sec *p = &sec_data;
-  unsigned char   key[MAX_STR_LEN];
+  unsigned char   key[32];
 
   switch (p->V) {
   case 1: case 2:
@@ -698,13 +688,13 @@ pdf_encrypt_obj (void)
     RELEASE(cipher);
   }
 
-#if USE_ADOBE_EXTENSION
+#ifdef USE_ADOBE_EXTENSION
   if (p->R > 5) {
     pdf_obj *catalog = pdf_doc_catalog();
     pdf_obj *ext  = pdf_new_dict();
     pdf_obj *adbe = pdf_new_dict();
 
-    pdf_add_dict(adbe, pdf_new_name("BaseVersion"), pdf_new_number(1.7));
+    pdf_add_dict(adbe, pdf_new_name("BaseVersion"), pdf_new_name("1.7"));
     pdf_add_dict(adbe, pdf_new_name("ExtensionLevel"),
                        pdf_new_number(p->R == 5 ? 3 : 8));
     pdf_add_dict(ext, pdf_new_name("ADBE"), adbe);

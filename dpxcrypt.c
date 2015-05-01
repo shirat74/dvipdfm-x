@@ -1201,11 +1201,6 @@ static void rijndaelEncrypt(const u32 *rk, int nrounds,
 #define KEYBITS   256
 
 typedef struct {
-  unsigned char key[256];
-  int           key_len;
-  int           padding;
-  int           random_iv;
-
   int           nrounds;
   u32           rk[60];
   unsigned char iv[AES_BLOCKSIZE];
