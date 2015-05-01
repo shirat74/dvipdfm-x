@@ -39,7 +39,15 @@
 #include "numbers.h"
 #include "error.h"
 #include "pdfobj.h"
+#include "unicode.h"
 #include "dpxcrypt.h"
+
+/* Encryption support
+ *
+ * Supported: 40-128 bit RC4, 128 bit AES, 256 bit AES
+ *
+ * TODO: Convert password to PDFDocEncoding. SASLPrep stringpref for AESV3.
+ */
 
 /* PDF-2.0 is not published yet. */
 #define USE_ADOBE_EXTENSION 1
@@ -475,43 +483,79 @@ check_version (struct pdf_sec *p, int version)
   }  
 }
 
+/* Dummy routine for stringprep - NOT IMPLEMENTED YET
+ *
+ * Preprocessing of a user-provided password consists first of
+ * normalizing its representation by applying the "SASLPrep" profile (RFC 4013)
+ * of the "stringprep" algorithm (RFC 3454) to the supplied password using the
+ * Normalize and BiDi options.
+ */
+typedef int Stringprep_profile_flags;
+#define STRINGPREP_OK     0
+#define STRINGPREP_ERROR -1
+static int
+stringprep_profile(const char *input, char **output, const char *profile,
+                   Stringprep_profile_flags flags)
+{
+  const char *p, *endptr;
+
+  p = input; endptr = p + strlen(p);
+  while (p < endptr) {
+    int32_t ucv = UC_UTF8_decode_char(&p, endptr);
+    if (!UC_is_valid(ucv))
+      return STRINGPREP_ERROR;
+  }
+
+  *output = NEW(strlen(input) + 1, char);
+  strcpy(*output, input);
+
+  (void) profile;
+  (void) flags;
+
+  return STRINGPREP_OK;
+}
+
+static int
+preproc_password (const char *passwd, char *outbuf, int V)
+{
+  char *saslpwd = NULL;
+  int   error   = 0;
+
+  memset(outbuf, 0, 128);
+  switch (V) {
+  case 1: case 2: case 3: case 4:
+    {
+       /* Need to be converted to PDFDocEncoding - UNIMPLEMENTED */
+      memcpy(outbuf, passwd, MIN(127, strlen(passwd)));
+    }
+    break;
+  case 5:
+    if (stringprep_profile(passwd, &saslpwd,
+                           "SASLprep", 0) != STRINGPREP_OK)
+       return -1;
+    else if (saslpwd) {
+      memcpy(outbuf, saslpwd, MIN(127, strlen(saslpwd)));
+      RELEASE(saslpwd);
+    }
+    break;
+  default:
+    error = -1;
+    break;
+  }
+
+  return error;
+}
+
 void 
 pdf_enc_set_passwd (unsigned int bits, unsigned int perm,
                     const char *oplain, const char *uplain)
 {
   struct pdf_sec *p = &sec_data;
-  char            opasswd[MAX_PWD_LEN + 1], upasswd[MAX_PWD_LEN + 1];
+  char            input[128], opasswd[128], upasswd[128];
   char           *retry_passwd;
   int             version;
 
   version = pdf_get_version();
-  memset(opasswd, 0, MAX_PWD_LEN + 1);
-  memset(upasswd, 0, MAX_PWD_LEN + 1);
-
-  if (oplain) {
-    strncpy(opasswd, oplain, MAX_PWD_LEN);
-  } else {
-    while (1) {
-      strncpy(opasswd, getpass("Owner password: "), MAX_PWD_LEN);
-      retry_passwd = getpass("Re-enter owner password: ");
-      if (!strncmp(opasswd, retry_passwd, MAX_PWD_LEN))
-        break;
-      fputs("Password is not identical.\nTry again.\n", stderr);
-      fflush(stderr);
-    }
-  }
-  if (uplain) {
-    strncpy(upasswd, uplain, MAX_PWD_LEN);
-  } else {
-    while (1) {
-      strncpy(upasswd, getpass("User password: "), MAX_PWD_LEN);
-      retry_passwd = getpass("Re-enter user password: ");
-      if (!strncmp(upasswd, retry_passwd, MAX_PWD_LEN))
-        break;
-      fputs("Password is not identical.\nTry again.\n", stderr);
-      fflush(stderr);
-    }
-  }
 
   p->key_size = (int) (bits / 8);
   if (p->key_size == 5) /* 40bit */
@@ -549,6 +593,40 @@ pdf_enc_set_passwd (unsigned int bits, unsigned int perm,
   default:
     p->R = 3;
     break;
+  }
+
+  memset(opasswd, 0, 128);
+  memset(upasswd, 0, 128);
+  /* Password must be preprocessed. */
+  if (oplain) {
+    if (preproc_password(oplain, opasswd, p->V) < 0)
+      WARN("Invaid UTF-8 string for password.");
+  } else {
+    while (1) {
+      strncpy(input, getpass("Owner password: "), MAX_PWD_LEN);
+      retry_passwd = getpass("Re-enter owner password: ");
+      if (!strncmp(input, retry_passwd, MAX_PWD_LEN))
+        break;
+      fputs("Password is not identical.\nTry again.\n", stderr);
+      fflush(stderr);
+    }
+    if (preproc_password(input, opasswd, p->V) < 0)
+      WARN("Invaid UTF-8 string for password.");
+  }
+  if (uplain) {
+    if (preproc_password(uplain, upasswd, p->V) < 0)
+      WARN("Invalid UTF-8 string for passowrd.");
+  } else {
+    while (1) {
+      strncpy(input, getpass("User password: "), MAX_PWD_LEN);
+      retry_passwd = getpass("Re-enter user password: ");
+      if (!strncmp(input, retry_passwd, MAX_PWD_LEN))
+        break;
+      fputs("Password is not identical.\nTry again.\n", stderr);
+      fflush(stderr);
+    }
+    if (preproc_password(input, upasswd, p->V) < 0)
+      WARN("Invaid UTF-8 string for password.");
   }
 
   if (p->R >= 3)
