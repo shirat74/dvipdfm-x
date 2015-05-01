@@ -456,6 +456,23 @@ getpass (const char *prompt)
 }
 #endif
 
+static void
+check_version (struct pdf_sec *p, int version)
+{
+  if (p->V > 2 && version < 4) {
+    WARN("Current encryption setting requires PDF version >= 1.4.");
+    p->V = 1;
+    p->key_size = 5;
+  } else if (p->V == 4 && version < 5) {
+    WARN("Current encryption setting requires PDF version >= 1.5.");
+    p->V = 2;
+  } else if (p->V ==5 && version < 7) {
+    WARN("Current encryption setting requires PDF version >= 1.7" \
+         " (plus Adobe Extension Level 3).");
+    p->V = 4;
+  }  
+}
+
 void 
 pdf_enc_set_passwd (unsigned int bits, unsigned int perm,
                     const char *oplain, const char *uplain)
@@ -503,21 +520,11 @@ pdf_enc_set_passwd (unsigned int bits, unsigned int perm,
     p->V = 5;
   } else {
     WARN("Key length %d unsupported.", bits);
-    p->V = 2;
-  }
-  if (p->V > 2 && version < 4) {
-    WARN("Current encryption setting requires PDF version 1.4 or heigher.");
-    p->V = 1;
     p->key_size = 5;
-  } else if (p->V == 4 && version < 5) {
-    WARN("Current encryption setting requires PDF version 1.5 or heigher.");
     p->V = 2;
-#if 0
-  } else if (p->V ==5 && version < 0x00020000U) {
-    WARN("Current encryption setting requires PDF version 2.0 or heigher.");
-    p->V = 4;
-#endif 
   }
+  check_version(p, version);
+
   p->P = (int32_t) (perm | 0xC0U);
   switch (p->V) {
   case 1:
@@ -629,7 +636,15 @@ pdf_encrypt_obj (void)
 
   pdf_add_dict(doc_encrypt,  pdf_new_name("Filter"), pdf_new_name("Standard"));
   pdf_add_dict(doc_encrypt,  pdf_new_name("V"),      pdf_new_number(p->V));
+#if 0
+  /* PDF reference describes it as:
+   * 
+   *   (Optional; PDF 1.4; only if V is 2 or 3)
+   * 
+   * but Acrobat *requires* this even for V 5!
+   */
   if (p->V > 1 && p->V < 4)
+#endif
     pdf_add_dict(doc_encrypt,
                  pdf_new_name("Length"), pdf_new_number(p->key_size * 8));
   if (p->V >= 4) {
