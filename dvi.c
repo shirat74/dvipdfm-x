@@ -2053,20 +2053,120 @@ read_length (double *vp, double mag, const char **pp, const char *endptr)
 
 
 static int
-scan_special (double *wd, double *ht, double *xo, double *yo, char *lm,
-	      unsigned *minorversion,
-	      int *do_enc, unsigned *key_bits, unsigned *permission, char *owner_pw, char *user_pw,
-	      const char *buf, uint32_t size)
+parse_special_encrypt (const char **pp, const char *endptr,
+                       int *keybits, int32_t *perm, char *opasswd, char *upasswd)
 {
-  char  *q;
-  const char *p = buf, *endptr;
-  int    ns_pdf = 0, error = 0;
-  double tmp;
+  int         error = 0;
+  const char *p = *pp;
 
-  endptr = p + size;
+  while (!error && p < endptr) {
+    char  *kp = parse_c_ident(&p, endptr);
+    if (!kp)
+      break;
+    else {
+      pdf_obj *obj;
 
+      skip_white(&p, endptr);
+      if (!strcmp(kp, "ownerpw")) {
+        if ((obj = parse_pdf_string(&p, endptr))) {
+          if (pdf_string_value(obj))
+            strncpy(opasswd, pdf_string_value(obj), MAX_PWD_LEN);
+          else
+            memset(opasswd, 0, MAX_PWD_LEN);
+          pdf_release_obj(obj);
+        } else
+          error = -1;
+      } else if (!strcmp(kp, "userpw")) {
+        if ((obj = parse_pdf_string(&p, endptr))) {
+          if (pdf_string_value(obj))
+            strncpy(upasswd, pdf_string_value(obj), MAX_PWD_LEN);
+          else
+            memset(upasswd, 0, MAX_PWD_LEN);
+          pdf_release_obj(obj);
+        } else
+          error = -1;
+      } else if (!strcmp(kp, "length")) {
+        if ((obj = parse_pdf_number(&p, endptr)) && PDF_OBJ_NUMBERTYPE(obj)) {
+          *keybits = (int) pdf_number_value(obj);
+        } else
+          error = -1;
+        if (obj)
+          pdf_release_obj(obj);
+      } else if (!strcmp(kp, "perm")) {
+        if ((obj = parse_pdf_number(&p, endptr)) && PDF_OBJ_NUMBERTYPE(obj)) {
+          *perm = (unsigned) pdf_number_value(obj);
+        } else
+          error = -1;
+        if (obj)
+          pdf_release_obj(obj);
+      } else {
+        error = -1;
+      }
+      RELEASE(kp);
+    }
+    skip_white(&p, endptr);
+  }
+
+  *pp = p;
+  return error;
+}
+
+static int
+parse_special_pagesize (const char **pp, const char *endptr,
+                        double *wd, double *ht, double *xo, double *yo, int *lm)
+{
+  int     error = 0;
+  const char *p = *pp;
+
+  while (!error && p < endptr) {
+    char  *kp = parse_c_ident(&p, endptr);
+    double v;
+    if (!kp)
+      break;
+
+    skip_white(&p, endptr);
+    if (!strcmp(kp, "width")) {
+        error = read_length(&v, dvi_tell_mag(), &p, endptr);
+        if (!error)
+          *wd = v * dvi_tell_mag();
+    } else if (!strcmp(kp, "height")) {
+      error = read_length(&v, dvi_tell_mag(), &p, endptr);
+      if (!error)
+        *ht = v * dvi_tell_mag();
+    } else if (!strcmp(kp, "xoffset")) {
+      error = read_length(&v, dvi_tell_mag(), &p, endptr);
+      if (!error)
+        *xo = v * dvi_tell_mag();
+    } else if (!strcmp(kp, "yoffset")) {
+      error = read_length(&v, dvi_tell_mag(), &p, endptr);
+      if (!error)
+        *yo = v * dvi_tell_mag();
+    } else if (!strcmp(kp, "default")) {
+      *wd = paper_width;
+      *ht = paper_height;
+      *lm = landscape_mode;
+      *xo = *yo = 72.0;
+    }
+    RELEASE(kp);
+  }
   skip_white(&p, endptr);
 
+  *pp = p;
+  return error;
+}
+
+static int
+scan_special (double *wd, double *ht, double *xo, double *yo, int *lm,
+              int *version_major, int *version_minor,
+              int *do_enc, int *keybits, int32_t *perm, char *opasswd, char *upasswd,
+              const char *buf, size_t size)
+{
+  char       *q;
+  const char *p = buf, *endptr = buf + size;
+  int         ns_pdf = 0, error = 0;
+  double      tmp;
+
+  skip_white(&p, endptr);
   q = parse_c_ident(&p, endptr);
   if (q && !strcmp(q, "pdf")) {
     skip_white(&p, endptr);
@@ -2076,8 +2176,7 @@ scan_special (double *wd, double *ht, double *xo, double *yo, char *lm,
       RELEASE(q);
       q = parse_c_ident(&p, endptr); ns_pdf = 1;
     }
-  }
-  else if (q && !strcmp(q, "x")) {
+  } else if (q && !strcmp(q, "x")) {
     skip_white(&p, endptr);
     if (p < endptr && *p == ':') {
       p++;
@@ -2087,127 +2186,67 @@ scan_special (double *wd, double *ht, double *xo, double *yo, char *lm,
     }
   }
   skip_white(&p, endptr);
+  if (!q)
+    return error;
 
-  if (q) {
-    if (!strcmp(q, "landscape")) {
-      *lm = 1;
-    } else if (ns_pdf && !strcmp(q, "pagesize")) {
-      while (!error && p < endptr) {
-        char  *kp = parse_c_ident(&p, endptr);
-        if (!kp)
-          break;
-        else {
-          skip_white(&p, endptr);
-          if (!strcmp(kp, "width")) {
-            error = read_length(&tmp, dvi_tell_mag(), &p, endptr);
-            if (!error)
-              *wd = tmp * dvi_tell_mag();
-          } else if (!strcmp(kp, "height")) {
-            error = read_length(&tmp, dvi_tell_mag(), &p, endptr);
-            if (!error)
-              *ht = tmp * dvi_tell_mag();
-          } else if (!strcmp(kp, "xoffset")) {
-            error = read_length(&tmp, dvi_tell_mag(), &p, endptr);
-            if (!error)
-              *xo = tmp * dvi_tell_mag();
-          } else if (!strcmp(kp, "yoffset")) {
-            error = read_length(&tmp, dvi_tell_mag(), &p, endptr);
-            if (!error)
-              *yo = tmp * dvi_tell_mag();
-          } else if (!strcmp(kp, "default")) {
-            *wd = paper_width;
-            *ht = paper_height;
-            *lm = landscape_mode;
-            *xo = *yo = 72.0;
-          }
-          RELEASE(kp);
-        }
-        skip_white(&p, endptr);
-      }
-    } else if (!strcmp(q, "papersize")) {
-      char  qchr = 0;
-      if (*p == '=') p++;
+  if (!strcmp(q, "landscape")) {
+    *lm = 1;
+  } else if (ns_pdf && !strcmp(q, "pagesize")) {
+     error = parse_special_pagesize(&p, endptr, wd, ht, xo, yo, lm);
+  } else if (!strcmp(q, "papersize")) {
+    char  qchr = 0;
+    if (*p == '=') p++;
+    skip_white(&p, endptr);
+    if (p < endptr && (*p == '\'' || *p == '\"')) {
+       qchr = *p; p++;
       skip_white(&p, endptr);
-      if (p < endptr && (*p == '\'' || *p == '\"')) {
-        qchr = *p; p++;
-        skip_white(&p, endptr);
-      }
-      error = read_length(&tmp, 1.0, &p, endptr);
-      if (!error) {
-        double tmp1;
-
-        skip_white(&p, endptr);
-        if (p < endptr && *p == ',') {
-          p++; skip_white(&p, endptr);
-        }
-        error = read_length(&tmp1, 1.0, &p, endptr);
-        if (!error)
-          *wd = tmp;
-          *ht = tmp1;
-        skip_white(&p, endptr);
-      }
-      if (!error && qchr) { /* Check if properly quoted */
-        if (p >= endptr || *p != qchr)
-          error = -1;
-      }
-      if (error == 0) {
-        paper_width  = *wd;
-        paper_height = *ht;
-      }
-    } else if (minorversion && ns_pdf && !strcmp(q, "minorversion")) {
-      char *kv;
-      if (*p == '=') p++;
-      skip_white(&p, endptr);
-      kv = parse_float_decimal(&p, endptr);
-      if (kv) {
-        *minorversion = (unsigned)strtol(kv, NULL, 10);
-        RELEASE(kv);
-      }
-    } else if (ns_pdf && !strcmp(q, "encrypt") && do_enc) {
-      *do_enc = 1;
-      *owner_pw = *user_pw = 0;
-      while (!error && p < endptr) {
-        char  *kp = parse_c_ident(&p, endptr);
-        if (!kp)
-          break;
-        else {
-	  pdf_obj *obj;
-          skip_white(&p, endptr);
-          if (!strcmp(kp, "ownerpw")) {
-            if ((obj = parse_pdf_string(&p, endptr))) {
-	      strncpy(owner_pw, pdf_string_value(obj), MAX_PWD_LEN); 
-	      pdf_release_obj(obj);
-	    } else
-	      error = -1;
-          } else if (!strcmp(kp, "userpw")) {
-            if ((obj = parse_pdf_string(&p, endptr))) {
-	      strncpy(user_pw, pdf_string_value(obj), MAX_PWD_LEN);
-	      pdf_release_obj(obj);
-	    } else
-	      error = -1;
-          } else if (!strcmp(kp, "length")) {
-            if ((obj = parse_pdf_number(&p, endptr)) && PDF_OBJ_NUMBERTYPE(obj)) {
-	      *key_bits = (unsigned) pdf_number_value(obj);
-	    } else
-	      error = -1;
-	    if (obj)
-	      pdf_release_obj(obj);
-          } else if (!strcmp(kp, "perm")) {
-            if ((obj = parse_pdf_number(&p, endptr)) && PDF_OBJ_NUMBERTYPE(obj)) {
-	      *permission = (unsigned) pdf_number_value(obj);
-	    } else
-	      error = -1;
-	    if (obj)
-	      pdf_release_obj(obj);
-          } else
-	    error = -1;
-          RELEASE(kp);
-        }
-        skip_white(&p, endptr);
-      }
     }
-    RELEASE(q);
+    error = read_length(&tmp, 1.0, &p, endptr);
+    if (!error) {
+      double tmp1;
+
+      skip_white(&p, endptr);
+      if (p < endptr && *p == ',') {
+        p++; skip_white(&p, endptr);
+      }
+      error = read_length(&tmp1, 1.0, &p, endptr);
+      if (!error)
+        *wd = tmp;
+      *ht = tmp1;
+      skip_white(&p, endptr);
+    }
+    if (!error && qchr) { /* Check if properly quoted */
+      if (p >= endptr || *p != qchr)
+        error = -1;
+    }
+    if (error == 0) {
+      paper_width  = *wd;
+      paper_height = *ht;
+    }
+  } else if (version_major && ns_pdf && !strcmp(q, "majorversion")) {
+    char *vp;
+    if (*p == '=') p++;
+    skip_white(&p, endptr);
+    vp = parse_float_decimal(&p, endptr);
+    if (vp) {
+      *version_major = (int) strtol(vp, NULL, 10);
+      RELEASE(vp);
+    }
+  } else if (version_minor && ns_pdf && !strcmp(q, "minorversion")) {
+    char *vp;
+    if (*p == '=') p++;
+    skip_white(&p, endptr);
+    vp = parse_float_decimal(&p, endptr);
+    if (vp) {
+      *version_minor = (int) strtol(vp, NULL, 10);
+      RELEASE(vp);
+    }
+  } else if (ns_pdf && !strcmp(q, "encrypt") && do_enc) {
+   *do_enc  = 1;
+   *opasswd = *upasswd = 0;
+   error = parse_special_encrypt(&p, endptr, keybits, perm, opasswd, upasswd);
   }
+  RELEASE(q);
 
   return  error;
 }
@@ -2216,16 +2255,16 @@ scan_special (double *wd, double *ht, double *xo, double *yo, char *lm,
 void
 dvi_scan_specials (int page_no,
                    double *page_width, double *page_height,
-                   double *x_offset, double *y_offset, char *landscape,
-                   unsigned *minorversion,
-		   int *do_enc, unsigned *key_bits, unsigned *permission, char *owner_pw, char *user_pw)
+                   double *x_offset, double *y_offset, int *landscape,
+                   int *version_major, int *version_minor,
+                   int *do_enc, int *keybits, int32_t *perm, char *opasswd, char *upasswd)
 {
   FILE          *fp = dvi_file;
-  int32_t        offset;
+  size_t         offset;
   unsigned char  opcode;
   static int     buffered_page = -1;
 #if XETEX
-  unsigned int len;
+  size_t         len;
 #endif
 
   if (page_no == buffered_page)
@@ -2248,7 +2287,7 @@ dvi_scan_specials (int page_no,
       continue;
     else if (opcode == XXX1 || opcode == XXX2 ||
              opcode == XXX3 || opcode == XXX4) {
-      uint32_t size = get_and_buffer_unsigned_byte(fp);
+      size_t size = get_and_buffer_unsigned_byte(fp);
       switch (opcode) {
       case XXX4: size = size * 0x100u + get_and_buffer_unsigned_byte(fp);
         if (size > 0x7fff)
@@ -2265,7 +2304,8 @@ dvi_scan_specials (int page_no,
       if (fread(buf, sizeof(char), size, fp) != size)
         ERROR("Reading DVI file failed!");
       if (scan_special(page_width, page_height, x_offset, y_offset, landscape,
-                       minorversion, do_enc, key_bits, permission, owner_pw, user_pw,
+                       version_major, version_minor,
+                       do_enc, keybits, perm, opasswd, upasswd,
                        buf, size))
         WARN("Reading special command failed: \"%.*s\"", size, buf);
 #undef buf

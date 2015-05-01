@@ -103,16 +103,16 @@ static int pdfdecimaldigits = 2;
 static int image_cache_life = -2;
 
 /* Encryption */
-static int do_encryption    = 0;
-static unsigned key_bits    = 40;
-static unsigned permission  = 0x003C;
+static int     do_encryption = 0;
+static int     key_bits      = 40;
+static int32_t permission    = 0x003C;
 
 /* Page device */
-double paper_width  = 595.0;
-double paper_height = 842.0;
+double paper_width     = 595.0;
+double paper_height    = 842.0;
 static double x_offset = 72.0;
 static double y_offset = 72.0;
-char   landscape_mode    = 0;
+int    landscape_mode  = 0;
 
 int always_embed = 0; /* always embed fonts, regardless of licensing flags */
 
@@ -788,14 +788,14 @@ do_dvi_pages (void)
     while (dvi_npages()) {
       if (page_no < dvi_npages()) {
         double w, h, xo, yo;
-        char   lm;
+        int    lm;
 
         MESG("[%d", page_no+1);
         /* Users want to change page size even after page is started! */
         page_width = paper_width; page_height = paper_height;
         w = page_width; h = page_height; lm = landscape_mode;
         xo = x_offset; yo = y_offset;
-        dvi_scan_specials(page_no, &w, &h, &xo, &yo, &lm, NULL, NULL, NULL, NULL, NULL, NULL);
+        dvi_scan_specials(page_no, &w, &h, &xo, &yo, &lm, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
         if (lm != landscape_mode) {
           SWAP(w, h);
           landscape_mode = lm;
@@ -1025,7 +1025,7 @@ CDECL main (int argc, char *argv[])
     y_offset = 0.0;
     dvi2pts  = 0.01; /* dvi2pts controls accuracy. */
   } else {
-    unsigned ver_minor = 0;
+    int ver_major = 0,  ver_minor = 0;
     char owner_pw[MAX_PWD_LEN], user_pw[MAX_PWD_LEN];
     /* Dependency between DVI and PDF side is rather complicated... */
     dvi2pts = dvi_init(dvi_filename, mag);
@@ -1039,13 +1039,14 @@ CDECL main (int argc, char *argv[])
       dvi_scan_specials(0,
                         &paper_width, &paper_height,
                         &x_offset, &y_offset, &landscape_mode,
-                        &ver_minor, NULL, NULL, NULL, NULL, NULL);
+                        &ver_major, &ver_minor,
+                        NULL, NULL, NULL, NULL, NULL);
     else {
       dvi_scan_specials(0,
                         &paper_width, &paper_height,
                         &x_offset, &y_offset, &landscape_mode,
-                        &ver_minor, &do_encryption,
-                        &key_bits, &permission, owner_pw, user_pw);
+                        &ver_major, &ver_minor,
+                        &do_encryption, &key_bits, &permission, owner_pw, user_pw);
       if (do_encryption) {
         if (!(key_bits >= 40 && key_bits <= 128 && (key_bits % 8 == 0)) &&
               key_bits != 256)
