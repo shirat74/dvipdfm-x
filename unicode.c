@@ -59,22 +59,31 @@ UC_set_verbose (void)
 #define UC_SUR_HIGH_START 0xD800UL
 
 int
-UC_sput_UTF16BE (long ucv, unsigned char **pp, unsigned char *limptr)
+UC_is_valid (int32_t ucv)
+{
+  if (ucv < 0 || (ucv >= 0x0000D800L && ucv <= 0x0000DFFFL))
+    return 0;
+  return 1;
+}
+
+
+size_t
+UC_UTF16BE_encode_char (int32_t ucv, unsigned char **pp, unsigned char *endptr)
 {
   int count = 0;
   unsigned char *p = *pp;
 
   if (ucv >= 0 && ucv <= 0xFFFF) {
-    if (p + 2 >= limptr)
-      ERROR("Not enough space available...");
+    if (p + 2 >= endptr)
+      return 0;
     p[0] = (ucv >> 8) & 0xff;
     p[1] = ucv & 0xff;
     count = 2;
   } else if (ucv >= 0x010000L && ucv <= 0x10FFFFL) {
     unsigned short high, low;
 
-    if (p + 4 >= limptr)
-      ERROR("Not enough space available...");
+    if (p + 4 >= endptr)
+      return 0;
     ucv  -= 0x00010000L;
     high = (ucv >> UC_SUR_SHIFT) + UC_SUR_HIGH_START;
     low  = (ucv &  UC_SUR_MASK)  + UC_SUR_LOW_START;
@@ -84,8 +93,8 @@ UC_sput_UTF16BE (long ucv, unsigned char **pp, unsigned char *limptr)
     p[3] = (low & 0xff);
     count = 4;
   } else {
-    if (p + 2 >= limptr)
-      ERROR("Not enough space available...");
+    if (p + 2 >= endptr)
+      return 0;
     p[0] = (UC_REPLACEMENT_CHAR >> 8) & 0xff;
     p[1] = (UC_REPLACEMENT_CHAR & 0xff);
     count = 2;
@@ -93,14 +102,6 @@ UC_sput_UTF16BE (long ucv, unsigned char **pp, unsigned char *limptr)
 
   *pp += count;
   return count;
-}
-
-int
-UC_is_valid (long ucv)
-{
-  if (ucv < 0 || (ucv >= 0x0000D800L && ucv <= 0x0000DFFFL))
-    return 0;
-  return 1;
 }
 
 int32_t
@@ -143,4 +144,66 @@ UC_UTF8_decode_char (const unsigned char **pp, const unsigned char *endptr)
 
   *pp = p;
   return ucv;
+}
+
+size_t
+UC_UTF8_encode_char (int32_t ucv, unsigned char **pp, unsigned char *endptr)
+{
+  int  count = 0;
+  unsigned char *p = *pp;
+
+  ASSERT( pp && *pp && endptr );
+
+  if (!UC_is_valid(ucv))
+    return 0;
+
+  if (ucv < 0x7f) {
+    if (p >= endptr - 1)
+      return 0;
+    p[0]  = (unsigned char) ucv;
+    count = 1;
+  } else if (ucv <= 0x7ff) {
+    if (p >= endptr -2)
+      return 0;
+    p[0] = (unsigned char) (0xc0 | (ucv >> 6));
+    p[1] = (unsigned char) (0x80 | (ucv & 0x3f));
+    count = 2;
+  } else if (ucv <= 0xffff) {
+    if (p >= endptr - 3)
+      return 0;
+    p[0] = (unsigned char) (0xc0 | (ucv >> 12));
+    p[1] = (unsigned char) (0x80 | ((ucv >> 6) & 0x3f));
+    p[2] = (unsigned char) (0x80 | (ucv & 0x3f));
+    count = 3; 
+  } else if (ucv <= 0x1fffff) {
+    if (p >= endptr - 4)
+      return 0;
+    p[0] = (unsigned char) (0xc0 | (ucv >> 18));
+    p[1] = (unsigned char) (0x80 | ((ucv >> 12) & 0x3f));
+    p[2] = (unsigned char) (0x80 | ((ucv >>  6) & 0x3f));
+    p[3] = (unsigned char) (0x80 | (ucv & 0x3f));
+    count = 4;
+  } else if (ucv <= 0x3ffffff) {
+    if (p >= endptr - 5)
+      return 0;
+    p[0] = (unsigned char) (0xc0 | (ucv >> 24));
+    p[1] = (unsigned char) (0x80 | ((ucv >> 18) & 0x3f));
+    p[2] = (unsigned char) (0x80 | ((ucv >> 12) & 0x3f));
+    p[3] = (unsigned char) (0x80 | ((ucv >>  6) & 0x3f));
+    p[4] = (unsigned char) (0x80 | (ucv & 0x3f));
+    count = 5;
+  } else if (ucv <= 0x7fffffff) {
+     if (p >= endptr - 6)
+      return 0;
+    p[0] = (unsigned char) (0xc0 | (ucv >> 30));
+    p[1] = (unsigned char) (0x80 | ((ucv >> 24) & 0x3f));   
+    p[2] = (unsigned char) (0x80 | ((ucv >> 18) & 0x3f));
+    p[3] = (unsigned char) (0x80 | ((ucv >> 12) & 0x3f));
+    p[4] = (unsigned char) (0x80 | ((ucv >>  6) & 0x3f));
+    p[5] = (unsigned char) (0x80 | (ucv & 0x3f));
+    count = 6;   
+  }
+  
+  *pp += count;
+  return count;
 }

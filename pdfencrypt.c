@@ -501,7 +501,7 @@ stringprep_profile(const char *input, char **output, const char *profile,
 
   p = input; endptr = p + strlen(p);
   while (p < endptr) {
-    int32_t ucv = UC_UTF8_decode_char(&p, endptr);
+    int32_t ucv = UC_UTF8_decode_char((const void **)&p, (const void *)endptr);
     if (!UC_is_valid(ucv))
       return STRINGPREP_ERROR;
   }

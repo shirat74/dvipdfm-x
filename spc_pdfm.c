@@ -47,6 +47,8 @@
 #include "pdfcolor.h"
 #include "pdfdev.h"
 
+#include "unicode.h"
+
 #include "specials.h"
 
 #include "spc_util.h"
@@ -399,6 +401,7 @@ reencodestring (CMap *cmap, pdf_obj *instring)
   return 0;
 }
 
+#if 0
 /* tables/values used in UTF-8 interpretation -
    code is based on ConvertUTF.[ch] sample code
    published by the Unicode consortium */
@@ -491,6 +494,56 @@ maybe_reencode_utf8(pdf_obj *instring)
   pdf_set_string(instring, wbuf, op - wbuf);
 
   return 0;
+}
+#endif
+
+static int
+maybe_reencode_utf8 (pdf_obj *instring)
+{
+  unsigned char *inbuf;
+  size_t         inlen, outlen = 0;
+  int            non_ascii = 0;
+  unsigned char *inptr, *outptr;
+  unsigned char  wbuf[WBUF_SIZE];
+
+  if (!instring)
+    return 0;
+
+  inlen = pdf_string_length(instring);
+  inbuf = pdf_string_value(instring);
+
+  /* check if the input string is strictly ASCII */
+  for (inptr = inbuf; inptr < inbuf + inlen; inptr++) {
+    if (*inptr > 127) {
+      non_ascii = 1;
+    }
+  }
+  if (non_ascii == 0)
+    return 0; /* no need to reencode ASCII strings */
+
+  if (inbuf[0] == 0xfe && inbuf[1] == 0xff)
+    return 0; /* no need to reencode UTF16BE with BOM */
+
+  inptr  = inbuf;
+  outptr = wbuf;
+  *outptr++ = 0xfe;
+  *outptr++ = 0xff;
+  while (inptr < inbuf + inlen) {
+    int32_t ucv;
+    size_t  count;
+    
+    ucv = UC_UTF8_decode_char(&inptr, inbuf + inlen);
+    if (!UC_is_valid(ucv))
+      return -1;
+    count = UC_UTF16BE_encode_char(ucv, &outptr, wbuf + WBUF_SIZE);
+    if (count == 0)
+      return -1;
+    outlen += count;
+  }
+
+  pdf_set_string(instring, wbuf, outlen);
+
+  return 0;  
 }
 
 static int
