@@ -532,7 +532,8 @@ maybe_reencode_utf8 (pdf_obj *instring)
     int32_t ucv;
     size_t  count;
     
-    ucv = UC_UTF8_decode_char(&inptr, inbuf + inlen);
+    ucv = UC_UTF8_decode_char((const unsigned char **)&inptr,
+                              (const unsigned char *) inbuf + inlen);
     if (!UC_is_valid(ucv))
       return -1;
     count = UC_UTF16BE_encode_char(ucv, &outptr, wbuf + WBUF_SIZE);

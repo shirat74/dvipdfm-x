@@ -892,9 +892,9 @@ handle_subst_glyphs (CMap *cmap,
       if (!cmap_add) {
 #define MAX_UNICODES	16
         /* try to look up Unicode values from the glyph name... */
-        char* name;
-        long unicodes[MAX_UNICODES];
-        int  unicode_count = -1;
+        char   *name;
+        int32_t unicodes[MAX_UNICODES];
+        int     unicode_count = -1;
         name = sfnt_get_glyphname(post, cffont, gid);
         if (name) {
           unicode_count = agl_get_unicodes(name, unicodes, MAX_UNICODES);
@@ -912,7 +912,7 @@ handle_subst_glyphs (CMap *cmap,
           int  k;
           len = 0;
           for (k = 0; k < unicode_count; ++k) {
-            len += UC_sput_UTF16BE(unicodes[k], &p, wbuf+WBUF_SIZE);
+            len += UC_UTF16BE_encode_char(unicodes[k], &p, wbuf+WBUF_SIZE);
           }
           wbuf[0] = (gid >> 8) & 0xff;
           wbuf[1] =  gid & 0xff;
@@ -986,14 +986,14 @@ add_to_cmap_if_used (CMap *cmap,
   USHORT count = 0;
   USHORT cid = cffont ? cff_charsets_lookup_inverse(cffont, gid) : gid;
   if (is_used_char2(used_chars, cid)) {
-    int len;
+    size_t   len;
     unsigned char *p = wbuf + 2;
 
     count++;
 
     wbuf[0] = (cid >> 8) & 0xff;
     wbuf[1] = (cid & 0xff);
-    len = UC_sput_UTF16BE((long) ch, &p, wbuf + WBUF_SIZE);
+    len = UC_UTF16BE_encode_char((int32_t) ch, &p, wbuf + WBUF_SIZE);
     CMap_add_bfchar(cmap, wbuf, 2, wbuf + 2, len);
 
     /* Skip PUA characters and alphabetic presentation forms, allowing
@@ -1096,19 +1096,19 @@ create_ToUnicode_cmap (tt_cmap *ttcmap,
         continue;
 
       for (j = 0; j < 8; j++) {
-        USHORT cid = 8 * i + j;
-        int ch;
+        USHORT  cid = 8 * i + j;
+        int32_t ch;
 
         if (!is_used_char2(used_chars, cid))
           continue;
 
         ch = CMap_reverse_decode(code_to_cid_cmap, cid);
         if (ch >= 0) {
-          long len;
+          size_t   len;
           unsigned char *p = wbuf + 2;
           wbuf[0] = (cid >> 8) & 0xff;
           wbuf[1] =  cid & 0xff;
-          len = UC_sput_UTF16BE((long)ch, &p, wbuf + WBUF_SIZE);
+          len = UC_UTF16BE_encode_char(ch, &p, wbuf + WBUF_SIZE);
           CMap_add_bfchar(cmap, wbuf, 2, wbuf + 2, len);
           count++;
         }
@@ -1292,11 +1292,11 @@ otf_create_ToUnicode_stream (const char *font_name,
 
 struct gent
 {
-  USHORT gid;
-  long   ucv; /* assigned PUA unicode */
+  USHORT  gid;
+  int32_t ucv; /* assigned PUA unicode */
 
-  int    num_unicodes;
-  long   unicodes[MAX_UNICODES];
+  int     num_unicodes;
+  int32_t unicodes[MAX_UNICODES];
 };
 
 static void
@@ -1339,7 +1339,7 @@ create_cmaps (CMap *cmap, CMap *tounicode,
       endptr  = wbuf + WBUF_SIZE;
       len     = 0;
       for (i = 0; i < glyph->num_unicodes; i++) {
-	len += UC_sput_UTF16BE(glyph->unicodes[i], &p, endptr);
+        len += UC_UTF16BE_encode_char(glyph->unicodes[i], &p, endptr);
       }
       CMap_add_bfchar(tounicode, wbuf, 2, wbuf + 2, len);
     }
