@@ -2,19 +2,19 @@
 
     Copyright (C) 2007-2014 by Jin-Hwan Cho and Shunsaku Hirata,
     the dvipdfmx project team.
-    
+
     Copyright (C) 1998, 1999 by Mark A. Wicks <mwicks@kettering.edu>
 
     This program is free software; you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
     the Free Software Foundation; either version 2 of the License, or
     (at your option) any later version.
-    
+
     This program is distributed in the hope that it will be useful,
     but WITHOUT ANY WARRANTY; without even the implied warranty of
     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
     GNU General Public License for more details.
-    
+
     You should have received a copy of the GNU General Public License
     along with this program; if not, write to the Free Software
     Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA.
@@ -272,7 +272,7 @@ safeputresdict (pdf_obj *kp, pdf_obj *vp, void *dp)
 /* Think what happens if you do
  *
  *  pdf:put @resources << /Font << >> >>
- * 
+ *
  */
 static int
 spc_handler_pdfm_put (struct spc_env *spe, struct spc_arg *ap)
@@ -531,7 +531,7 @@ maybe_reencode_utf8 (pdf_obj *instring)
   while (inptr < inbuf + inlen) {
     int32_t ucv;
     size_t  count;
-    
+
     ucv = UC_UTF8_decode_char((const unsigned char **)&inptr,
                               (const unsigned char *) inbuf + inlen);
     if (!UC_is_valid(ucv))
@@ -544,7 +544,7 @@ maybe_reencode_utf8 (pdf_obj *instring)
 
   pdf_set_string(instring, wbuf, outlen);
 
-  return 0;  
+  return 0;
 }
 
 static int
@@ -589,8 +589,13 @@ modstrings (pdf_obj *kp, pdf_obj *vp, void *dp)
       CMap *cmap = CMap_cache_get(cd->cmap_id);
       if (needreencode(kp, vp, cd))
         r = reencodestring(cmap, vp);
-    } else if (is_xdv)
+    } else if (is_xdv && needreencode(kp, vp, cd)) {
+      /* FIX: PDF string object may not be actually text.
+       * It can be arbitrary binary sequence.
+       * We need needreencode().
+       */
       r = maybe_reencode_utf8(vp);
+    }
     if (r < 0) /* error occured... */
       WARN("Failed to convert input string to UTF16...");
     break;
@@ -615,7 +620,7 @@ parse_pdf_dict_with_tounicode (const char **pp, const char *endptr, struct touni
     return  parse_pdf_dict(pp, endptr, NULL);
 
   /* :( */
-  if (cd && cd->unescape_backslash) 
+  if (cd && cd->unescape_backslash)
     dict = parse_pdf_tainted_dict(pp, endptr);
   else {
     dict = parse_pdf_dict(pp, endptr, NULL);
@@ -1947,7 +1952,7 @@ static struct spc_handler pdfm_handlers[] = {
   {"bead",       spc_handler_pdfm_bead},
   {"thread",     spc_handler_pdfm_bead},
 
-  {"destination", spc_handler_pdfm_dest}, 
+  {"destination", spc_handler_pdfm_dest},
   {"dest",        spc_handler_pdfm_dest},
 
 
@@ -2097,4 +2102,3 @@ spc_pdfm_setup_handler (struct spc_handler *sph,
 
   return  error;
 }
-
