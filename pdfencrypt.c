@@ -334,7 +334,7 @@ compute_hash_V5 (unsigned char       *hash,
 
   memcpy(K, hash, 32); K_len = 32;
   for (nround = 1; ; nround++) {
-    unsigned char K1[256], Kr[15360], *E; /* 240*64 = 15360 */
+    unsigned char K1[256], *Kr, *E;
     size_t        K1_len, E_len;
     int           i, c, E_mod3 = 0;
 
@@ -344,10 +344,12 @@ compute_hash_V5 (unsigned char       *hash,
     memcpy(K1 + strlen(passwd), K, K_len);
     if (user_key)
       memcpy(K1 + strlen(passwd) + K_len, user_key, 48);
- 
+
+    Kr = NEW(K1_len * 64, unsigned char);
     for (i = 0; i < 64; i++)
       memcpy(Kr + i * K1_len, K1, K1_len);
     AES_cbc_encrypt(K, 16, K + 16, 0, Kr, K1_len * 64, &E, &E_len);
+    RELEASE(Kr);
 
     for (i = 0; i < 16; i++)
       E_mod3 += E[i];
