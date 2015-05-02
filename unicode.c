@@ -58,6 +58,7 @@ UC_set_verbose (void)
 #define UC_SUR_LOW_START  0xDC00U
 #define UC_SUR_HIGH_START 0xD800U
 #define UC_SUR_END        0xE000U
+
 int
 UC_is_valid (int32_t ucv)
 {
@@ -91,7 +92,7 @@ UC_UTF16BE_decode_char (const unsigned char **pp, const unsigned char *endptr)
   }
 
   *pp = p;
-  return ucv; 
+  return ucv;
 }
 
 size_t
@@ -201,7 +202,7 @@ UC_UTF8_encode_char (int32_t ucv, unsigned char **pp, unsigned char *endptr)
     p[0] = (unsigned char) (0xe0 | (ucv >> 12));
     p[1] = (unsigned char) (0x80 | ((ucv >> 6) & 0x3f));
     p[2] = (unsigned char) (0x80 | (ucv & 0x3f));
-    count = 3; 
+    count = 3;
   } else if (ucv <= 0x1fffff) {
     if (p >= endptr - 4)
       return 0;
@@ -223,14 +224,14 @@ UC_UTF8_encode_char (int32_t ucv, unsigned char **pp, unsigned char *endptr)
      if (p >= endptr - 6)
       return 0;
     p[0] = (unsigned char) (0xfc | (ucv >> 30));
-    p[1] = (unsigned char) (0x80 | ((ucv >> 24) & 0x3f));   
+    p[1] = (unsigned char) (0x80 | ((ucv >> 24) & 0x3f));
     p[2] = (unsigned char) (0x80 | ((ucv >> 18) & 0x3f));
     p[3] = (unsigned char) (0x80 | ((ucv >> 12) & 0x3f));
     p[4] = (unsigned char) (0x80 | ((ucv >>  6) & 0x3f));
     p[5] = (unsigned char) (0x80 | (ucv & 0x3f));
-    count = 6;   
+    count = 6;
   }
-  
+
   *pp += count;
   return count;
 }
