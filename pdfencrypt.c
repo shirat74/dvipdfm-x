@@ -2,17 +2,17 @@
 
     Copyright (C) 2002-2014 by Jin-Hwan Cho and Shunsaku Hirata,
     the dvipdfmx project team.
-    
+
     This program is free software; you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
     the Free Software Foundation; either version 2 of the License, or
     (at your option) any later version.
-    
+
     This program is distributed in the hope that it will be useful,
     but WITHOUT ANY WARRANTY; without even the implied warranty of
     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
     GNU General Public License for more details.
-    
+
     You should have received a copy of the GNU General Public License
     along with this program; if not, write to the Free Software
     Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA.
@@ -56,12 +56,8 @@
 #include "pdfdoc.h"
 #endif
 
-#include "pdfencrypt.h"
-
 #include "dvipdfmx.h"
-
-#define MAX_KEY_LEN 32
-#define MAX_STR_LEN 32
+#include "pdfencrypt.h"
 
 static struct pdf_sec {
    unsigned char key[32];
@@ -120,6 +116,7 @@ pdf_enc_compute_id_string (char *dviname, char *pdfname)
   struct tm      *bd_time;
   MD5_CONTEXT     md5;
 
+  /* FIXME: This should be placed in main() or somewhere. */
   pdf_enc_init(1, 1);
 
   MD5_init(&md5);
@@ -148,10 +145,9 @@ pdf_enc_compute_id_string (char *dviname, char *pdfname)
 static void
 passwd_padding (const char *src, unsigned char *dst)
 {
-  int len = strlen((char *)src);
+  int len;
 
-  if (len > 32)
-    len = 32;
+  len = MIN(32, strlen((char *)src));
 
   memcpy(dst, src, len);
   memcpy(dst + len, padding_bytes, 32 - len);
@@ -166,13 +162,9 @@ compute_owner_password (struct pdf_sec *p,
   MD5_CONTEXT   md5;
   ARC4_CONTEXT  arc4;
   unsigned char hash[16];
- 
-  /*
-   * Algorithm 3.3 Computing the encryption dictionary's O (owner password)
-   *               value
-   */
+
   passwd_padding((strlen(opasswd) > 0 ? opasswd : upasswd), padded);
- 
+
   MD5_init (&md5);
   MD5_write(&md5, padded, 32);
   MD5_final(hash, &md5);
@@ -187,7 +179,7 @@ compute_owner_password (struct pdf_sec *p,
       MD5_final(hash, &md5);
     }
   }
-  ARC4_set_key(&arc4, p->key_size, hash); 
+  ARC4_set_key(&arc4, p->key_size, hash);
   passwd_padding(upasswd, padded);
   {
     unsigned char tmp1[32], tmp2[32];
@@ -213,9 +205,7 @@ compute_encryption_key (struct pdf_sec *p, const char *passwd)
   int  i;
   unsigned char hash[32], padded[32];
   MD5_CONTEXT   md5;
-  /*
-   * Algorithm 3.2 Computing an encryption key
-   */
+
   passwd_padding(passwd, padded);
   MD5_init (&md5);
   MD5_write(&md5, padded, 32);
@@ -260,14 +250,7 @@ compute_user_password (struct pdf_sec *p, const char *uplain)
   ARC4_CONTEXT  arc4;
   MD5_CONTEXT   md5;
   unsigned char upasswd[32];
-  /*
-   * Algorithm 3.4 Computing the encryption dictionary's U (user password)
-   *               value (Revision 2)
-   */
-  /*
-   * Algorithm 3.5 Computing the encryption dictionary's U (user password)
-   *               value (Revision 3)
-   */
+
   compute_encryption_key(p, uplain);
 
   switch (p->R) {
@@ -308,7 +291,7 @@ compute_user_password (struct pdf_sec *p, const char *uplain)
   memcpy(p->U, upasswd, 32);
 }
 
-/* Algorithm 2.B from ISO 32000-1 chapter 7: Computing a hash */
+/* Algorithm 2.B from ISO 32000-1 chapter 7 */
 static void
 compute_hash_V5 (unsigned char       *hash,
                  const char          *passwd,
@@ -333,7 +316,7 @@ compute_hash_V5 (unsigned char       *hash,
     return;
 
   memcpy(K, hash, 32); K_len = 32;
-  for (nround = 1; ; nround++) {
+  for (nround = 1; ; nround++) { /* Initial K count as nround 0. */
     unsigned char K1[256], *Kr, *E;
     size_t        K1_len, E_len;
     int           i, c, E_mod3 = 0;
@@ -369,7 +352,7 @@ compute_hash_V5 (unsigned char       *hash,
     case 1:
       {
         SHA512_CONTEXT sha;
- 
+
         SHA384_init (&sha);
         SHA384_write(&sha, E, E_len);
         SHA384_final(K, &sha);
@@ -379,12 +362,12 @@ compute_hash_V5 (unsigned char       *hash,
     case 2:
       {
         SHA512_CONTEXT sha;
-       
+
         SHA512_init (&sha);
         SHA512_write(&sha, E, E_len);
         SHA512_final(K, &sha);
         K_len = 64;
-      } 
+      }
       break;
     }
     c = (uint8_t) E[E_len - 1];
@@ -437,16 +420,16 @@ compute_user_password_V5 (struct pdf_sec *p, const char *uplain)
   memcpy(p->U,      hash,  32);
   memcpy(p->U + 32, vsalt,  8);
   memcpy(p->U + 40, ksalt,  8);
-    
+
   compute_hash_V5(hash, uplain, ksalt, NULL, p->R);
-  memset(iv, 0, AES_BLOCKSIZE); 
+  memset(iv, 0, AES_BLOCKSIZE);
   AES_cbc_encrypt(hash, 32, iv, 0, p->key, p->key_size, &UE, &UE_len);
   memcpy(p->UE, UE, 32);
   RELEASE(UE);
 }
 
 #ifdef WIN32
-/* Broken on mintty */
+/* Broken on mintty? */
 static char *
 getpass (const char *prompt)
 {
@@ -482,7 +465,7 @@ check_version (struct pdf_sec *p, int version)
     WARN("Current encryption setting requires PDF version >= 1.7" \
          " (plus Adobe Extension Level 3).");
     p->V = 4;
-  }  
+  }
 }
 
 /* Dummy routine for stringprep - NOT IMPLEMENTED YET
@@ -528,11 +511,17 @@ preproc_password (const char *passwd, char *outbuf, int V)
   switch (V) {
   case 1: case 2: case 3: case 4:
     {
+      int i;
        /* Need to be converted to PDFDocEncoding - UNIMPLEMENTED */
+      for (i = 0; i < strlen(passwd); i++) {
+        if (passwd[i] < 0x20 || passwd[i] > 0x7e)
+          WARN("Non-ASCII-printable character found in password.");
+      }
       memcpy(outbuf, passwd, MIN(127, strlen(passwd)));
     }
     break;
   case 5:
+    /* This is a dummy routine - not actually stringprep password... */
     if (stringprep_profile(passwd, &saslpwd,
                            "SASLprep", 0) != STRINGPREP_OK)
        return -1;
@@ -549,7 +538,7 @@ preproc_password (const char *passwd, char *outbuf, int V)
   return error;
 }
 
-void 
+void
 pdf_enc_set_passwd (unsigned int bits, unsigned int perm,
                     const char *oplain, const char *uplain)
 {
@@ -721,9 +710,9 @@ pdf_encrypt_obj (void)
   pdf_add_dict(doc_encrypt,  pdf_new_name("V"),      pdf_new_number(p->V));
 #if 0
   /* PDF reference describes it as:
-   * 
+   *
    *   (Optional; PDF 1.4; only if V is 2 or 3)
-   * 
+   *
    * but Acrobat *requires* this even for V 5!
    */
   if (p->V > 1 && p->V < 4)
@@ -743,6 +732,7 @@ pdf_encrypt_obj (void)
     pdf_add_dict(doc_encrypt, pdf_new_name("StmF"), pdf_new_name("StdCF"));
     pdf_add_dict(doc_encrypt, pdf_new_name("StrF"), pdf_new_name("StdCF"));
 #if 0
+    /* NOT SUPPORTED YET */
     if (!p->setting.encrypt_metadata)
       pdf_add_dict(doc_encrypt,
                    pdf_new_name("EncryptMetadata"), pdf_new_boolean(false));
@@ -810,7 +800,7 @@ pdf_obj *pdf_enc_id_array (void)
 
   pdf_add_array(id, pdf_new_string(p->ID, 16));
   pdf_add_array(id, pdf_new_string(p->ID, 16));
-  
+
   return id;
 }
 
