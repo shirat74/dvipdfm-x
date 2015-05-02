@@ -23,8 +23,6 @@
 #ifndef _UNICODE_H_
 #define _UNICODE_H_
 
-#include <inttypes.h>
-
 extern void UC_set_verbose (void);
 extern int UC_is_valid (int32_t ucv);
 
