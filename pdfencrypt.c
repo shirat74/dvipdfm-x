@@ -56,12 +56,8 @@
 #include "pdfdoc.h"
 #endif
 
-#include "pdfencrypt.h"
-
 #include "dvipdfmx.h"
-
-#define MAX_KEY_LEN 32
-#define MAX_STR_LEN 32
+#include "pdfencrypt.h"
 
 static struct pdf_sec {
    unsigned char key[32];
@@ -120,6 +116,7 @@ pdf_enc_compute_id_string (char *dviname, char *pdfname)
   struct tm      *bd_time;
   MD5_CONTEXT     md5;
 
+  /* FIXME: This should be placed in main() or somewhere. */
   pdf_enc_init(1, 1);
 
   MD5_init(&md5);
@@ -148,10 +145,9 @@ pdf_enc_compute_id_string (char *dviname, char *pdfname)
 static void
 passwd_padding (const char *src, unsigned char *dst)
 {
-  int len = strlen((char *)src);
+  int len;
 
-  if (len > 32)
-    len = 32;
+  len = MIN(32, strlen((char *)src));
 
   memcpy(dst, src, len);
   memcpy(dst + len, padding_bytes, 32 - len);
@@ -167,10 +163,6 @@ compute_owner_password (struct pdf_sec *p,
   ARC4_CONTEXT  arc4;
   unsigned char hash[16];
 
-  /*
-   * Algorithm 3.3 Computing the encryption dictionary's O (owner password)
-   *               value
-   */
   passwd_padding((strlen(opasswd) > 0 ? opasswd : upasswd), padded);
 
   MD5_init (&md5);
@@ -213,9 +205,7 @@ compute_encryption_key (struct pdf_sec *p, const char *passwd)
   int  i;
   unsigned char hash[32], padded[32];
   MD5_CONTEXT   md5;
-  /*
-   * Algorithm 3.2 Computing an encryption key
-   */
+
   passwd_padding(passwd, padded);
   MD5_init (&md5);
   MD5_write(&md5, padded, 32);
@@ -260,14 +250,7 @@ compute_user_password (struct pdf_sec *p, const char *uplain)
   ARC4_CONTEXT  arc4;
   MD5_CONTEXT   md5;
   unsigned char upasswd[32];
-  /*
-   * Algorithm 3.4 Computing the encryption dictionary's U (user password)
-   *               value (Revision 2)
-   */
-  /*
-   * Algorithm 3.5 Computing the encryption dictionary's U (user password)
-   *               value (Revision 3)
-   */
+
   compute_encryption_key(p, uplain);
 
   switch (p->R) {
@@ -308,7 +291,7 @@ compute_user_password (struct pdf_sec *p, const char *uplain)
   memcpy(p->U, upasswd, 32);
 }
 
-/* Algorithm 2.B from ISO 32000-1 chapter 7: Computing a hash */
+/* Algorithm 2.B from ISO 32000-1 chapter 7 */
 static void
 compute_hash_V5 (unsigned char       *hash,
                  const char          *passwd,
@@ -333,7 +316,7 @@ compute_hash_V5 (unsigned char       *hash,
     return;
 
   memcpy(K, hash, 32); K_len = 32;
-  for (nround = 1; ; nround++) {
+  for (nround = 1; ; nround++) { /* Initial K count as nround 0. */
     unsigned char K1[256], *Kr, *E;
     size_t        K1_len, E_len;
     int           i, c, E_mod3 = 0;
@@ -446,7 +429,7 @@ compute_user_password_V5 (struct pdf_sec *p, const char *uplain)
 }
 
 #ifdef WIN32
-/* Broken on mintty */
+/* Broken on mintty? */
 static char *
 getpass (const char *prompt)
 {
@@ -537,7 +520,7 @@ preproc_password (const char *passwd, char *outbuf, int V)
     }
     break;
   case 5:
-    /* This is a dummpy routine - not actually stringprep password... */
+    /* This is a dummy routine - not actually stringprep password... */
     if (stringprep_profile(passwd, &saslpwd,
                            "SASLprep", 0) != STRINGPREP_OK)
        return -1;
