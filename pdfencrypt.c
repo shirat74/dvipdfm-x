@@ -2,17 +2,17 @@
 
     Copyright (C) 2002-2014 by Jin-Hwan Cho and Shunsaku Hirata,
     the dvipdfmx project team.
-
+    
     This program is free software; you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
     the Free Software Foundation; either version 2 of the License, or
     (at your option) any later version.
-
+    
     This program is distributed in the hope that it will be useful,
     but WITHOUT ANY WARRANTY; without even the implied warranty of
     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
     GNU General Public License for more details.
-
+    
     You should have received a copy of the GNU General Public License
     along with this program; if not, write to the Free Software
     Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA.
@@ -111,9 +111,9 @@ void
 pdf_enc_compute_id_string (char *dviname, char *pdfname)
 {
   struct pdf_sec *p = &sec_data;
-  char           *date_string, *producer;
-  time_t          current_time;
-  struct tm      *bd_time;
+  char *date_string, *producer;
+  time_t current_time;
+  struct tm *bd_time;
   MD5_CONTEXT     md5;
 
   /* FIXME: This should be placed in main() or somewhere. */
@@ -187,13 +187,13 @@ compute_owner_password (struct pdf_sec *p,
 
     ARC4(&arc4, 32, padded, tmp1);
     if (p->R >= 3) {
-      for (i = 1; i <= 19; i++) {
+    for (i = 1; i <= 19; i++) {
         memcpy(tmp2, tmp1, 32);
         for (j = 0; j < p->key_size; j++)
           key[j] = hash[j] ^ i;
         ARC4_set_key(&arc4, p->key_size, key);
         ARC4(&arc4, 32, tmp2, tmp1);
-      }
+    }
     }
   }
   memcpy(p->O, hash, 32);
@@ -272,7 +272,7 @@ compute_user_password (struct pdf_sec *p, const char *uplain)
       ARC4_set_key(&arc4, p->key_size, p->key);
       ARC4(&arc4, 16, hash, tmp1);
 
-      for (i = 1; i <= 19; i++) {
+    for (i = 1; i <= 19; i++) {
         unsigned char key[16];
 
         memcpy(tmp2, tmp1, 16);
@@ -486,7 +486,8 @@ stringprep_profile(const char *input, char **output, const char *profile,
 
   p = input; endptr = p + strlen(p);
   while (p < endptr) {
-    int32_t ucv = UC_UTF8_decode_char(&p, endptr);
+    int32_t ucv = UC_UTF8_decode_char((const unsigned char **)&p,
+                                      (const unsigned char *)endptr);
     if (!UC_is_valid(ucv))
       return STRINGPREP_ERROR;
   }
@@ -543,7 +544,7 @@ pdf_enc_set_passwd (unsigned int bits, unsigned int perm,
 {
   struct pdf_sec *p = &sec_data;
   char            input[128], opasswd[128], upasswd[128];
-  char           *retry_passwd;
+  char *retry_passwd;
   int             version;
 
   version = pdf_get_version();
@@ -597,7 +598,7 @@ pdf_enc_set_passwd (unsigned int bits, unsigned int perm,
       strncpy(input, getpass("Owner password: "), MAX_PWD_LEN);
       retry_passwd = getpass("Re-enter owner password: ");
       if (!strncmp(input, retry_passwd, MAX_PWD_LEN))
-        break;
+	break;
       fputs("Password is not identical.\nTry again.\n", stderr);
       fflush(stderr);
     }
@@ -612,7 +613,7 @@ pdf_enc_set_passwd (unsigned int bits, unsigned int perm,
       strncpy(input, getpass("User password: "), MAX_PWD_LEN);
       retry_passwd = getpass("Re-enter user password: ");
       if (!strncmp(input, retry_passwd, MAX_PWD_LEN))
-        break;
+	break;
       fputs("Password is not identical.\nTry again.\n", stderr);
       fflush(stderr);
     }
