@@ -103,13 +103,13 @@ static int pdfdecimaldigits = 2;
 static int image_cache_life = -2;
 
 /* Encryption */
-static int     do_encryption = 0;
+static int do_encryption    = 0;
 static int     key_bits      = 40;
 static int32_t permission    = 0x003C;
 
 /* Page device */
-double paper_width     = 595.0;
-double paper_height    = 842.0;
+double paper_width  = 595.0;
+double paper_height = 842.0;
 static double x_offset = 72.0;
 static double y_offset = 72.0;
 int    landscape_mode  = 0;
@@ -1034,32 +1034,38 @@ CDECL main (int argc, char *argv[])
 
     pdf_doc_set_creator(dvi_comment());
 
-    if (do_encryption)
+    if (do_encryption) {
       /* command line takes precedence */
       dvi_scan_specials(0,
                         &paper_width, &paper_height,
                         &x_offset, &y_offset, &landscape_mode,
                         &ver_major, &ver_minor,
                         NULL, NULL, NULL, NULL, NULL);
-    else {
+      /* FIXME: pdf_set_version() should come before ecrcyption setting.
+       *        It's too late to set here...
+       */
+      if (ver_minor >= PDF_VERSION_MIN && ver_minor <= PDF_VERSION_MAX) {
+        pdf_set_version(ver_minor);
+      }
+    } else {
       dvi_scan_specials(0,
                         &paper_width, &paper_height,
                         &x_offset, &y_offset, &landscape_mode,
                         &ver_major, &ver_minor,
                         &do_encryption, &key_bits, &permission, owner_pw, user_pw);
+      if (ver_minor >= PDF_VERSION_MIN && ver_minor <= PDF_VERSION_MAX) {
+        pdf_set_version(ver_minor);
+      }
       if (do_encryption) {
         if (!(key_bits >= 40 && key_bits <= 128 && (key_bits % 8 == 0)) &&
               key_bits != 256)
-          ERROR("Invalid encryption key length specified: %u", key_bits);
-        else if (key_bits > 40 && pdf_get_version() < 4)
+	  ERROR("Invalid encryption key length specified: %u", key_bits);
+	else if (key_bits > 40 && pdf_get_version() < 4)
           ERROR("Chosen key length requires at least PDF 1.4. " \
-                "Use \"-V 4\" to change.");
-        do_encryption = 1;
-        pdf_enc_set_passwd(key_bits, permission, owner_pw, user_pw);
+		"Use \"-V 4\" to change.");
+	do_encryption = 1;
+	pdf_enc_set_passwd(key_bits, permission, owner_pw, user_pw);
       }
-    }
-    if (ver_minor >= PDF_VERSION_MIN && ver_minor <= PDF_VERSION_MAX) {
-      pdf_set_version(ver_minor);
     }
     if (landscape_mode) {
       SWAP(paper_width, paper_height);
