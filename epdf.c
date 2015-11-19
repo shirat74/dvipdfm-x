@@ -1,6 +1,6 @@
 /* This is dvipdfmx, an eXtended version of dvipdfm by Mark A. Wicks.
 
-    Copyright (C) 2007-2014 by Jin-Hwan Cho and Shunsaku Hirata,
+    Copyright (C) 2007-2015 by Jin-Hwan Cho and Shunsaku Hirata,
     the dvipdfmx project team.
     
     Copyright (C) 1998, 1999 by Mark A. Wicks <mwicks@kettering.edu>
@@ -54,7 +54,7 @@ static int  rect_equal       (pdf_obj *rect1, pdf_obj *rect2);
 #if 0
 #if HAVE_ZLIB
 #include <zlib.h>
-static int  add_stream_flate (pdf_obj *dst, const void *data, long len);
+static int  add_stream_flate (pdf_obj *dst, const void *data, int len);
 #endif
 static int  concat_stream    (pdf_obj *dst, pdf_obj *src);
 #endif
@@ -127,12 +127,12 @@ rect_equal (pdf_obj *rect1, pdf_obj *rect2)
 }
 
 static pdf_obj*
-pdf_get_page_obj (pdf_file *pf, long page_no,
+pdf_get_page_obj (pdf_file *pf, int page_no,
                   pdf_obj **ret_bbox, pdf_obj **ret_resources)
 {
   pdf_obj *page_tree;
   pdf_obj *bbox = NULL, *resources = NULL, *rotate = NULL;
-  long page_idx;
+  int page_idx;
 
   /*
    * Get Page Tree.
@@ -180,7 +180,7 @@ pdf_get_page_obj (pdf_file *pf, long page_no,
    * Negative page numbers are counted from the back.
    */
   {
-    long count = pdf_number_value(pdf_lookup_dict(page_tree, "Count"));
+    int count = pdf_number_value(pdf_lookup_dict(page_tree, "Count"));
     page_idx = page_no + (page_no >= 0 ? -1 : count);
     if (page_idx < 0 || page_idx >= count) {
 	WARN("Page %ld does not exist.", page_no);
@@ -203,7 +203,7 @@ pdf_get_page_obj (pdf_file *pf, long page_no,
     resources = tmp ? pdf_deref_obj(tmp) : pdf_new_dict();
 
     while (1) {
-      long kids_length, i;
+      int kids_length, i;
  
       if ((tmp = pdf_deref_obj(pdf_lookup_dict(page_tree, "MediaBox")))) {
 	if (bbox)
@@ -260,7 +260,7 @@ pdf_get_page_obj (pdf_file *pf, long page_no,
       kids_length = pdf_array_length(kids);
 
       for (i = 0; i < kids_length; i++) {
-	long count;
+	int count;
 
 	pdf_release_obj(page_tree);
 	page_tree = pdf_deref_obj(pdf_get_array(kids, i));
@@ -398,14 +398,19 @@ pdf_include_page (pdf_ximage *ximage, FILE *image_file, const char *filename)
   xform_info info;
   pdf_obj *contents = NULL, *catalog;
   pdf_obj *page = NULL, *resources = NULL, *markinfo = NULL;
-  long page_no;
+  int page_no;
 
   pf = pdf_open(filename, image_file);
   if (!pf)
     return -1;
 
+  /*
+   * Try to embed the PDF, even if the PDF version is newer than the setting.
+   */
+#if 0
   if (pdf_file_get_version(pf) > pdf_get_version())
     goto too_recent;
+#endif
 
   pdf_ximage_init_form_info(&info);
 
@@ -417,6 +422,11 @@ pdf_include_page (pdf_ximage *ximage, FILE *image_file, const char *filename)
     page_no = 1;
 
   page = pdf_doc_get_page(pf, page_no, NULL, &info.bbox, &resources);
+/*
+  Recover the default value of PageBox
+*/
+  PageBox = 0;
+
   if(!page)
     goto error_silent;
 
@@ -542,6 +552,7 @@ pdf_include_page (pdf_ximage *ximage, FILE *image_file, const char *filename)
 
   return -1;
 
+#if 0
  too_recent:
   pdf_close(pf);
   WARN("PDF version of input file more recent than in output file.");
@@ -552,6 +563,7 @@ pdf_include_page (pdf_ximage *ximage, FILE *image_file, const char *filename)
     WARN("Use \"-V\" switch to change output PDF version.");
     return -1;
   }
+#endif
 }
 
 typedef enum {
@@ -870,7 +882,7 @@ pdf_copy_clip (FILE *image_file, int pageNo, double x_user, double y_user)
 #define WBUF_SIZE 4096
 #if HAVE_ZLIB
 static int
-add_stream_flate (pdf_obj *dst, const void *data, long len)
+add_stream_flate (pdf_obj *dst, const void *data, int len)
 {
   z_stream z;
   Bytef wbuf[WBUF_SIZE];
@@ -914,7 +926,7 @@ static int
 concat_stream (pdf_obj *dst, pdf_obj *src)
 {
   const char *stream_data;
-  long        stream_length;
+  int         stream_length;
   pdf_obj    *stream_dict;
   pdf_obj    *filter;
 

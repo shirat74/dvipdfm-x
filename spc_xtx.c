@@ -236,7 +236,7 @@ spc_handler_xtx_fontmapline (struct spc_env *spe, struct spc_arg *ap)
     *q = '\0';
     mrec = NEW(1, fontmap_rec);
     pdf_init_fontmap_record(mrec);
-    error = pdf_read_fontmap_line(mrec, buffer, (long) (ap->endptr - ap->curptr), is_pdfm_mapline(buffer));
+    error = pdf_read_fontmap_line(mrec, buffer, (int) (ap->endptr - ap->curptr), is_pdfm_mapline(buffer));
     if (error)
       spc_warn(spe, "Invalid fontmap line.");
     else if (opchr == '+')
@@ -396,7 +396,7 @@ static struct spc_handler xtx_handlers[] = {
 };
 
 int
-spc_xtx_check_special (const char *buf, long len)
+spc_xtx_check_special (const char *buf, int len)
 {
   int    r = 0;
   const char *p, *endptr;

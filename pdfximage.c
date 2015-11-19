@@ -1,6 +1,6 @@
 /* This is dvipdfmx, an eXtended version of dvipdfm by Mark A. Wicks.
 
-    Copyright (C) 2007-2014 by Jin-Hwan Cho and Shunsaku Hirata,
+    Copyright (C) 2007-2015 by Jin-Hwan Cho and Shunsaku Hirata,
     the dvipdfmx project team.
     
     Copyright (C) 1998, 1999 by Mark A. Wicks <mwicks@kettering.edu>
@@ -45,8 +45,8 @@
 
 #include "pdfximage.h"
 
-/* From psimage.h */
-static int  check_for_ps    (FILE *fp);
+static int  check_for_ps    (FILE *image_file);
+static int  check_for_mp    (FILE *image_file);
 static int  ps_include_page (pdf_ximage *ximage, const char *file_name);
 
 
@@ -62,7 +62,7 @@ static int  ps_include_page (pdf_ximage *ximage, const char *file_name);
 
 struct attr_
 {
-  long     width, height;
+  int      width, height;
   double   xdensity, ydensity;
   pdf_rect bbox;
 };
@@ -71,7 +71,7 @@ struct pdf_ximage_
 {
   char        *ident;
   char         res_name[16];
-  long         page_no, page_count;
+  int          page_no, page_count;
 
   int          subtype;
 
@@ -112,8 +112,8 @@ static struct ic_  _ic = {
 
 static void
 pdf_init_ximage_struct (pdf_ximage *I,
-			const char *ident, const char *filename,
-			long page_no, pdf_obj *dict)
+                        const char *ident, const char *filename,
+                        int page_no, pdf_obj *dict)
 {
   if (ident) {
     I->ident = NEW(strlen(ident)+1, char);
@@ -186,18 +186,18 @@ pdf_close_images (void)
     for (i = 0; i < ic->count; i++) {
       pdf_ximage *I = ic->ximages+i;
       if (I->tempfile) {
-	/*
-	 * It is important to remove temporary files at the end because
-	 * we cache file names. Since we use mkstemp to create them, we
-	 * might get the same file name again if we delete the first file.
-	 * (This happens on NetBSD, reported by Jukka Salmi.)
-	 * We also use this to convert a PS file only once if multiple
-	 * pages are imported from that file.
-	 */
-	if (_opts.verbose > 1 && keep_cache != 1)
-	  MESG("pdf_image>> deleting temporary file \"%s\"\n", I->filename);
-	dpx_delete_temp_file(I->filename, false); /* temporary filename freed here */
-	I->filename = NULL;
+        /*
+         * It is important to remove temporary files at the end because
+         * we cache file names. Since we use mkstemp to create them, we
+         * might get the same file name again if we delete the first file.
+         * (This happens on NetBSD, reported by Jukka Salmi.)
+         * We also use this to convert a PS file only once if multiple
+         * pages are imported from that file.
+         */
+        if (_opts.verbose > 1 && keep_cache != 1)
+          MESG("pdf_image>> deleting temporary file \"%s\"\n", I->filename);
+        dpx_delete_temp_file(I->filename, false); /* temporary filename freed here */
+        I->filename = NULL;
       }
       pdf_clean_ximage_struct(I);
     }
@@ -254,7 +254,7 @@ source_image_type (FILE *fp)
 
 static int
 load_image (const char *ident, const char *fullname, int format, FILE  *fp,
-            long page_no, pdf_obj *dict)
+            int page_no, pdf_obj *dict)
 {
   struct ic_ *ic = &_ic;
   int         id = -1; /* ret */
@@ -306,16 +306,18 @@ load_image (const char *ident, const char *fullname, int format, FILE  *fp,
     {
       int result = pdf_include_page(I, fp, fullname);
       if (result > 0)
-	/* PDF version too recent */
-	result = ps_include_page(I, fullname);
+        /* PDF version too recent */
+        result = ps_include_page(I, fullname);
       if (result < 0)
-	goto error;
+        goto error;
     }
     if (_opts.verbose)
       MESG(",Page:%ld", I->page_no);
     I->subtype  = PDF_XOBJECT_TYPE_FORM;
     break;
-  // case  IMAGE_TYPE_EPS:
+/*
+  case  IMAGE_TYPE_EPS:
+*/
   default:
     if (_opts.verbose)
       MESG(format == IMAGE_TYPE_EPS ? "[PS]" : "[UNKNOWN]");
@@ -352,8 +354,10 @@ load_image (const char *ident, const char *fullname, int format, FILE  *fp,
 #define dpx_fopen(n,m) (MFOPEN((n),(m)))
 #define dpx_fclose(f)  (MFCLOSE((f)))
 
+uint8_t PageBox_of_id[MAX_IMAGES];
+
 int
-pdf_ximage_findresource (const char *ident, long page_no, pdf_obj *dict)
+pdf_ximage_findresource (const char *ident, int page_no, pdf_obj *dict)
 {
   struct ic_ *ic = &_ic;
   int         id = -1;
@@ -368,7 +372,12 @@ pdf_ximage_findresource (const char *ident, long page_no, pdf_obj *dict)
       f = I->filename;
       if (I->page_no == page_no + (page_no < 0 ? I->page_count+1 : 0) &&
           I->attr_dict == dict) {
-	return  id;
+        if (ImageSpecial) {
+          if ((int)PageBox_of_id[id] == PageBox)
+            return id;
+        } else {
+          return id;
+        }
       }
     }
   }
@@ -523,8 +532,8 @@ pdf_ximage_set_image (pdf_ximage *I, void *image_info, pdf_obj *resource)
   pdf_add_dict(dict, pdf_new_name("Width"),   pdf_new_number(info->width));
   pdf_add_dict(dict, pdf_new_name("Height"),  pdf_new_number(info->height));
   if (info->bits_per_component > 0) /* Ignored for JPXDecode filter. FIXME */
-	pdf_add_dict(dict, pdf_new_name("BitsPerComponent"),
-                     pdf_new_number(info->bits_per_component));
+    pdf_add_dict(dict, pdf_new_name("BitsPerComponent"),
+                 pdf_new_number(info->bits_per_component));
   if (I->attr_dict)
     pdf_merge_dict(dict, I->attr_dict);
 
@@ -550,7 +559,7 @@ pdf_ximage_set_form (pdf_ximage *I, void *form_info, pdf_obj *resource)
   I->resource  = NULL;
 }
 
-long
+int
 pdf_ximage_get_page (pdf_ximage *I)
 {
   return I->page_no;
@@ -581,7 +590,7 @@ pdf_ximage_get_reference (int id)
 /* called from pdfdoc.c only for late binding */
 int
 pdf_ximage_defineresource (const char *ident,
-			   int subtype, void *info, pdf_obj *resource)
+                           int subtype, void *info, pdf_obj *resource)
 {
   struct ic_ *ic = &_ic;
   int         id;
@@ -642,7 +651,7 @@ pdf_ximage_get_subtype (int id)
 }
 
 void
-pdf_ximage_set_attr (int id, long width, long height, double xdensity, double ydensity, double llx, double lly, double urx, double ury)
+pdf_ximage_set_attr (int id, int width, int height, double xdensity, double ydensity, double llx, double lly, double urx, double ury)
 {
   struct ic_ *ic = &_ic;
   pdf_ximage *I;
@@ -969,4 +978,26 @@ static int check_for_ps (FILE *image_file)
   if (!strncmp (work_buffer, "%!", 2))
     return 1;
   return 0;
+}
+
+static int check_for_mp (FILE *image_file) 
+{
+  int try_count = 10;
+
+  rewind (image_file);
+  mfgets(work_buffer, WORK_BUFFER_SIZE, image_file);
+  if (strncmp(work_buffer, "%!PS", 4))
+    return 0;
+
+  while (try_count > 0) {
+    mfgets(work_buffer, WORK_BUFFER_SIZE, image_file);
+    if (!strncmp(work_buffer, "%%Creator:", 10)) {
+      if (strlen(work_buffer+10) >= 8 &&
+	  strstr(work_buffer+10, "MetaPost"))
+	break;
+    }
+    try_count--;
+  }
+
+  return ((try_count > 0) ? 1 : 0);
 }

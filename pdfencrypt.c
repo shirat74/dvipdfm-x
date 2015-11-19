@@ -1,6 +1,6 @@
 /* This is dvipdfmx, an eXtended version of dvipdfm by Mark A. Wicks.
 
-    Copyright (C) 2002-2014 by Jin-Hwan Cho and Shunsaku Hirata,
+    Copyright (C) 2002-2015 by Jin-Hwan Cho and Shunsaku Hirata,
     the dvipdfmx project team.
     
     This program is free software; you can redistribute it and/or modify
@@ -94,7 +94,7 @@ void pdf_enc_set_verbose (void)
   if (verbose < 255) verbose++;
 }
 
-void
+static void
 pdf_enc_init (int use_aes, int encrypt_metadata)
 {
   struct pdf_sec *p = &sec_data;
@@ -105,7 +105,7 @@ pdf_enc_init (int use_aes, int encrypt_metadata)
 }
 
 #define PRODUCER \
-"%s-%s, Copyright 2002-2014 by Jin-Hwan Cho, Matthias Franz, and Shunsaku Hirata"
+"%s-%s, Copyright 2002-2015 by Jin-Hwan Cho, Matthias Franz, and Shunsaku Hirata"
 
 void
 pdf_enc_compute_id_string (char *dviname, char *pdfname)
@@ -147,7 +147,7 @@ passwd_padding (const char *src, unsigned char *dst)
 {
   int len;
 
-  len = MIN(32, strlen((char *)src));
+  len = MIN(32, strlen(src));
 
   memcpy(dst, src, len);
   memcpy(dst + len, padding_bytes, 32 - len);
@@ -804,7 +804,7 @@ pdf_obj *pdf_enc_id_array (void)
   return id;
 }
 
-void pdf_enc_set_label (unsigned long label)
+void pdf_enc_set_label (unsigned label)
 {
   struct pdf_sec *p = &sec_data;
 

@@ -1,6 +1,6 @@
 /* This is dvipdfmx, an eXtended version of dvipdfm by Mark A. Wicks.
 
-    Copyright (C) 2007-2014 by Jin-Hwan Cho and Shunsaku Hirata,
+    Copyright (C) 2007-2015 by Jin-Hwan Cho and Shunsaku Hirata,
     the dvipdfmx project team.
     
     Copyright (C) 1998, 1999 by Mark A. Wicks <mwicks@kettering.edu>
@@ -27,15 +27,15 @@
 
 /* Here is the complete list of PDF object types */
 
-#define	PDF_BOOLEAN	1
-#define	PDF_NUMBER	2
-#define PDF_STRING	3
-#define PDF_NAME	4
-#define PDF_ARRAY	5
-#define PDF_DICT	6
-#define PDF_STREAM	7
+#define PDF_BOOLEAN     1
+#define PDF_NUMBER      2
+#define PDF_STRING      3
+#define PDF_NAME        4
+#define PDF_ARRAY       5
+#define PDF_DICT        6
+#define PDF_STREAM      7
 #define PDF_NULL        8
-#define PDF_INDIRECT	9
+#define PDF_INDIRECT    9
 #define PDF_UNDEFINED   10
 
 #define PDF_OBJ_INVALID 0
@@ -109,7 +109,7 @@ extern void     pdf_add_array     (pdf_obj *array, pdf_obj *object);
 #if 0
 extern void     pdf_put_array     (pdf_obj *array, unsigned idx, pdf_obj *object);
 #endif
-extern pdf_obj *pdf_get_array     (pdf_obj *array, long idx);
+extern pdf_obj *pdf_get_array     (pdf_obj *array, int idx);
 extern unsigned pdf_array_length  (pdf_obj *array);
 
 #if 0
@@ -140,21 +140,21 @@ extern void     pdf_put_dict     (pdf_obj *dict, const char *key, pdf_obj *value
  * key to allow modification (fix) of key.
  */
 extern int      pdf_foreach_dict (pdf_obj *dict,
-				  int (*proc) (pdf_obj *, pdf_obj *, void *),
-				  void *pdata);
+                                  int (*proc) (pdf_obj *, pdf_obj *, void *),
+                                  void *pdata);
 
 extern pdf_obj    *pdf_new_stream        (int flags);
 extern void        pdf_add_stream        (pdf_obj *stream,
-					  const void *stream_data_ptr,
-					  long stream_data_len);
+                                          const void *stream_data_ptr,
+                                          int stream_data_len);
 #if HAVE_ZLIB
 extern int         pdf_add_stream_flate  (pdf_obj *stream,
-					  const void *stream_data_ptr,
-					  long stream_data_len);
+                                          const void *stream_data_ptr,
+                                          int stream_data_len);
 #endif
 extern int         pdf_concat_stream     (pdf_obj *dst, pdf_obj *src);
 extern pdf_obj    *pdf_stream_dict       (pdf_obj *stream);
-extern long        pdf_stream_length     (pdf_obj *stream);
+extern int         pdf_stream_length     (pdf_obj *stream);
 #if 0
 extern void        pdf_stream_set_flags  (pdf_obj *stream, int flags);
 extern int         pdf_stream_get_flags  (pdf_obj *stream);
@@ -193,6 +193,11 @@ extern pdf_obj *pdf_import_object (pdf_obj *object);
 
 extern int      pdfobj_escape_str (char *buffer, int size, const unsigned char *s, int len);
 
-extern pdf_obj *pdf_new_indirect  (pdf_file *pf, unsigned long label, unsigned short generation);
+extern pdf_obj *pdf_new_indirect  (pdf_file *pf, unsigned label, unsigned short generation);
+
+#define MAX_IMAGES 5000 /* This may be enough */
+extern int PageBox;
+extern uint8_t PageBox_of_id[];
+extern int ImageSpecial;
 
 #endif  /* _PDFOBJ_H_ */

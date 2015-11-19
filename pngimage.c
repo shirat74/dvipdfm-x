@@ -1,6 +1,6 @@
 /* This is dvipdfmx, an eXtended version of dvipdfm by Mark A. Wicks.
 
-    Copyright (C) 2002-2014 by Jin-Hwan Cho and Shunsaku Hirata,
+    Copyright (C) 2002-2015 by Jin-Hwan Cho and Shunsaku Hirata,
     the dvipdfmx project team.
 
     Copyright (C) 1998, 1999 by Mark A. Wicks <mwicks@kettering.edu>
@@ -190,9 +190,9 @@ png_include_image (pdf_ximage *ximage, FILE *png_file)
   if (bpc > 8) {
     if (pdf_get_version() < 5) {
       WARN("%s: 16-bpc PNG requires PDF version 1.5.", PNG_DEBUG_STR);
-      png_set_strip_16(png_ptr);
-      bpc = 8;
-    }
+    png_set_strip_16(png_ptr);
+    bpc = 8;
+  }
   }
   /* Ask libpng to gamma-correct.
    * It is wrong to assume screen gamma value 2.2 but...
@@ -946,7 +946,7 @@ create_ckey_mask (png_structp png_ptr, png_infop info_ptr)
 
 static pdf_obj *
 create_soft_mask (png_structp png_ptr, png_infop info_ptr,
-                  png_bytep image_data_ptr, png_uint_32 width, png_uint_32 height)
+		  png_bytep image_data_ptr, png_uint_32 width, png_uint_32 height)
 {
   pdf_obj    *smask, *dict;
   png_bytep   smask_data_ptr;
@@ -963,7 +963,7 @@ create_soft_mask (png_structp png_ptr, png_infop info_ptr,
   smask = pdf_new_stream(STREAM_COMPRESS);
   dict  = pdf_stream_dict(smask);
   smask_data_ptr = (png_bytep) NEW(width*height, png_byte);
-  pdf_add_dict(dict, pdf_new_name("Type"),    pdf_new_name("XObjcect"));
+  pdf_add_dict(dict, pdf_new_name("Type"),    pdf_new_name("XObject"));
   pdf_add_dict(dict, pdf_new_name("Subtype"), pdf_new_name("Image"));
   pdf_add_dict(dict, pdf_new_name("Width"),      pdf_new_number(width));
   pdf_add_dict(dict, pdf_new_name("Height"),     pdf_new_number(height));
@@ -982,9 +982,9 @@ create_soft_mask (png_structp png_ptr, png_infop info_ptr,
 /* bitdepth is always 8 (16 is not supported) */
 static pdf_obj *
 strip_soft_mask (png_structp png_ptr, png_infop info_ptr,
-                 /* next two values will be modified. */
-                 png_bytep image_data_ptr, png_uint_32p rowbytes_ptr,
-                 png_uint_32 width, png_uint_32 height)
+		 /* next two values will be modified. */
+		 png_bytep image_data_ptr, png_uint_32p rowbytes_ptr,
+		 png_uint_32 width, png_uint_32 height)
 {
   pdf_obj    *smask, *dict;
   png_byte    color_type, bpc;
@@ -1009,7 +1009,7 @@ strip_soft_mask (png_structp png_ptr, png_infop info_ptr,
 
   smask = pdf_new_stream(STREAM_COMPRESS);
   dict  = pdf_stream_dict(smask);
-  pdf_add_dict(dict, pdf_new_name("Type"),    pdf_new_name("XObjcect"));
+  pdf_add_dict(dict, pdf_new_name("Type"),    pdf_new_name("XObject"));
   pdf_add_dict(dict, pdf_new_name("Subtype"), pdf_new_name("Image"));
   pdf_add_dict(dict, pdf_new_name("Width"),      pdf_new_number(width));
   pdf_add_dict(dict, pdf_new_name("Height"),     pdf_new_number(height));
@@ -1021,11 +1021,11 @@ strip_soft_mask (png_structp png_ptr, png_infop info_ptr,
   switch (color_type) {
   case PNG_COLOR_TYPE_RGB_ALPHA:
     if (bpc == 8) {
-      for (i = 0; i < width*height; i++) {
-        memmove(image_data_ptr+(3*i), image_data_ptr+(4*i), 3);
-        smask_data_ptr[i] = image_data_ptr[4*i+3];
-      }
-      *rowbytes_ptr = 3*width*sizeof(png_byte);
+    for (i = 0; i < width*height; i++) {
+      memmove(image_data_ptr+(3*i), image_data_ptr+(4*i), 3);
+      smask_data_ptr[i] = image_data_ptr[4*i+3];
+    }
+    *rowbytes_ptr = 3*width*sizeof(png_byte);
     } else {
       for (i = 0; i < width*height; i++) {
         memmove(image_data_ptr+(6*i), image_data_ptr+(8*i), 6);
@@ -1037,11 +1037,11 @@ strip_soft_mask (png_structp png_ptr, png_infop info_ptr,
     break;
   case PNG_COLOR_TYPE_GRAY_ALPHA:
     if (bpc == 8) {
-      for (i = 0; i < width*height; i++) {
-        image_data_ptr[i] = image_data_ptr[2*i];
-        smask_data_ptr[i] = image_data_ptr[2*i+1];
-      }
-      *rowbytes_ptr = width*sizeof(png_byte);
+    for (i = 0; i < width*height; i++) {
+      image_data_ptr[i] = image_data_ptr[2*i];
+      smask_data_ptr[i] = image_data_ptr[2*i+1];
+    }
+    *rowbytes_ptr = width*sizeof(png_byte);
     } else {
       for (i = 0; i < width*height; i++) {
         image_data_ptr[2*i]   = image_data_ptr[4*i];
