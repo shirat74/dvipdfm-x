@@ -131,7 +131,7 @@ agl_chop_suffix (const char *glyphname, char **suffix)
 static const char * const modifiers[] = {
   "acute", "breve", "caron", "cedilla", "circumflex",
   "dieresis", "dotaccent", "grave", "hungarumlaut",
-  "macron", "ogonek", "ring", "tilde", "commaaccent", 
+  "macron", "ogonek", "ring", "tilde", "commaaccent",
   "slash",
 
   /* The following entries are not accent nor something
@@ -268,11 +268,11 @@ const char *
 agl_suffix_to_otltag (const char *suffix)
 {
   int i, j;
-  
+
   for (i = 0; var_list[i].key; i++) {
     for (j = 0; var_list[i].suffixes[j]; j++) {
       if (!strcmp(suffix, var_list[i].suffixes[j]))
-        return var_list[i].otl_tag; 
+        return var_list[i].otl_tag;
     }
     if (!strcmp(suffix, var_list[i].key))
       return var_list[i].otl_tag;
@@ -280,7 +280,7 @@ agl_suffix_to_otltag (const char *suffix)
 	!strcmp(suffix, var_list[i].otl_tag))
       return var_list[i].otl_tag;
   }
-  
+
   return NULL;
 }
 
@@ -358,7 +358,7 @@ agl_normalized_name (char *glyphname)
     memcpy(agln->name, glyphname, n);
     agln->name[n] = '\0';
   }
-  
+
   return agln;
 }
 
@@ -636,12 +636,12 @@ put_unicode_glyph (const char *name,
   if (p[1] != 'n') {
     p   += 1;
     ucv  = xtol(p, strlen(p));
-    len += UC_sput_UTF16BE (ucv, dstpp, limptr);
+    len += UC_UTF16BE_encode_char(ucv, dstpp, limptr);
   } else {
     p += 3;
     while (*p != '\0') {
       ucv  = xtol(p, 4);
-      len += UC_sput_UTF16BE (ucv, dstpp, limptr);
+      len += UC_UTF16BE_encode_char(ucv, dstpp, limptr);
       p   += 4;
     }
   }
@@ -715,7 +715,7 @@ agl_sput_UTF16BE (const char *glyphstr,
       }
       if (agln1) {
 	for (i = 0; i < agln1->n_components; i++) {
-	  len += UC_sput_UTF16BE (agln1->unicodes[i], dstpp, limptr);
+	  len += UC_UTF16BE_encode_char(agln1->unicodes[i], dstpp, limptr);
 	}
       } else {
 	if (verbose) {

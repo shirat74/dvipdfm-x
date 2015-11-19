@@ -2,17 +2,17 @@
 
     Copyright (C) 2007-2015 by Jin-Hwan Cho and Shunsaku Hirata,
     the dvipdfmx project team.
-    
+
     This program is free software; you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
     the Free Software Foundation; either version 2 of the License, or
     (at your option) any later version.
-    
+
     This program is distributed in the hope that it will be useful,
     but WITHOUT ANY WARRANTY; without even the implied warranty of
     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
     GNU General Public License for more details.
-    
+
     You should have received a copy of the GNU General Public License
     along with this program; if not, write to the Free Software
     Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA.
@@ -125,7 +125,7 @@ read_cmap2 (sfnt *sfont, ULONG len)
 
   if (len < 512)
     ERROR("invalid cmap subtable");
-    
+
   map = NEW(1, struct cmap2);
 
   for (i = 0; i < 256; i++)
@@ -138,7 +138,7 @@ read_cmap2 (sfnt *sfont, ULONG len)
   }
   n += 1; /* the number of subHeaders is one plus the max of subHeaderKeys */
 
-  map->subHeaders = NEW(n, struct SubHeader); 
+  map->subHeaders = NEW(n, struct SubHeader);
   for (i = 0; i < n; i++) {
     map->subHeaders[i].firstCode     = sfnt_get_ushort(sfont);
     map->subHeaders[i].entryCount    = sfnt_get_ushort(sfont);
@@ -184,7 +184,7 @@ lookup_cmap2 (struct cmap2 *map, USHORT cc)
   USHORT  firstCode, entryCount, idRangeOffset;
   int     hi, lo;
   USHORT  i;
-   
+
   hi = (cc >> 8) & 0xff;
   lo = cc & 0xff;
 
@@ -240,7 +240,7 @@ read_cmap4(sfnt *sfont, ULONG len)
   map->searchRange   = sfnt_get_ushort(sfont);
   map->entrySelector = sfnt_get_ushort(sfont);
   map->rangeShift    = sfnt_get_ushort(sfont);
-  
+
   segCount /= 2;
 
   map->endCount = NEW(segCount, USHORT);
@@ -331,7 +331,7 @@ read_cmap6 (sfnt *sfont, ULONG len)
 {
   struct cmap6 *map;
   USHORT i;
-  
+
   if (len < 4)
     ERROR("invalid cmap subtable");
 
@@ -339,7 +339,7 @@ read_cmap6 (sfnt *sfont, ULONG len)
   map->firstCode       = sfnt_get_ushort(sfont);
   map->entryCount      = sfnt_get_ushort(sfont);
   map->glyphIndexArray = NEW(map->entryCount, USHORT);
-  
+
   for (i = 0; i < map->entryCount; i++)
     map->glyphIndexArray[i] = sfnt_get_ushort(sfont);
 
@@ -361,7 +361,7 @@ lookup_cmap6 (struct cmap6 *map, USHORT cc)
 {
   USHORT idx;
 
-  idx = cc - map->firstCode; 
+  idx = cc - map->firstCode;
   if (idx < map->entryCount)
     return map->glyphIndexArray[idx];
   return 0;
@@ -398,7 +398,7 @@ read_cmap12 (sfnt *sfont, ULONG len)
 {
   struct cmap12 *map;
   ULONG  i;
-  
+
   if (len < 4)
     ERROR("invalid cmap subtable");
 
@@ -497,7 +497,7 @@ tt_cmap_read (sfnt *sfont, USHORT platform, USHORT encoding)
       cmap->language = sfnt_get_ulong(sfont);
     }
   }
-  
+
   switch(cmap->format) {
   case 0:
     cmap->map = read_cmap0(sfont, length);
@@ -730,7 +730,7 @@ handle_CIDFont (sfnt *sfont,
   if (!cffont)
     ERROR("Could not open CFF font...");
 
-  
+
   if (!(cffont->flag & FONTTYPE_CIDFONT)) {
     cff_close(cffont);
     csi->registry = NULL;
@@ -816,7 +816,7 @@ handle_CIDFont (sfnt *sfont,
 	    gid++; cid++;
 	  }
 	}
-	
+
       }
     }
     break;
@@ -913,7 +913,7 @@ handle_subst_glyphs (CMap *cmap,
           int  k;
           len = 0;
           for (k = 0; k < unicode_count; ++k) {
-            len += UC_sput_UTF16BE(unicodes[k], &p, wbuf+WBUF_SIZE);
+            len += UC_UTF16BE_encode_char(unicodes[k], &p, wbuf+WBUF_SIZE);
           }
           wbuf[0] = (gid >> 8) & 0xff;
           wbuf[1] =  gid & 0xff;
@@ -994,7 +994,7 @@ add_to_cmap_if_used (CMap *cmap,
 
     wbuf[0] = (cid >> 8) & 0xff;
     wbuf[1] = (cid & 0xff);
-    len = UC_sput_UTF16BE(ch, &p, wbuf + WBUF_SIZE);
+    len = UC_UTF16BE_encode_char((int32_t) ch, &p, wbuf + WBUF_SIZE);
     CMap_add_bfchar(cmap, wbuf, 2, wbuf + 2, len);
 
     /* Skip PUA characters and alphabetic presentation forms, allowing
@@ -1109,7 +1109,7 @@ create_ToUnicode_cmap (tt_cmap *ttcmap,
           unsigned char *p = wbuf + 2;
           wbuf[0] = (cid >> 8) & 0xff;
           wbuf[1] =  cid & 0xff;
-          len = UC_sput_UTF16BE(ch, &p, wbuf + WBUF_SIZE);
+          len = UC_UTF16BE_encode_char(ch, &p, wbuf + WBUF_SIZE);
           CMap_add_bfchar(cmap, wbuf, 2, wbuf + 2, len);
           count++;
         }
@@ -1340,7 +1340,7 @@ create_cmaps (CMap *cmap, CMap *tounicode,
       endptr  = wbuf + WBUF_SIZE;
       len     = 0;
       for (i = 0; i < glyph->num_unicodes; i++) {
-	len += UC_sput_UTF16BE(glyph->unicodes[i], &p, endptr);
+	      len += UC_UTF16BE_encode_char(glyph->unicodes[i], &p, endptr);
       }
       CMap_add_bfchar(tounicode, wbuf, 2, wbuf + 2, len);
     }
@@ -1551,7 +1551,7 @@ handle_assign (pdf_obj *dst, pdf_obj *src, int flag,
     }
 
   }
- 
+
   if (verbose > VERBOSE_LEVEL_MIN) {
     MESG("\n");
   }
