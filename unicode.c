@@ -1,6 +1,6 @@
 /* This is dvipdfmx, an eXtended version of dvipdfm by Mark A. Wicks.
 
-    Copyright (C) 2002-2014 by Jin-Hwan Cho and Shunsaku Hirata,
+    Copyright (C) 2002-2015 by Jin-Hwan Cho and Shunsaku Hirata,
     the dvipdfmx project team.
 
     Copyright (C) 1998, 1999 by Mark A. Wicks <mwicks@kettering.edu>
@@ -40,16 +40,8 @@
 
 #include "unicode.h"
 
-static int __verbose = 0;
-
 #define UC_DEBUG     3
 #define UC_DEBUG_STR "UC"
-
-void
-UC_set_verbose (void)
-{
-  __verbose++;
-}
 
 #define UC_REPLACEMENT_CHAR 0x0000FFFD
 

@@ -2,19 +2,19 @@
 
     Copyright (C) 2007-2015 by Jin-Hwan Cho and Shunsaku Hirata,
     the dvipdfmx project team.
-    
+
     Copyright (C) 1998, 1999 by Mark A. Wicks <mwicks@kettering.edu>
 
     This program is free software; you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
     the Free Software Foundation; either version 2 of the License, or
     (at your option) any later version.
-    
+
     This program is distributed in the hope that it will be useful,
     but WITHOUT ANY WARRANTY; without even the implied warranty of
     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
     GNU General Public License for more details.
-    
+
     You should have received a copy of the GNU General Public License
     along with this program; if not, write to the Free Software
     Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA.
@@ -36,6 +36,8 @@
 #include "fontmap.h"
 #include "dpxfile.h"
 #include "dpxutil.h"
+
+#include "unicode.h"
 
 #include "pdfobj.h"
 #include "pdfparse.h"
@@ -270,7 +272,7 @@ safeputresdict (pdf_obj *kp, pdf_obj *vp, void *dp)
 /* Think what happens if you do
  *
  *  pdf:put @resources << /Font << >> >>
- * 
+ *
  */
 static int
 spc_handler_pdfm_put (struct spc_env *spe, struct spc_arg *ap)
@@ -399,31 +401,6 @@ reencodestring (CMap *cmap, pdf_obj *instring)
   return 0;
 }
 
-/* tables/values used in UTF-8 interpretation -
-   code is based on ConvertUTF.[ch] sample code
-   published by the Unicode consortium */
-static uint32_t
-offsetsFromUTF8[6] =    {
-        0x00000000U,
-        0x00003080U,
-        0x000E2080U,
-        0x03C82080U,
-        0xFA082080U,
-        0x82082080U
-};
-
-static unsigned char
-bytesFromUTF8[256] = {
-        0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
-        0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
-        0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
-        0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
-        0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
-        0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
-        1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1, 1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,
-        2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2, 3,3,3,3,3,3,3,3,4,4,4,4,5,5,5,5
-};
-
 static int
 maybe_reencode_utf8(pdf_obj *instring)
 {
@@ -457,35 +434,15 @@ maybe_reencode_utf8(pdf_obj *instring)
   *op++ = 0xfe;
   *op++ = 0xff;
   while (cp < inbuf + inlen) {
-    uint32_t usv = *cp++;
-    int extraBytes = bytesFromUTF8[usv];
-    if (cp + extraBytes > inbuf + inlen)
-      return -1; /* ill-formed, so give up reencoding */
-    switch (extraBytes) {   /* note: code falls through cases! */
-      case 5: usv <<= 6; usv += *cp++;
-      case 4: usv <<= 6; usv += *cp++;
-      case 3: usv <<= 6; usv += *cp++;
-      case 2: usv <<= 6; usv += *cp++;
-      case 1: usv <<= 6; usv += *cp++;
-      case 0: ;
-    };
-    usv -= offsetsFromUTF8[extraBytes];
-    if (usv > 0x10FFFF)
+    int32_t usv;
+    int     len;
+
+    usv = UC_UTF8_decode_char(&cp, inbuf + inlen);
+    if (usv < 0)
       return -1; /* out of valid Unicode range, give up */
-    if (usv > 0xFFFF) {
-      /* supplementary-plane character: generate high surrogate */
-      uint32_t hi = 0xdc00 + (usv - 0x10000) % 0x0400;
-      if (op > wbuf + WBUF_SIZE - 2)
-        return -1; /* out of space */
-      *op++ = hi / 256;
-      *op++ = hi % 256;
-      usv = 0xd800 + (usv - 0x10000) / 0x0400;
-      /* remaining value in usv is the low surrogate */
-    }
-    if (op > wbuf + WBUF_SIZE - 2)
-      return -1; /* out of space */
-    *op++ = usv / 256;
-    *op++ = usv % 256;
+    len = UC_UTF16BE_encode_char(usv, &op, wbuf + WBUF_SIZE);
+    if (len = 0)
+      return -1;
   }
 
   pdf_set_string(instring, wbuf, op - wbuf);
@@ -535,8 +492,13 @@ modstrings (pdf_obj *kp, pdf_obj *vp, void *dp)
       CMap *cmap = CMap_cache_get(cd->cmap_id);
       if (needreencode(kp, vp, cd))
         r = reencodestring(cmap, vp);
-    } else if (is_xdv)
+    } else if (is_xdv) {
+      /* Please fix this... PDF string object is not always a text string.
+       * needreencode() is assumed to do a check if given string object is
+       * actually a text string.
+       */
       r = maybe_reencode_utf8(vp);
+    }
     if (r < 0) /* error occured... */
       WARN("Failed to convert input string to UTF16...");
     break;
@@ -561,7 +523,7 @@ parse_pdf_dict_with_tounicode (const char **pp, const char *endptr, struct touni
     return  parse_pdf_dict(pp, endptr, NULL);
 
   /* :( */
-  if (cd && cd->unescape_backslash) 
+  if (cd && cd->unescape_backslash)
     dict = parse_pdf_tainted_dict(pp, endptr);
   else {
     dict = parse_pdf_dict(pp, endptr, NULL);
@@ -1913,7 +1875,7 @@ static struct spc_handler pdfm_handlers[] = {
   {"bead",       spc_handler_pdfm_bead},
   {"thread",     spc_handler_pdfm_bead},
 
-  {"destination", spc_handler_pdfm_dest}, 
+  {"destination", spc_handler_pdfm_dest},
   {"dest",        spc_handler_pdfm_dest},
 
 
@@ -2063,4 +2025,3 @@ spc_pdfm_setup_handler (struct spc_handler *sph,
 
   return  error;
 }
-
