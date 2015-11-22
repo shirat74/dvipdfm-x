@@ -437,11 +437,11 @@ maybe_reencode_utf8(pdf_obj *instring)
     int32_t usv;
     int     len;
 
-    usv = UC_UTF8_decode_char(&cp, inbuf + inlen);
+    usv = UC_UTF8_decode_char((const unsigned char **)&cp, inbuf + inlen);
     if (usv < 0)
       return -1; /* out of valid Unicode range, give up */
     len = UC_UTF16BE_encode_char(usv, &op, wbuf + WBUF_SIZE);
-    if (len = 0)
+    if (len == 0)
       return -1;
   }
 
