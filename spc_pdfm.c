@@ -128,6 +128,9 @@ static int
 spc_handler_pdfm__init (void *dp)
 {
   struct spc_pdf_ *sd = dp;
+  /* The folllowing dictionary entry keys are considered as keys for
+   * text strings. Be sure that string object is NOT always a text string.
+   */
   static const char *default_taintkeys[] = {
     "Title",   "Author",   "Subject", "Keywords",
     "Creator", "Producer", "Contents", "Subj",
@@ -389,8 +392,8 @@ reencodestring (CMap *cmap, pdf_obj *instring)
   obufleft = WBUF_SIZE - 2;
 
   CMap_decode(cmap,
-	      &inbufcur, &inbufleft,
-	      &obufcur, &obufleft);
+              &inbufcur, &inbufleft,
+              &obufcur, &obufleft);
 
   if (inbufleft > 0) {
     return  -1;
@@ -426,7 +429,15 @@ maybe_reencode_utf8(pdf_obj *instring)
   if (non_ascii == 0)
     return 0; /* no need to reencode ASCII strings */
 
-  if (inbuf[0] == 0xfe && inbuf[1] == 0xff)
+  /* Check if the input string is valid UTF8 string
+   * This routine may be called against non-text strings.
+   * We need to re-encode string only when string is a text string
+   * endcoded in UTF8.
+   */
+  if (!UC_UTF8_is_valid_string(inbuf, inbuf + inlen))
+    return 0;
+  else if (inbuf[0] == 0xfe && inbuf[1] == 0xff &&
+      UC_UTF16BE_is_valid_string(inbuf + 2, inbuf + inlen))
     return 0; /* no need to reencode UTF16BE with BOM */
 
   cp = inbuf;
@@ -438,8 +449,8 @@ maybe_reencode_utf8(pdf_obj *instring)
     int     len;
 
     usv = UC_UTF8_decode_char((const unsigned char **)&cp, inbuf + inlen);
-    if (usv < 0)
-      return -1; /* out of valid Unicode range, give up */
+    if (!UC_is_valid(usv))
+      return -1; /* out of valid Unicode range, give up (redundant) */
     len = UC_UTF16BE_encode_char(usv, &op, wbuf + WBUF_SIZE);
     if (len == 0)
       return -1;
@@ -450,6 +461,11 @@ maybe_reencode_utf8(pdf_obj *instring)
   return 0;
 }
 
+/* The purpose of this routine is to check if given string object is
+ * surely an object for *text* strings. It does not do a complete check
+ * but does a quick check. Please add entries for taintkeys if you have found
+ * additional dictionary entries which is considered as a text string.
+ */
 static int
 needreencode (pdf_obj *kp, pdf_obj *vp, struct tounicode *cd)
 {
@@ -494,8 +510,8 @@ modstrings (pdf_obj *kp, pdf_obj *vp, void *dp)
         r = reencodestring(cmap, vp);
     } else if (is_xdv) {
       /* Please fix this... PDF string object is not always a text string.
-       * needreencode() is assumed to do a check if given string object is
-       * actually a text string.
+       * needreencode() is assumed to do a simple check if given string
+       * object is actually a text string.
        */
       r = maybe_reencode_utf8(vp);
     }
