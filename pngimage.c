@@ -63,6 +63,8 @@
 
 #include "pdfximage.h"
 
+#define DPX_PNG_DEFAULT_GAMMA 2.2
+
 #define PDF_TRANS_TYPE_NONE   0
 #define PDF_TRANS_TYPE_BINARY 1
 #define PDF_TRANS_TYPE_ALPHA  2
@@ -196,7 +198,7 @@ png_include_image (pdf_ximage *ximage, FILE *png_file)
   }
   /* Ask libpng to gamma-correct.
    * It is wrong to assume screen gamma value 2.2 but...
-   * We do gamma correction here only when uncalibrated color space is used. 
+   * We do gamma correction here only when uncalibrated color space is used.
    */
   if (!png_get_valid(png_ptr, png_info_ptr, PNG_INFO_iCCP) &&
       !png_get_valid(png_ptr, png_info_ptr, PNG_INFO_sRGB) &&
@@ -668,7 +670,7 @@ create_cspace_CalRGB (png_structp png_ptr, png_infop info_ptr)
     }
     G = 1.0 / G; /* Gamma is inverted. */
   } else {
-    G = 1.0;
+    G = DPX_PNG_DEFAULT_GAMMA;
   }
 
   cal_param = make_param_Cal(PNG_COLOR_TYPE_RGB, G, xw, yw, xr, yr, xg, yg, xb, yb);
@@ -709,7 +711,7 @@ create_cspace_CalGray (png_structp png_ptr, png_infop info_ptr)
     }
     G = 1.0 / G; /* Gamma is inverted. */
   } else {
-    G = 1.0;
+    G = DPX_PNG_DEFAULT_GAMMA;
   }
 
   cal_param = make_param_Cal(PNG_COLOR_TYPE_GRAY, G, xw, yw, xr, yr, xg, yg, xb, yb);
@@ -1049,7 +1051,7 @@ strip_soft_mask (png_structp png_ptr, png_infop info_ptr,
         smask_data_ptr[2*i]   = image_data_ptr[4*i+2];
         smask_data_ptr[2*i+1] = image_data_ptr[4*i+3];
       }
-      *rowbytes_ptr = 2*width*sizeof(png_byte);      
+      *rowbytes_ptr = 2*width*sizeof(png_byte);
     }
     break;
   default:
