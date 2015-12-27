@@ -42,7 +42,7 @@
 #define PDF_OBJ_INVALID 0
 
 #define STREAM_COMPRESS        (1 << 0)
-#define STREAM_PREDICTOR_TIFF2 (1 << 8)
+#define STREAM_USE_PREDICTOR   (1 << 1)
 
 /* A deeper object hierarchy will be considered as (illegal) loop. */
 #define PDF_OBJ_MAX_DEPTH  30
@@ -163,8 +163,8 @@ extern int         pdf_stream_get_flags  (pdf_obj *stream);
 #endif
 extern const void *pdf_stream_dataptr    (pdf_obj *stream);
 extern void        pdf_stream_set_predictor (pdf_obj *stream,
-                                             int32_t columns,
-                                             int8_t bpc, int8_t colors);
+                                             int predictor, int32_t columns,
+                                             int bpc, int colors);
 
 /* Compare label of two indirect reference object.
  */
