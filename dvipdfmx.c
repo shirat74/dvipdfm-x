@@ -4,7 +4,7 @@
 
     Copyright (C) 2002-2015 by Jin-Hwan Cho, Matthias Franz, and Shunsaku Hirata,
     the DVIPDFMx project team.
-    
+
     Copyright (c) 2006 SIL. (xdvipdfmx extensions for XeTeX support)
 
     Copyright (C) 1998, 1999 by Mark A. Wicks <mwicks@kettering.edu>
@@ -13,12 +13,12 @@
     it under the terms of the GNU General Public License as published by
     the Free Software Foundation; either version 2 of the License, or
     (at your option) any later version.
-    
+
     This program is distributed in the hope that it will be useful,
     but WITHOUT ANY WARRANTY; without even the implied warranty of
     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
     GNU General Public License for more details.
-    
+
     You should have received a copy of the GNU General Public License
     along with this program; if not, write to the Free Software
     Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA.
@@ -79,6 +79,7 @@ static int opt_flags = 0;
 #define OPT_CIDFONT_FIXEDPITCH    (1 << 2)
 #define OPT_FONTMAP_FIRST_MATCH   (1 << 3)
 #define OPT_PDFDOC_NO_DEST_REMOVE (1 << 4)
+#define OPT_PDFOBJ_NO_PREDICTOR   (1 << 5)
 
 static char   ignore_colors = 0;
 static double annot_grow    = 0.0;
@@ -168,7 +169,7 @@ show_usage (void)
           my_name);
   printf ("       %s --help|--showpaper|--version\n", my_name);
   printf ("Convert DVI or XDV input to PDF; defaults given below.\n");
-  printf ("\nOptions:\n"); 
+  printf ("\nOptions:\n");
   printf ("  -c \t\tIgnore color specials (for B&W printing)\n");
   printf ("  --dvipdfm\tEnable DVIPDFM emulation mode\n");
   printf ("  -d number\tSet PDF decimal digits (0-5) [2]\n");
@@ -318,7 +319,7 @@ select_paper (const char *paperspec)
     ERROR("Invalid paper size: %s (%.2fx%.2f)", paperspec, paper_width, paper_height);
 }
 
-struct page_range 
+struct page_range
 {
   int first, last;
 } *page_ranges = NULL;
@@ -611,7 +612,7 @@ do_args (int argc, char *argv[], const char *source)
     default:
       fprintf(stderr, "%s: %s \"-%c\"\n", source ? source : my_name,
               c == ':' ? "Missing argument for" : "Unknown option",
-              optopt); 
+              optopt);
       usage();
     }
   }
@@ -909,7 +910,7 @@ main (int argc, char *argv[])
     base = argv++[1]+2;
   } else
     base = kpse_program_basename (argv[0]);
-  
+
   if (FILESTRCASEEQ (base, "extractbb") || FILESTRCASEEQ (base, "xbb")) {
     my_name = "extractbb";
     return extractbb (argc, argv);
@@ -925,7 +926,7 @@ main (int argc, char *argv[])
     my_name = "dvipdfmx";
   else
     my_name = "xdvipdfmx";
-  
+
   opterr = 0;
 
   /* Special-case single option --help, --showpaper, or --version, to avoid
@@ -1047,6 +1048,9 @@ main (int argc, char *argv[])
   /* Please move this to spc_init_specials(). */
   if (opt_flags & OPT_TPIC_TRANSPARENT_FILL)
     tpic_set_fill_mode(1);
+
+  if (opt_flags & OPT_PDFOBJ_NO_PREDICTOR)
+    pdf_set_use_predictor(0); /* No prediction */
 
   if (mp_mode) {
     do_mps_pages();

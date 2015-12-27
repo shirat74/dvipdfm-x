@@ -2,19 +2,19 @@
 
     Copyright (C) 2007-2015 by Jin-Hwan Cho and Shunsaku Hirata,
     the dvipdfmx project team.
-    
+
     Copyright (C) 1998, 1999 by Mark A. Wicks <mwicks@kettering.edu>
 
     This program is free software; you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
     the Free Software Foundation; either version 2 of the License, or
     (at your option) any later version.
-    
+
     This program is distributed in the hope that it will be useful,
     but WITHOUT ANY WARRANTY; without even the implied warranty of
     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
     GNU General Public License for more details.
-    
+
     You should have received a copy of the GNU General Public License
     along with this program; if not, write to the Free Software
     Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA.
@@ -55,7 +55,7 @@
    This implies OBJ_NO_OBJSTM if encryption is turned on.        */
 
 /* Any of these types can be represented as follows */
-struct pdf_obj 
+struct pdf_obj
 {
   int type;
 
@@ -109,7 +109,12 @@ struct pdf_stream
   int            *objstm_data;    /* used for object streams */
   unsigned int    stream_length;
   unsigned int    max_length;
-  unsigned char   _flags;
+  int32_t         _flags;
+  struct {
+    int32_t columns;
+    int8_t  bits_per_component;
+    int8_t  colors;
+  } decodeparms;
 };
 
 struct pdf_indirect
@@ -221,6 +226,7 @@ static void release_stream (pdf_stream *stream);
 
 static int  verbose = 0;
 static char compression_level = 9;
+static char compression_use_predictor = 1;
 
 void
 pdf_set_compression (int level)
@@ -229,10 +235,10 @@ pdf_set_compression (int level)
   ERROR("You don't have compression compiled in. Possibly libz wasn't found by configure.");
 #else
 #ifndef HAVE_ZLIB_COMPRESS2
-  if (level != 0) 
+  if (level != 0)
     WARN("Unable to set compression level -- your zlib doesn't have compress2().");
 #endif
-  if (level >= 0 && level <= 9) 
+  if (level >= 0 && level <= 9)
     compression_level = level;
   else {
     ERROR("set_compression: invalid compression level: %d", level);
@@ -240,6 +246,12 @@ pdf_set_compression (int level)
 #endif /* !HAVE_ZLIB */
 
   return;
+}
+
+void
+pdf_set_use_predictor (int bval)
+{
+  compression_use_predictor = bval ? 1 : 0;
 }
 
 static unsigned pdf_version = PDF_VERSION_DEFAULT;
@@ -676,7 +688,7 @@ pdf_ref_obj (pdf_obj *object)
 {
   if (INVALIDOBJ(object))
     ERROR("pdf_ref_obj(): passed invalid object.");
-  
+
   if (object->refcount == 0) {
     MESG("\nTrying to refer already released object!!!\n");
     pdf_write_obj(object, stderr);
@@ -977,7 +989,7 @@ write_string (pdf_string *str, FILE *file)
      * Occasionally you see some long strings in PDF.  pdfobj_escape_str
      * is also used for strings of text with no kerning.  These must be
      * handled as quickly as possible since there are so many of them.
-     */ 
+     */
     for (i = 0; i < len; i++) {
       count = pdfobj_escape_str(wbuf, FORMAT_BUF_SIZE, &(s[i]), 1);
       pdf_out(file, wbuf, count);
@@ -1020,7 +1032,7 @@ pdf_set_string (pdf_obj *object, unsigned char *str, unsigned length)
   }
 }
 
-/* Name does *not* include the /. */ 
+/* Name does *not* include the /. */
 pdf_obj *
 pdf_new_name (const char *name)
 {
@@ -1133,7 +1145,7 @@ write_array (pdf_array *array, FILE *file)
   if (array->size > 0) {
     unsigned int i;
     int type1 = PDF_UNDEFINED, type2;
-    
+
     for (i = 0; i < array->size; i++) {
       if (array->values[i]) {
 	type2 = array->values[i]->type;
@@ -1569,11 +1581,166 @@ pdf_new_stream (int flags)
   data->stream_length = 0;
   data->max_length    = 0;
   data->objstm_data = NULL;
+  data->decodeparms.columns = 0;
+  data->decodeparms.bits_per_component = 0;
+  data->decodeparms.colors  = 0;
 
   result->data = data;
   result->flags |= OBJ_NO_OBJSTM;
 
   return result;
+}
+
+/* TIFF predictor filter support
+ *
+ * Many PDF viewers seems to have broken TIFF 2 predictor support?
+ * Ony GhostScript and MuPDF render 4bpc grayscale image with TIFF 2 predictor
+ * filter applied correctly.
+ *
+ *  Acrobat Reader DC  2015.007.20033  NG
+ *  Adobe Acrobat X    10.1.13         NG
+ *  Foxit Reader       4.1.5.425       NG
+ *  GhostScript        9.16            OK
+ *  SumatraPDF(MuPDF)  v3.0            OK
+ *  Evince(poppler)    2.32.0.145      NG (1bit and 4bit broken)
+ */
+
+void
+pdf_stream_set_predictor (pdf_obj *stream,
+                          int32_t columns, int8_t bpc, int8_t colors)
+{
+  struct pdf_stream *data;
+
+  if (pdf_obj_typeof(stream) != PDF_STREAM)
+    return;
+  data = (struct pdf_stream *) stream->data;
+  data->decodeparms.columns = columns;
+  data->decodeparms.bits_per_component = bpc;
+  data->decodeparms.colors  = colors;
+
+  data->_flags |= STREAM_PREDICTOR_TIFF2;
+}
+
+#define zerofill(p) do {\
+    (p)[0] = (p)[1] = (p)[2] = (p)[3] = 0; \
+  } while (0)
+
+static void
+tiff_filter_apply_filter_1_2_4 (unsigned char *raster,
+                               int32_t width, int32_t height,
+                               int8_t bpc, int8_t num_comp)
+{
+  int32_t  rowbytes = (bpc * num_comp * width + 7) / 8;
+  uint8_t  mask     = (1 << bpc) - 1;
+  uint16_t prev[4];
+  int32_t  i, j;
+
+  ASSERT( bpc > 0 && bpc <= 8 );
+  ASSERT( num_comp < 4 );
+
+  /* Generic routine for 1 to 16 bit.
+   * It supports, e.g., 7 bpc images too.
+   * Actually, it is not necessary to have 16 bit inbuf and outbuf
+   * since we only need 1, 2, and 4 bit support here. 8 bit is enough.
+   */
+  for (j = 0; j < height; j++) {
+    int32_t  k, l, inbits, outbits;
+    uint16_t inbuf, outbuf;
+    int      c;
+
+    zerofill(prev);
+    inbuf = outbuf = 0; inbits = outbits = 0;
+    l = k = j * rowbytes;
+    for (i = 0; i < width; i++) {
+      for (c = 0; c < num_comp; c++) {
+        uint8_t cur;
+        int8_t  sub;
+        if (inbits < bpc) { // need more byte
+          inbuf   = (inbuf << 8) | raster[l]; l++;
+          inbits += 8;
+        }
+        cur     = (inbuf >> (inbits - bpc)) & mask;
+        inbits -= bpc; // consumed bpc bits
+        sub     = cur - prev[c];
+        prev[c] = cur;
+        if (sub < 0)
+          sub += (1 << bpc);
+        // Append newly filtered component value
+        outbuf   = (outbuf << bpc) | sub;
+        outbits += bpc;
+        // flush
+        if (outbits >= 8) {
+          raster[k] = (outbuf >> (outbits - 8)); k++;
+          outbits  -= 8;
+        }
+      }
+    }
+    if (outbits > 0)
+      raster[k] = (outbuf << (8 - outbits)); k++;
+  }
+}
+
+// Returns DecodeParms dictionary
+// NOTICE: "raster" modified.
+static pdf_obj *
+tiff_filter_apply_filter (unsigned char *raster,
+                          int32_t columns, int32_t rows,
+                          int8_t bpc, int8_t colors)
+{
+  pdf_obj *parms;
+  uint16_t prev[4];
+  int32_t  i, j;
+
+  if (colors > 4)
+    return  NULL; /* Not supported yet */
+
+  switch (bpc) {
+  case 1: case 2: case 4:
+    tiff_filter_apply_filter_1_2_4(raster, columns, rows, bpc, colors);
+    break;
+
+  case 8:
+    for (j = 0; j < rows; j++) {
+      zerofill(prev);
+      for (i = 0; i < columns; i++) {
+        int     c;
+        int32_t pos = colors * (columns * j + i);
+        for (c = 0; c < colors; c++) {
+          uint8_t cur   = raster[pos+c];
+          int32_t sub   = cur - prev[c];
+          prev[c]       = cur;
+          raster[pos+c] = sub;
+        }
+      }
+    }
+    break;
+
+  case 16:
+    for (j = 0; j < rows; j++) {
+      zerofill(prev);
+      for (i = 0; i < columns; i++) {
+        int     c;
+        int32_t pos = 2 * colors * (columns * j + i);
+        for (c = 0; c < colors; c++) {
+          uint16_t cur = ((uint8_t)raster[pos+2*c])*256 +
+                           (uint8_t)raster[pos+2*c+1];
+          uint16_t sub  = cur - prev[c];
+          prev[c]       = cur;
+          raster[pos+2*c  ] = (sub >> 8) & 0xff;
+          raster[pos+2*c+1] = sub & 0xff;
+        }
+      }
+    }
+    break;
+
+  }
+  parms = pdf_new_dict();
+  pdf_add_dict(parms, pdf_new_name("BitsPerComponent"), pdf_new_number(bpc));
+  pdf_add_dict(parms, pdf_new_name("Colors"),  pdf_new_number(colors));
+  pdf_add_dict(parms, pdf_new_name("Columns"), pdf_new_number(columns));
+  pdf_add_dict(parms, pdf_new_name("Predictor"), pdf_new_number(2));
+
+  return  parms;
 }
 
 static void
@@ -1609,8 +1776,30 @@ write_stream (pdf_stream *stream, FILE *file)
   if (stream->stream_length > 0 &&
       (stream->_flags & STREAM_COMPRESS) &&
       compression_level > 0) {
+    pdf_obj *filters;
 
-    pdf_obj *filters = pdf_lookup_dict(stream->dict, "Filter");
+    /* First apply predictor filter if requested. */
+    if ( compression_use_predictor &&
+        (stream->_flags & STREAM_PREDICTOR_TIFF2) ) {
+      pdf_obj *parms;
+      int      bits_per_pixel  = stream->decodeparms.colors *
+                                   stream->decodeparms.bits_per_component;
+      int32_t  len  = (stream->decodeparms.columns * bits_per_pixel + 7) / 8;
+      int32_t  rows = stream->stream_length / len;
+
+      if (stream->decodeparms.colors <= 4 &&
+          !pdf_lookup_dict(stream->dict, "DecodeParms")) {
+        parms = tiff_filter_apply_filter(filtered,
+                                         stream->decodeparms.columns,
+                                         rows,
+                                         stream->decodeparms.bits_per_component,
+                                         stream->decodeparms.colors);
+        if (parms)
+          pdf_add_dict(stream->dict, pdf_new_name("DecodeParms"), parms);
+      }
+    }
+
+    filters = pdf_lookup_dict(stream->dict, "Filter");
 
     buffer_length = filtered_length + filtered_length/1000 + 14;
     buffer = NEW(buffer_length, unsigned char);
@@ -1630,12 +1819,12 @@ write_stream (pdf_stream *stream, FILE *file)
          */
         pdf_add_dict(stream->dict, pdf_new_name("Filter"), filter_name);
     }
-#ifdef HAVE_ZLIB_COMPRESS2    
+#ifdef HAVE_ZLIB_COMPRESS2
     if (compress2(buffer, &buffer_length, filtered,
 		  filtered_length, compression_level)) {
       ERROR("Zlib error");
     }
-#else 
+#else
     if (compress(buffer, &buffer_length, filtered,
 		 filtered_length)) {
       ERROR ("Zlib error");
@@ -2273,7 +2462,7 @@ pdf_write_obj (pdf_obj *object, FILE *file)
   }
 }
 
-/* Write the object to the file */ 
+/* Write the object to the file */
 static void
 pdf_flush_obj (pdf_obj *object, FILE *file)
 {
@@ -2307,7 +2496,7 @@ pdf_add_objstm (pdf_obj *objstm, pdf_obj *object)
   data[2*pos+1] = pdf_stream_length(objstm);
 
   add_xref_entry(object->label, 2, objstm->label, pos-1);
- 
+
   /* redirect output into objstm */
   output_stream = objstm;
   enc_mode = 0;
@@ -2348,7 +2537,7 @@ release_objstm (pdf_obj *objstm)
   pdf_add_dict(dict, pdf_new_name("Type"), pdf_new_name("ObjStm"));
   pdf_add_dict(dict, pdf_new_name("N"), pdf_new_number(pos));
   pdf_add_dict(dict, pdf_new_name("First"), pdf_new_number(stream->stream_length));
-  
+
   pdf_add_stream(objstm, old_buf, old_length);
   RELEASE(old_buf);
   pdf_release_obj(objstm);
@@ -2712,7 +2901,7 @@ read_objstm (pdf_file *pf, unsigned int num)
   if (p != endptr)
     goto error;
   RELEASE(data);
-  
+
   return pf->xref_table[num].direct = objstm;
 
  error:
@@ -2727,7 +2916,7 @@ read_objstm (pdf_file *pf, unsigned int num)
 /* Label without corresponding object definition are replaced by the
  * null object, as required by the PDF spec. This is important to parse
  * several cross-reference sections.
- */ 
+ */
 static pdf_obj *
 pdf_get_object (pdf_file *pf, unsigned int obj_num, unsigned short obj_gen)
 {
@@ -2827,7 +3016,7 @@ pdf_deref_obj (pdf_obj *obj)
     } else {
       pdf_obj *next_obj = OBJ_OBJ(obj);
       if (!next_obj) {
-        ERROR("Undefined object reference"); 
+        ERROR("Undefined object reference");
       }
       pdf_release_obj(obj);
       obj = pdf_link_obj(next_obj);
@@ -2845,7 +3034,7 @@ pdf_deref_obj (pdf_obj *obj)
 }
 
 static void
-extend_xref (pdf_file *pf, int new_size) 
+extend_xref (pdf_file *pf, int new_size)
 {
   unsigned int i;
 
@@ -2912,7 +3101,7 @@ parse_xref_table (pdf_file *pf, int xref_pos)
       /*
        * Don't overwrite positions that have already been set by a
        * modified xref table.  We are working our way backwards
-       * through the reference table, so we only set "position" 
+       * through the reference table, so we only set "position"
        * if it hasn't been set yet.
        */
       work_buffer[19] = 0;
@@ -2928,7 +3117,7 @@ parse_xref_table (pdf_file *pf, int xref_pos)
       if (!pf->xref_table[i].field2) {
 	pf->xref_table[i].type   = (flag == 'n');
 	pf->xref_table[i].field2 = offset;
-	pf->xref_table[i].field3 = obj_gen;	
+	pf->xref_table[i].field3 = obj_gen;
       }
     }
   }
@@ -2986,7 +3175,7 @@ parse_xrefstm_subsec (pdf_file *pf,
     if (!e->field2) {
       e->type   = type;
       e->field2 = field2;
-      e->field3 = field3;	
+      e->field3 = field3;
       }
     e++;
   }
@@ -3193,7 +3382,7 @@ pdf_file_free (pdf_file *pf)
   if (pf->catalog)
     pdf_release_obj(pf->catalog);
 
-  RELEASE(pf);  
+  RELEASE(pf);
 }
 
 void
@@ -3310,7 +3499,7 @@ pdf_files_close (void)
 }
 
 static int
-check_for_pdf_version (FILE *file) 
+check_for_pdf_version (FILE *file)
 {
   unsigned int minor;
 
@@ -3321,7 +3510,7 @@ check_for_pdf_version (FILE *file)
 }
 
 int
-check_for_pdf (FILE *file) 
+check_for_pdf (FILE *file)
 {
   int version = check_for_pdf_version(file);
 
@@ -3388,12 +3577,12 @@ pdf_import_indirect (pdf_obj *object)
     pf->xref_table[obj_num].indirect = &loop_marker;
 
     tmp = pdf_import_object(obj);
-    
+
     pf->xref_table[obj_num].indirect = ref = pdf_ref_obj(tmp);
-    
+
     pdf_release_obj(tmp);
     pdf_release_obj(obj);
-    
+
     return  pdf_link_obj(ref);
   }
 }

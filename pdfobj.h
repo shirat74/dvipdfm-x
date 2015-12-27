@@ -2,19 +2,19 @@
 
     Copyright (C) 2007-2015 by Jin-Hwan Cho and Shunsaku Hirata,
     the dvipdfmx project team.
-    
+
     Copyright (C) 1998, 1999 by Mark A. Wicks <mwicks@kettering.edu>
 
     This program is free software; you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
     the Free Software Foundation; either version 2 of the License, or
     (at your option) any later version.
-    
+
     This program is distributed in the hope that it will be useful,
     but WITHOUT ANY WARRANTY; without even the implied warranty of
     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
     GNU General Public License for more details.
-    
+
     You should have received a copy of the GNU General Public License
     along with this program; if not, write to the Free Software
     Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA.
@@ -24,6 +24,7 @@
 #define _PDFOBJ_H_
 
 #include <stdio.h>
+
 
 /* Here is the complete list of PDF object types */
 
@@ -40,7 +41,8 @@
 
 #define PDF_OBJ_INVALID 0
 
-#define STREAM_COMPRESS (1 << 0)
+#define STREAM_COMPRESS        (1 << 0)
+#define STREAM_PREDICTOR_TIFF2 (1 << 8)
 
 /* A deeper object hierarchy will be considered as (illegal) loop. */
 #define PDF_OBJ_MAX_DEPTH  30
@@ -130,7 +132,7 @@ extern pdf_obj *pdf_dict_keys   (pdf_obj *dict);
  * pdf_link_obj() it rather than allocate/free-ing them each time. But I
  * already removed that.
  */
-extern int      pdf_add_dict     (pdf_obj *dict, pdf_obj *key,    pdf_obj *value); 
+extern int      pdf_add_dict     (pdf_obj *dict, pdf_obj *key,    pdf_obj *value);
 #if 0
 extern void     pdf_put_dict     (pdf_obj *dict, const char *key, pdf_obj *value);
 #endif
@@ -160,10 +162,9 @@ extern void        pdf_stream_set_flags  (pdf_obj *stream, int flags);
 extern int         pdf_stream_get_flags  (pdf_obj *stream);
 #endif
 extern const void *pdf_stream_dataptr    (pdf_obj *stream);
-
-#if 0
-extern int         pdf_stream_pop_filter (pdf_obj *stream);
-#endif
+extern void        pdf_stream_set_predictor (pdf_obj *stream,
+                                             int32_t columns,
+                                             int8_t bpc, int8_t colors);
 
 /* Compare label of two indirect reference object.
  */
@@ -172,7 +173,8 @@ extern int         pdf_compare_reference (pdf_obj *ref1, pdf_obj *ref2);
 /* The following routines are not appropriate for pdfobj.
  */
 
-extern void      pdf_set_compression (int level);
+extern void      pdf_set_compression   (int level);
+extern void      pdf_set_use_predictor (int bval);
 
 extern void      pdf_set_info     (pdf_obj *obj);
 extern void      pdf_set_root     (pdf_obj *obj);
@@ -181,7 +183,7 @@ extern void      pdf_set_encrypt  (pdf_obj *encrypt);
 
 extern void      pdf_files_init    (void);
 extern void      pdf_files_close   (void);
-extern int      check_for_pdf     (FILE *file);
+extern int       check_for_pdf     (FILE *file);
 extern pdf_file *pdf_open          (const char *ident, FILE *file);
 extern void      pdf_close         (pdf_file *pf);
 extern pdf_obj  *pdf_file_get_trailer (pdf_file *pf);

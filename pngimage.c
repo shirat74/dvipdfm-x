@@ -263,6 +263,8 @@ png_include_image (pdf_ximage *ximage, FILE *png_file)
        */
       break;
     }
+    info.num_components = 1;
+
     break;
   case PNG_COLOR_TYPE_RGB:
   case PNG_COLOR_TYPE_RGB_ALPHA:
@@ -331,6 +333,8 @@ png_include_image (pdf_ximage *ximage, FILE *png_file)
     if (trans_type == PDF_TRANS_TYPE_BINARY)
       pdf_add_dict(stream_dict, pdf_new_name("Mask"), mask);
     else if (trans_type == PDF_TRANS_TYPE_ALPHA) {
+      pdf_stream_set_predictor(mask, info.width,
+                               info.bits_per_component, 1);
       pdf_add_dict(stream_dict, pdf_new_name("SMask"), pdf_ref_obj(mask));
       pdf_release_obj(mask);
     } else {
@@ -395,6 +399,8 @@ png_include_image (pdf_ximage *ximage, FILE *png_file)
   if (png_ptr)
     png_destroy_read_struct(&png_ptr, NULL, NULL);
 
+  pdf_stream_set_predictor(stream, info.width,
+                           info.bits_per_component, info.num_components);
   pdf_ximage_set_image(ximage, &info, stream);
 
   return 0;
@@ -1039,11 +1045,11 @@ strip_soft_mask (png_structp png_ptr, png_infop info_ptr,
     break;
   case PNG_COLOR_TYPE_GRAY_ALPHA:
     if (bpc == 8) {
-    for (i = 0; i < width*height; i++) {
-      image_data_ptr[i] = image_data_ptr[2*i];
-      smask_data_ptr[i] = image_data_ptr[2*i+1];
-    }
-    *rowbytes_ptr = width*sizeof(png_byte);
+      for (i = 0; i < width*height; i++) {
+        image_data_ptr[i] = image_data_ptr[2*i];
+        smask_data_ptr[i] = image_data_ptr[2*i+1];
+      }
+      *rowbytes_ptr = width*sizeof(png_byte);
     } else {
       for (i = 0; i < width*height; i++) {
         image_data_ptr[2*i]   = image_data_ptr[4*i];

@@ -269,6 +269,8 @@ bmp_include_image (pdf_ximage *ximage, FILE *fp)
     RELEASE(stream_data_ptr);
   }
 
+  pdf_stream_set_predictor(stream, info.width,
+                           info.bits_per_component, info.num_components);
   pdf_ximage_set_image(ximage, &info, stream);
 
   return 0;
