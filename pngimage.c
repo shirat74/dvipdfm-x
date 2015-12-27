@@ -333,7 +333,7 @@ png_include_image (pdf_ximage *ximage, FILE *png_file)
     if (trans_type == PDF_TRANS_TYPE_BINARY)
       pdf_add_dict(stream_dict, pdf_new_name("Mask"), mask);
     else if (trans_type == PDF_TRANS_TYPE_ALPHA) {
-      if (info.bits_per_component >= 8) {
+      if (info.bits_per_component >= 8 && info.width > 64) {
         pdf_stream_set_predictor(mask, 2, info.width,
                                  info.bits_per_component, 1);
       }
@@ -401,7 +401,8 @@ png_include_image (pdf_ximage *ximage, FILE *png_file)
   if (png_ptr)
     png_destroy_read_struct(&png_ptr, NULL, NULL);
   if (color_type != PNG_COLOR_TYPE_PALETTE &&
-      info.bits_per_component >= 8) {
+      info.bits_per_component >= 8 &&
+      info.height > 64) {
     pdf_stream_set_predictor(stream, 15, info.width,
                              info.bits_per_component, info.num_components);
   }
