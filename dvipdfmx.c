@@ -200,6 +200,7 @@ show_usage (void)
   printf ("\t\t  0x0004 Treat all CIDFont as fixed-pitch font.\n");
   printf ("\t\t  0x0008 Do not replace duplicate fontmap entries.\n");
   printf ("\t\t  0x0010 Do not optimize PDF destinations.\n");
+  printf ("\t\t  0x0020 Do not use predictor filter for Flate compression.\n");
   printf ("\t\tPositive values are always ORed with previously given flags.\n");
   printf ("\t\tAnd negative values replace old values.\n");
   printf ("  -D template\tPS->PDF conversion command line template [none]\n");
