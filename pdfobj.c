@@ -1618,6 +1618,8 @@ pdf_stream_set_predictor (pdf_obj *stream,
 
   if (pdf_obj_typeof(stream) != PDF_STREAM)
     return;
+  else if (columns < 0 || bpc < 0 || colors < 0)
+    return;
 
   data = (struct pdf_stream *) stream->data;
   data->decodeparms.predictor = predictor;
@@ -1650,8 +1652,7 @@ filter_PNG15_apply_filter (unsigned char *raster,
   int32_t  rowbytes = columns * bytes_per_pixel;
   int32_t  i, j;
 
-  if (bpc != 8 && bpc != 16)
-    return NULL;
+  ASSERT(raster && length);
 
   /* Result */
   dst = NEW((rowbytes+1)*rows, unsigned char);
@@ -1703,6 +1704,7 @@ filter_PNG15_apply_filter (unsigned char *raster,
       }
       type = min_idx;
     }
+    /* Now we actually apply filter. */
     pp[0] = type;
     switch (type) {
     case 0:
@@ -1769,23 +1771,21 @@ filter_PNG15_apply_filter (unsigned char *raster,
  *  Evince(poppler)    2.32.0.145      NG (1bit and 4bit broken)
  */
 
-#define zerofill(p) do {\
-    (p)[0] = (p)[1] = (p)[2] = (p)[3] = 0; \
-  } while (0)
-
 /* This modifies "raster" itself! */
 static void
 apply_filter_TIFF2_1_2_4 (unsigned char *raster,
                           int32_t width, int32_t height,
                           int8_t bpc, int8_t num_comp)
 {
-  int32_t  rowbytes = (bpc * num_comp * width + 7) / 8;
-  uint8_t  mask     = (1 << bpc) - 1;
-  uint16_t prev[4];
-  int32_t  i, j;
+  int32_t   rowbytes = (bpc * num_comp * width + 7) / 8;
+  uint8_t   mask     = (1 << bpc) - 1;
+  uint16_t *prev;
+  int32_t   i, j;
 
+  ASSERT(raster);
   ASSERT( bpc > 0 && bpc <= 8 );
-  ASSERT( num_comp < 4 );
+
+  prev = NEW(num_comp, uint16_t);
 
   /* Generic routine for 1 to 16 bit.
    * It supports, e.g., 7 bpc images too.
@@ -1797,7 +1797,7 @@ apply_filter_TIFF2_1_2_4 (unsigned char *raster,
     uint16_t inbuf, outbuf;
     int      c;
 
-    zerofill(prev);
+    memset(prev, 0, sizeof(uint16_t)*num_comp);
     inbuf = outbuf = 0; inbits = outbits = 0;
     l = k = j * rowbytes;
     for (i = 0; i < width; i++) {
@@ -1827,6 +1827,7 @@ apply_filter_TIFF2_1_2_4 (unsigned char *raster,
     if (outbits > 0)
       raster[k] = (outbuf << (8 - outbits)); k++;
   }
+  RELEASE(prev);
 }
 
 unsigned char *
@@ -1835,12 +1836,11 @@ filter_TIFF2_apply_filter (unsigned char *raster,
                            int8_t bpc, int8_t colors, int32_t *length)
 {
   unsigned char *dst;
-  uint16_t       prev[4];
+  uint16_t      *prev;
   int32_t        rowbytes = (bpc * colors * columns + 7) / 8;
   int32_t        i, j;
 
-  if (colors > 4)
-    return  NULL; /* Not supported yet */
+  ASSERT(raster && length);
 
   dst = NEW(rowbytes*rows, unsigned char);
   memcpy(dst, raster, rowbytes*rows);
@@ -1852,8 +1852,9 @@ filter_TIFF2_apply_filter (unsigned char *raster,
     break;
 
   case 8:
+    prev = NEW(colors, uint16_t);
     for (j = 0; j < rows; j++) {
-      zerofill(prev);
+      memset(prev, 0, sizeof(uint16_t)*colors);
       for (i = 0; i < columns; i++) {
         int     c;
         int32_t pos = colors * (columns * j + i);
@@ -1865,11 +1866,13 @@ filter_TIFF2_apply_filter (unsigned char *raster,
         }
       }
     }
+    RELEASE(prev);
     break;
 
   case 16:
+    prev = NEW(colors, uint16_t);
     for (j = 0; j < rows; j++) {
-      zerofill(prev);
+      memset(prev, 0, sizeof(uint16_t)*colors);
       for (i = 0; i < columns; i++) {
         int     c;
         int32_t pos = 2 * colors * (columns * j + i);
@@ -1883,6 +1886,7 @@ filter_TIFF2_apply_filter (unsigned char *raster,
         }
       }
     }
+    RELEASE(prev);
     break;
 
   }
@@ -1942,47 +1946,46 @@ write_stream (pdf_stream *stream, FILE *file)
 
     /* First apply predictor filter if requested. */
     if ( compression_use_predictor &&
-        (stream->_flags & STREAM_USE_PREDICTOR) ) {
-      pdf_obj *parms = NULL;
+        (stream->_flags & STREAM_USE_PREDICTOR) &&
+        !pdf_lookup_dict(stream->dict, "DecodeParms")) {
       int      bits_per_pixel  = stream->decodeparms.colors *
                                    stream->decodeparms.bits_per_component;
       int32_t  len  = (stream->decodeparms.columns * bits_per_pixel + 7) / 8;
       int32_t  rows = stream->stream_length / len;
+      unsigned char *filtered2 = NULL;
+      int32_t        length2 = stream->stream_length;
+      pdf_obj       *parms;
 
-      if (stream->decodeparms.colors <= 4 &&
-          !pdf_lookup_dict(stream->dict, "DecodeParms")) {
-        unsigned char *filtered2 = NULL;
-        int32_t        length2 = stream->stream_length;
-        parms = filter_create_predictor_dict(stream->decodeparms.predictor,
+      parms = filter_create_predictor_dict(stream->decodeparms.predictor,
                                         stream->decodeparms.columns,
                                         stream->decodeparms.bits_per_component,
                                         stream->decodeparms.colors);
-        switch (stream->decodeparms.predictor) {
-        case 2: /* TIFF2 */
-          filtered2 = filter_TIFF2_apply_filter(filtered,
+
+      switch (stream->decodeparms.predictor) {
+      case 2: /* TIFF2 */
+        filtered2 = filter_TIFF2_apply_filter(filtered,
                                          stream->decodeparms.columns,
                                          rows,
                                          stream->decodeparms.bits_per_component,
                                          stream->decodeparms.colors, &length2);
-          break;
-        case 15: /* PNG optimun */
-          filtered2 = filter_PNG15_apply_filter(filtered,
+        break;
+      case 15: /* PNG optimun */
+        filtered2 = filter_PNG15_apply_filter(filtered,
                                          stream->decodeparms.columns,
                                          rows,
                                          stream->decodeparms.bits_per_component,
                                          stream->decodeparms.colors, &length2);
-          break;
-        default:
-          WARN("Unknown/unsupported Predictor function %d.",
-               stream->decodeparms.predictor);
-          break;
-        }
-        if (filtered2) {
-          RELEASE(filtered);
-          filtered = filtered2;
-          filtered_length = length2;
-          pdf_add_dict(stream->dict, pdf_new_name("DecodeParms"), parms);
-        }
+        break;
+      default:
+        WARN("Unknown/unsupported Predictor function %d.",
+             stream->decodeparms.predictor);
+        break;
+      }
+      if (parms && filtered2) {
+        RELEASE(filtered);
+        filtered = filtered2;
+        filtered_length = length2;
+        pdf_add_dict(stream->dict, pdf_new_name("DecodeParms"), parms);
       }
     }
 
@@ -2243,24 +2246,18 @@ get_decode_parms (struct decode_parms *parms, pdf_obj *dict)
 /* From Xpdf version 3.04
  * I'm not sure if I properly ported... Untested.
  */
-#define PREDICTOR_TIFF2_MAX_COLORS 32
 static int
 filter_row_TIFF2 (unsigned char *dst, const unsigned char *src,
                   struct decode_parms *parms)
 {
   const unsigned char *p = src;
-  unsigned char  col[PREDICTOR_TIFF2_MAX_COLORS];
+  unsigned char *col;
   /* bits_per_component < 8 here */
   int  mask = (1 << parms->bits_per_component) - 1;
   int  inbuf, outbuf; /* 2 bytes buffer */
   int  i, ci, j, k, inbits, outbits;
 
-  if (parms->colors > PREDICTOR_TIFF2_MAX_COLORS) {
-    WARN("Sorry, Colors value > %d not supported for TIFF 2 predictor",
-         PREDICTOR_TIFF2_MAX_COLORS);
-    return -1;
-  }
-
+  col = NEW(parms->colors, unsigned char);
   memset(col, 0, parms->colors);
   inbuf = outbuf = 0; inbits = outbits = 0;
   j = k = 0;
@@ -2288,6 +2285,7 @@ filter_row_TIFF2 (unsigned char *dst, const unsigned char *src,
   if (outbits > 0) {
     dst[k] = (unsigned char) (outbuf << (8 - outbits));
   }
+  RELEASE(col);
 
   return 0;
 }
