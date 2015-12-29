@@ -4,19 +4,19 @@
     the dvipdfmx project team.
 
     Copyright (C) 2012-2015 by Khaled Hosny <khaledhosny@eglug.org>
-    
+
     Copyright (C) 1998, 1999 by Mark A. Wicks <mwicks@kettering.edu>
 
     This program is free software; you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
     the Free Software Foundation; either version 2 of the License, or
     (at your option) any later version.
-    
+
     This program is distributed in the hope that it will be useful,
     but WITHOUT ANY WARRANTY; without even the implied warranty of
     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
     GNU General Public License for more details.
-    
+
     You should have received a copy of the GNU General Public License
     along with this program; if not, write to the Free Software
     Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA.
@@ -92,7 +92,7 @@ static struct dvi_header
   uint32_t mag;
   uint32_t media_width, media_height;
   unsigned int stackdepth;
-  char  comment[257];  
+  char  comment[257];
 } dvi_info = {
   25400000 , /* num */
   473628672, /* den */
@@ -159,7 +159,7 @@ static struct loaded_font
 static int num_loaded_fonts = 0, max_loaded_fonts = 0;
 
 static void
-need_more_fonts (unsigned n) 
+need_more_fonts (unsigned n)
 {
   if (num_loaded_fonts + n > max_loaded_fonts) {
     max_loaded_fonts += TEX_FONTS_ALLOC_SIZE;
@@ -252,7 +252,7 @@ static int32_t get_buffered_signed_quad(void)
   int i;
   int32_t quad = dvi_page_buffer[dvi_page_buf_index++];
   /* Check sign on first byte before reading others */
-  if (quad >= 0x80) 
+  if (quad >= 0x80)
     quad -= 0x100;
   for (i=0; i<3; i++) {
     quad = (quad << 8) | dvi_page_buffer[dvi_page_buf_index++];
@@ -348,8 +348,8 @@ find_post (void)
     ERROR("DVI file size exceeds 31-bit");
   dvi_file_size = dvi_size;
   current       = dvi_size;
- 
-  /* Scan backwards through PADDING */  
+
+  /* Scan backwards through PADDING */
   do {
     xseek_absolute (dvi_file, --current, "DVI");
   } while ((ch = fgetc(dvi_file)) == PADDING &&
@@ -361,7 +361,7 @@ find_post (void)
       !(ch == DVI_ID || ch == DVIV_ID || ch == XDV_ID)) {
     MESG("DVI ID = %d\n", ch);
     ERROR(invalid_signature);
-  } 
+  }
 
   post_id_byte = ch;
   is_xdv = ch == XDV_ID;
@@ -482,7 +482,7 @@ get_preamble_dvi_info (void)
     MESG("Found %d where PRE was expected\n", ch);
     ERROR(invalid_signature);
   }
-  
+
   /* An Ascii pTeX DVI file has id_byte DVI_ID in the preamble but DVIV_ID in the postamble. */
   ch = get_unsigned_byte(dvi_file);
   if (!(ch == DVI_ID || ch == XDV_ID)) {
@@ -493,7 +493,7 @@ get_preamble_dvi_info (void)
   pre_id_byte = ch;
   is_xdv = ch == XDV_ID;
   is_ptex = ch == DVI_ID; /* maybe */
-  
+
   dvi_info.unit_num = get_positive_quad(dvi_file, "DVI", "unit_num");
   dvi_info.unit_den = get_positive_quad(dvi_file, "DVI", "unit_den");
   dvi_info.mag      = get_positive_quad(dvi_file, "DVI", "mag");
@@ -696,7 +696,7 @@ struct dvi_registers
 
 static struct   dvi_registers dvi_state;
 static struct   dvi_registers dvi_stack[DVI_STACK_DEPTH_MAX];
-static unsigned dvi_stack_depth = 0 ;  
+static unsigned dvi_stack_depth = 0 ;
 static int      current_font    = -1;
 static int      processing_page = 0 ;
 
@@ -725,7 +725,7 @@ static void
 dvi_mark_depth (void)
 {
   /* If decreasing below tagged_depth */
-  if (link_annot && 
+  if (link_annot &&
       marked_depth    == tagged_depth &&
       dvi_stack_depth == tagged_depth - 1) {
   /*
@@ -1186,7 +1186,7 @@ dvi_set (int32_t ch)
    * The problem comes from fonts defined in VF files where we don't know
    * the DVI size.  It's keeping me sane to keep *point sizes* of *all*
    * fonts in the dev.c file and convert them back if necessary.
-   */ 
+   */
   font  = &loaded_fonts[current_font];
 
   width = tfm_get_fw_width(font->tfm_id, ch);
@@ -1312,7 +1312,7 @@ dvi_put (int32_t ch)
       pdf_doc_expand_box(&rect);
     }
     break;
-  case  VIRTUAL:    
+  case  VIRTUAL:
 #if  0
     /* See comment in locate_font() */
     if (font->subfont_id >= 0)
@@ -1339,7 +1339,7 @@ dvi_rule (int32_t width, int32_t height)
     case 1:
       pdf_dev_set_rule(dvi_state.h, -dvi_state.v - width, height, width);
       break;
-    case 3: 
+    case 3:
       pdf_dev_set_rule(dvi_state.h - height, -dvi_state.v , height, width);
       break;
     }
@@ -1399,7 +1399,7 @@ do_putrule (void)
 }
 
 void
-dvi_push (void) 
+dvi_push (void)
 {
   if (dvi_stack_depth >= DVI_STACK_DEPTH_MAX)
     ERROR("DVI stack exceeded limit.");
@@ -1538,7 +1538,7 @@ do_fnt (int32_t tex_id)
 }
 
 static void
-do_xxx (int32_t size) 
+do_xxx (int32_t size)
 {
   if (lr_mode < SKIMMING)
     dvi_do_special(dvi_page_buffer + dvi_page_buf_index, size);
@@ -1550,7 +1550,7 @@ do_bop (void)
 {
   int  i;
 
-  if (processing_page) 
+  if (processing_page)
     ERROR("Got a bop in the middle of a page!");
 
   /* For now, ignore TeX's count registers */
@@ -2098,7 +2098,7 @@ dvi_close (void)
 
   vf_close_all_fonts();
   tfm_close_all ();
-  
+
   if (dvi_page_buffer) {
     RELEASE(dvi_page_buffer);
     dvi_page_buffer = NULL;
@@ -2137,7 +2137,7 @@ void
 dvi_vf_finish (void)
 {
   dvi_pop();
-  if (num_saved_fonts > 0) 
+  if (num_saved_fonts > 0)
     current_font = saved_dvi_font[--num_saved_fonts];
   else {
     ERROR("Tried to pop an empty font stack");
@@ -2350,13 +2350,15 @@ scan_special (double *wd, double *ht, double *xo, double *yo, int *lm,
           skip_white(&p, endptr);
           if (!strcmp(kp, "ownerpw")) {
             if ((obj = parse_pdf_string(&p, endptr))) {
-              strncpy(owner_pw, pdf_string_value(obj), MAX_PWD_LEN); 
+              if (pdf_string_value(obj))
+                strncpy(owner_pw, pdf_string_value(obj), MAX_PWD_LEN);
               pdf_release_obj(obj);
             } else
               error = -1;
           } else if (!strcmp(kp, "userpw")) {
             if ((obj = parse_pdf_string(&p, endptr))) {
-              strncpy(user_pw, pdf_string_value(obj), MAX_PWD_LEN);
+              if (pdf_string_value(obj))
+                strncpy(user_pw, pdf_string_value(obj), MAX_PWD_LEN);
               pdf_release_obj(obj);
             } else
               error = -1;
@@ -2415,7 +2417,7 @@ dvi_scan_specials (int page_no,
 
     xseek_absolute (fp, offset, "DVI");
   }
-  
+
   while ((opcode = get_and_buffer_unsigned_byte(fp)) != EOP) {
     if (opcode <= SET_CHAR_127 ||
         (opcode >= FNT_NUM_0 && opcode <= FNT_NUM_63))
