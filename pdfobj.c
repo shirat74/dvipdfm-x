@@ -63,17 +63,16 @@ struct pdf_obj
 {
   int           type;
 
-  uint32_t      label;       /* Only used for indirect objects
-                                all other "label" to zero */
-  uint16_t      generation;  /* Only used if "label" is used */
-  uint16_t      refcount;    /* Number of links to this object */
-  int32_t       flags;
-  void         *data;
+  uint32_t      label;      /* Only used for indirect objects */
+  uint16_t      generation; /* Only used if "label" is used */
+  uint16_t      refcount;   /* Number of links to this object */
+  int32_t       flags;      /* See above */
+  void         *data;       /* Struct containing object data (see below)*/
 };
 
 struct pdf_boolean
 {
-  char  value;
+  int    value;
 };
 
 struct pdf_number
@@ -139,7 +138,7 @@ struct pdf_stream
 struct pdf_indirect
 {
   pdf_file      *pf;
-  pdf_obj       *obj;             /* used when PF == NULL */
+  pdf_obj       *obj;        /* used when PF == NULL */
   uint32_t       label;
   uint16_t       generation;
 };
@@ -210,53 +209,107 @@ struct pdf {
   struct {
     uint32_t    next_label;
     uint32_t    max_ind_objects;
-    xref_entry *xref;
   } obj;
 
   pdf_obj    *trailer;
+  uint32_t    startxref;
+  xref_entry *xref_table;
+
   pdf_obj    *xref_stream;
   pdf_obj    *output_stream;
-  uint32_t    startxref;
-  xref_entry *output_xref;
   pdf_obj    *current_objstm;
 
 };
 
-typedef struct pdf PDF;
-static PDF _pdf = {
-  {0},
-  { 1, PDF_VERSION_DEFAULT },
-  {
-    { 9, 1 },
-    0,
-    0
-  },
-  { NULL, 0, 0, 0 },
-  { 0, 0, NULL },
-  NULL,
-  NULL,
-  NULL,
-  0,
-  NULL,
-  NULL
-};
+static void
+init_pdf_struct (PDF *p)
+{
+  ASSERT(p);
+
+  p->state.enc_mode = 0;
+
+  p->version.major  = 1;
+  p->version.minor  = PDF_VERSION_DEFAULT;
+
+  p->options.compression.level = 9;
+  p->options.compression.use_predictor = 1;
+  p->options.encrypt    = 0;
+  p->options.use_objstm = 1;
+
+  p->output.file = NULL;
+  p->output.file_position = 0;
+  p->output.line_position = 0;
+  p->output.compression_saved = 0;
+
+  p->obj.next_label = 0;
+  p->obj.max_ind_objects = 0;
+
+  p->trailer    = NULL;
+  p->startxref  = 0;
+  p->xref_table = NULL;
+
+  p->xref_stream    = NULL;
+  p->output_stream  = NULL;
+  p->current_objstm = NULL;
+}
+
+#if 1
+static PDF _pdf;
+#endif
+
+PDF *
+pdf_new (void) {
+#if 0
+  PDF *p = NEW(1, PDF);
+#else
+  PDF *p = &_pdf;
+#endif
+  init_pdf_struct(p);
+  return p;
+}
+
+void
+pdf_delete (PDF **pp)
+{
+  PDF *p;
+  if (!pp || !*pp)
+    return;
+
+  p = *pp;
+  if (p->trailer)
+    pdf_release_obj(p->trailer);
+  if (p->xref_table)
+    RELEASE(p->xref_table);
+  if (p->xref_stream)
+    pdf_release_obj(p->xref_stream);
+  if (p->output_stream)
+    pdf_release_obj(p->output_stream);
+#if 0
+  /* Not sure */
+  if (p->current_objstm)
+    pdf_release_obj(p->current_objstm);
+#endif
+
+  RELEASE(p);
+  *pp = NULL;
+}
 
 /* Internal static routines */
 
-static int check_for_pdf_version (FILE *file);
+static int  check_for_pdf_version (FILE *file);
 
 static void pdf_flush_obj (PDF *p, pdf_obj *object);
 static void pdf_label_obj (PDF *p, pdf_obj *object);
 static void pdf_write_obj (PDF *p, pdf_obj *object);
 
-static void  set_objstm_data (pdf_obj *objstm, int *data);
-static int  *get_objstm_data (pdf_obj *objstm);
-static void  release_objstm  (pdf_obj *objstm);
+static void set_objstm_data (pdf_obj *objstm, int *data);
+static int *get_objstm_data (pdf_obj *objstm);
+static void release_objstm  (pdf_obj *objstm);
 
 static void pdf_out_char (PDF *p, char c);
 static void pdf_out      (PDF *p, const void *buffer, int length);
 
-static pdf_obj *pdf_new_ref  (pdf_obj *object);
+static pdf_obj *pdf_new_ref  (PDF *p, pdf_obj *object);
 static void release_indirect (pdf_indirect *data);
 static void write_indirect   (PDF *p, pdf_indirect *indirect);
 
@@ -345,20 +398,20 @@ pdf_obj_set_verbose(void)
 
 static void
 add_xref_entry (PDF *p,
-                unsigned label, unsigned char type,
-                unsigned int field2, unsigned short field3)
+                uint32_t label, unsigned char type,
+                uint32_t field2, uint16_t field3)
 {
   if (label >= p->obj.max_ind_objects) {
     p->obj.max_ind_objects =
       (label/IND_OBJECTS_ALLOC_SIZE+1)*IND_OBJECTS_ALLOC_SIZE;
-    p->output_xref = RENEW(p->output_xref, p->obj.max_ind_objects, xref_entry);
+    p->xref_table = RENEW(p->xref_table, p->obj.max_ind_objects, xref_entry);
   }
 
-  p->output_xref[label].type   = type;
-  p->output_xref[label].field2 = field2;
-  p->output_xref[label].field3 = field3;
-  p->output_xref[label].direct   = NULL;
-  p->output_xref[label].indirect = NULL;
+  p->xref_table[label].type   = type;
+  p->xref_table[label].field2 = field2;
+  p->xref_table[label].field3 = field3;
+  p->xref_table[label].direct   = NULL;
+  p->xref_table[label].indirect = NULL;
 }
 
 #define BINARY_MARKER "%\344\360\355\370\n"
@@ -368,8 +421,6 @@ pdf_out_init (const char *filename, int enable_encrypt, int enable_objstm)
   PDF *p = &_pdf;
   char v;
 
-  p->output_xref = NULL;
-  p->obj.max_ind_objects = 0;
   add_xref_entry(p, 0, 0, 0, 0xffff);
   p->obj.next_label = 1;
 
@@ -392,8 +443,6 @@ pdf_out_init (const char *filename, int enable_encrypt, int enable_objstm)
     /* Silently ignore object stream option for PDF < 1.5 */
     p->options.use_objstm = 0;
   }
-
-  p->output_stream = NULL;
 
   if (filename == NULL) { /* no filename: writing to stdout */
 #ifdef WIN32
@@ -436,11 +485,11 @@ dump_xref_table (PDF *p)
    * end of line character.
    */
   for (i = 0; i < p->obj.next_label; i++) {
-    unsigned char type = p->output_xref[i].type;
+    unsigned char type = p->xref_table[i].type;
     if (type > 1)
       ERROR("object type %hu not allowed in xref table", type);
     length = sprintf(buf, "%010u %05hu %c \n",
-		                 p->output_xref[i].field2, p->output_xref[i].field3,
+		                 p->xref_table[i].field2, p->xref_table[i].field3,
 		                 type ? 'n' : 'f');
     pdf_out(p, buf, length);
   }
@@ -490,13 +539,13 @@ dump_xref_stream (PDF *p)
   for (i = 0; i < p->obj.next_label; i++) {
     unsigned j;
     uint16_t f3;
-    buf[0] = p->output_xref[i].type;
-    pos    = p->output_xref[i].field2;
+    buf[0] = p->xref_table[i].type;
+    pos    = p->xref_table[i].field2;
     for (j = poslen; j--; ) {
       buf[1+j] = (unsigned char) pos;
       pos >>= 8;
     }
-    f3 = p->output_xref[i].field3;
+    f3 = p->xref_table[i].field3;
     buf[poslen+1] = (unsigned char) (f3 >> 8);
     buf[poslen+2] = (unsigned char) (f3);
     pdf_add_stream(p->xref_stream, &buf, poslen+3);
@@ -543,8 +592,8 @@ pdf_out_flush (void)
     }
 
     /* Done with xref table */
-    RELEASE(p->output_xref);
-    p->output_xref = NULL;
+    RELEASE(p->xref_table);
+    p->xref_table = NULL;
 
     pdf_out(p, "startxref\n", 10);
     length = sprintf(buf, "%u\n", p->startxref);
@@ -782,6 +831,7 @@ pdf_link_obj (pdf_obj *object)
 pdf_obj *
 pdf_ref_obj (pdf_obj *object)
 {
+  PDF *p = &_pdf;
   if (INVALIDOBJ(object))
     ERROR("pdf_ref_obj(): passed invalid object.");
 
@@ -796,7 +846,7 @@ pdf_ref_obj (pdf_obj *object)
   if (PDF_OBJ_INDIRECTTYPE(object)) {
     return pdf_link_obj(object);
   } else {
-    return pdf_new_ref(object);
+    return pdf_new_ref(p, object);
   }
 }
 
@@ -1052,9 +1102,8 @@ static void
 write_string (PDF *p, pdf_string *str)
 {
   unsigned char *s = NULL;
-  char          *buf;
-  int            nescc = 0, i, count;
-  size_t         size, len = 0;
+  int            i, num_esc = 0;
+  size_t         len = 0;
 
   if (p->state.enc_mode) {
     pdf_encrypt_data(str->string, str->length, &s, &len);
@@ -1063,26 +1112,33 @@ write_string (PDF *p, pdf_string *str)
     len = str->length;
   }
 
-  size = len * 3 + 2;
-  buf  = NEW(size, char);
   /*
    * Count all ASCII non-printable characters.
    */
   for (i = 0; i < len; i++) {
     if (!isprint(s[i]))
-      nescc++;
+      num_esc++;
   }
   /*
    * If the string contains much escaped chars, then we write it as
    * ASCII hex string.
    */
-  if (nescc > len / 3) {
+  if (num_esc > len / 3) {
     pdf_out_char(p, '<');
     for (i = 0; i < len; i++) {
       pdf_out_xchar(p, s[i]);
     }
     pdf_out_char(p, '>');
   } else {
+    char   *buf;
+    size_t  size;
+
+    /* At most len/3 is to be escaped here. (see above)
+     * Thus 4*len/3 + 2*len/3 + 2 is enough for buffer size.
+     */
+    size = len * 2 + 3;
+    buf  = NEW(size, char);
+
     pdf_out_char(p, '(');
     /*
      * This section of code probably isn't speed critical.  Escaping the
@@ -1093,12 +1149,13 @@ write_string (PDF *p, pdf_string *str)
      * handled as quickly as possible since there are so many of them.
      */
     for (i = 0; i < len; i++) {
-      count = pdfobj_escape_str(buf, size, &(s[i]), 1);
+      int count = pdfobj_escape_str(buf, size, &(s[i]), 1);
       pdf_out(p, buf, count);
     }
     pdf_out_char(p, ')');
+
+    RELEASE(buf);
   }
-  RELEASE(buf);
   if (p->state.enc_mode && s)
     RELEASE(s);
 }
@@ -3265,9 +3322,8 @@ pdf_get_object (pdf_file *pf, unsigned int obj_num, unsigned short obj_gen)
 #define OBJ_GEN(o)  (((pdf_indirect *)((o)->data))->generation)
 
 static pdf_obj *
-pdf_new_ref (pdf_obj *object)
+pdf_new_ref (PDF *p, pdf_obj *object)
 {
-  PDF *p = &_pdf;
   pdf_obj *result;
 
   if (object->label == 0) {

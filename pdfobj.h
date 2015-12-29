@@ -41,22 +41,26 @@
 
 #define PDF_OBJ_INVALID 0
 
-#define STREAM_COMPRESS        (1 << 0)
-#define STREAM_USE_PREDICTOR   (1 << 1)
+#define STREAM_COMPRESS      (1 << 0)
+#define STREAM_USE_PREDICTOR (1 << 1)
 
 /* A deeper object hierarchy will be considered as (illegal) loop. */
 #define PDF_OBJ_MAX_DEPTH  30
 
 typedef struct pdf_obj  pdf_obj;
 typedef struct pdf_file pdf_file;
+typedef struct pdf      PDF;
 
 /* External interface to pdf routines */
+extern PDF     *pdf_new    (void);
+extern void     pdf_delete (PDF **p);
 
 extern int      pdf_obj_get_verbose (void);
 extern void     pdf_obj_set_verbose (void);
 extern void     pdf_error_cleanup   (void);
 
-extern void     pdf_out_init      (const char *filename, int do_encryption);
+extern void     pdf_out_init      (const char *filename,
+                                   int enable_encrypt, int enable_objstm);
 extern void     pdf_out_flush     (void);
 extern void     pdf_set_version   (unsigned version);
 extern unsigned pdf_get_version   (void);
