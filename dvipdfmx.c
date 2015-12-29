@@ -46,7 +46,6 @@
 #include "pdfdoc.h"
 #include "pdfdev.h"
 #include "pdfparse.h"
-#include "pdfencrypt.h"
 
 #include "spc_tpic.h"
 #include "specials.h"
@@ -63,13 +62,14 @@
 
 #include "error.h"
 
-int is_xdv = 0;
-
+/* Global variable */
+int         is_xdv = 0;
 const char *my_name;
+int         compat_mode = 0;  /* 0 = dvipdfmx, 1 = dvipdfm */
 
-int compat_mode = 0;     /* 0 = dvipdfmx, 1 = dvipdfm */
-
-static int verbose = 0;
+/* Options */
+static int verbose      = 0;
+static int really_quiet = 0;
 
 static int mp_mode = 0;
 
@@ -82,17 +82,34 @@ static int opt_flags = 0;
 #define OPT_PDFOBJ_NO_PREDICTOR   (1 << 5)
 #define OPT_PDFOBJ_NO_OBJSTM      (1 << 6)
 
-static char   ignore_colors = 0;
-static double annot_grow    = 0.0;
-static int    bookmark_open = 0;
+/* DVI "mag" */
 static double mag           = 1.0;
-static int    font_dpi      = 600;
-static int    really_quiet  = 0;
-/*
+
+/* Controls the behavior of pdf_obj */
+static int  ver_major = 1;
+static int  ver_minor = PDF_VERSION_DEFAULT;
+static int  enable_objstm     = 1;
+static int  compression_level = 9;
+
+/* Controls the behavior of pdf_dev
+ *
  * Precision is essentially limited to 0.01pt.
  * See, dev_set_string() in pdfdev.c.
  */
-static int pdfdecimaldigits = 2;
+static char   ignore_colors    = 0;
+static int    pdfdecimaldigits = 2;
+
+/* Controls the behavior of pdf_doc and others */
+static double annot_grow    = 0.0;
+static int    bookmark_open = 0;
+static int    font_dpi      = 600;
+
+/* Encryption */
+static int     do_encryption = 0;
+static int     keybits       = 40;
+static int32_t permission    = 0x003C;
+static char    opasswd[127]  = {0};
+static char    upasswd[127]  = {0};
 
 /* Image cache life in hours */
 /*  0 means erase all old images and leave new images */
@@ -100,24 +117,20 @@ static int pdfdecimaldigits = 2;
 /* -2 means ignore image cache (default) */
 static int image_cache_life = -2;
 
-/* Encryption */
-static int     do_encryption = 0;
-static int     key_bits      = 40;
-static int32_t permission    = 0x003C;
-
-/* Object stream */
-static int     enable_objstm = 1;
-
-/* Page device */
-double paper_width  = 595.0;
-double paper_height = 842.0;
+/* Page device
+ * paper_width, paper_height, and landscape_mode are made available to dvi.c.
+ * But I don't know why it's made so...
+ */
+double paper_width     = 595.0;
+double paper_height    = 842.0;
 static double x_offset = 72.0;
 static double y_offset = 72.0;
 int    landscape_mode  = 0;
 
 int always_embed = 0; /* always embed fonts, regardless of licensing flags */
 
-char *dvi_filename = NULL, *pdf_filename = NULL;
+static char *dvi_filename = NULL;
+static char *pdf_filename = NULL;
 
 static void read_config_file (const char *config);
 
@@ -439,7 +452,6 @@ do_early_args (int argc, char *argv[])
       dvi_set_verbose();
       pdf_dev_set_verbose();
       pdf_doc_set_verbose();
-      pdf_enc_set_verbose();
       pdf_obj_set_verbose();
       pdf_fontmap_set_verbose();
       dpx_file_set_verbose();
@@ -541,7 +553,7 @@ do_args (int argc, char *argv[], const char *source)
 
     case 'V':
     {
-      int ver_minor = atoi(optarg);
+      ver_minor = atoi(optarg);
       if (ver_minor < PDF_VERSION_MIN) {
         WARN("PDF version 1.%d not supported. Using PDF 1.%d instead.",
              ver_minor, PDF_VERSION_MIN);
@@ -551,12 +563,11 @@ do_args (int argc, char *argv[], const char *source)
              ver_minor, PDF_VERSION_MAX);
         ver_minor = PDF_VERSION_MAX;
       }
-      pdf_set_version((unsigned) ver_minor);
       break;
     }
 
     case 'z':
-      pdf_set_compression(atoi(optarg));
+      compression_level = atoi(optarg);
       break;
 
     case 'd':
@@ -572,9 +583,9 @@ do_args (int argc, char *argv[], const char *source)
       break;
 
     case 'K':
-      key_bits = (unsigned) atoi(optarg);
-      if (!(key_bits >= 40 && key_bits <= 128 && (key_bits % 8 == 0)) &&
-            key_bits != 256)
+      keybits = (unsigned) atoi(optarg);
+      if (!(keybits >= 40 && keybits <= 128 && (keybits % 8 == 0)) &&
+            keybits != 256)
         ERROR("Invalid encryption key length specified: %s", optarg);
       break;
 
@@ -943,12 +954,6 @@ main (int argc, char *argv[])
   paperinit();
   system_default();
 
-  /* For a moment we simply discard returned value.
-   * This is underway work to place all file static variable into an object
-   * representing PDF file. There are too manay things to be done.
-   */
-  pdf_new();
-
   pdf_init_fontmaps(); /* This must come before parsing options... */
 
   read_config_file(DPX_CONFIG_FILE);
@@ -959,7 +964,7 @@ main (int argc, char *argv[])
   kpse_init_prog("", font_dpi, NULL, NULL);
   kpse_set_program_enabled(kpse_pk_format, true, kpse_src_texmf_cnf);
 #endif
-  pdf_font_set_dpi(font_dpi);
+  pdf_font_set_dpi(font_dpi); /* Should we remove PK font support? */
   dpx_delete_old_cache(image_cache_life);
 
   if (!dvi_filename) {
@@ -979,27 +984,28 @@ main (int argc, char *argv[])
   MESG("%s -> %s\n", dvi_filename ? dvi_filename : "stdin",
                      pdf_filename ? pdf_filename : "stdout");
 
-  pdf_enc_compute_id_string(dvi_filename, pdf_filename);
-  if (do_encryption) {
-    if (key_bits > 40 && pdf_get_version() < 4)
-      ERROR("Chosen key length requires at least PDF 1.4. "
-            "Use \"-V 4\" to change.");
-    pdf_enc_set_passwd(key_bits, permission, NULL, NULL);
-  }
-
   if (mp_mode) {
     x_offset = 0.0;
     y_offset = 0.0;
     dvi2pts  = 0.01; /* dvi2pts controls accuracy. */
   } else {
-    int ver_major = 0,  ver_minor = 0;
-    char owner_pw[MAX_PWD_LEN], user_pw[MAX_PWD_LEN];
+    int ver_major = 0;
     /* Dependency between DVI and PDF side is rather complicated... */
     dvi2pts = dvi_init(dvi_filename, mag);
     if (dvi2pts == 0.0)
       ERROR("dvi_init() failed!");
 
-    pdf_doc_set_creator(dvi_comment());
+    if (do_encryption) {
+      if (!(keybits >= 40 && keybits <= 128 && (keybits % 8 == 0)) &&
+            keybits != 256)
+        ERROR("Invalid encryption key length specified: %u", keybits);
+      else if (keybits  > 40  && 10*ver_major + ver_minor < 14)
+        ERROR("Chosen key length requires at least PDF 1.4. " \
+              "Use \"-V 4\" to change.");
+      else if (keybits >= 256 && 10*ver_major + ver_minor < 17)
+        ERROR("256-bit AES encryption requires PDF version > 1.7.");
+      do_encryption = 1;
+    }
 
     if (do_encryption) {
       /* command line takes precedence */
@@ -1008,31 +1014,13 @@ main (int argc, char *argv[])
                         &x_offset, &y_offset, &landscape_mode,
                         &ver_major, &ver_minor,
                         NULL, NULL, NULL, NULL, NULL);
-      /* FIXME: pdf_set_version() should come before ecrcyption setting.
-       *        It's too late to set here...
-       */
-      if (ver_minor >= PDF_VERSION_MIN && ver_minor <= PDF_VERSION_MAX) {
-        pdf_set_version(ver_minor);
-      }
     } else {
       dvi_scan_specials(0,
                         &paper_width, &paper_height,
                         &x_offset, &y_offset, &landscape_mode,
                         &ver_major, &ver_minor,
-                        &do_encryption, &key_bits, &permission, owner_pw, user_pw);
-      if (ver_minor >= PDF_VERSION_MIN && ver_minor <= PDF_VERSION_MAX) {
-        pdf_set_version(ver_minor);
-      }
-      if (do_encryption) {
-        if (!(key_bits >= 40 && key_bits <= 128 && (key_bits % 8 == 0)) &&
-              key_bits != 256)
-          ERROR("Invalid encryption key length specified: %u", key_bits);
-        else if (key_bits > 40 && pdf_get_version() < 4)
-          ERROR("Chosen key length requires at least PDF 1.4. " \
-                "Use \"-V 4\" to change.");
-        do_encryption = 1;
-        pdf_enc_set_passwd(key_bits, permission, owner_pw, user_pw);
-      }
+                        &do_encryption, &keybits, &permission,
+                        opasswd, upasswd);
     }
     if (landscape_mode) {
       SWAP(paper_width, paper_height);
@@ -1048,22 +1036,30 @@ main (int argc, char *argv[])
    * annot_grow:    Margin of annotation.
    * bookmark_open: Miximal depth of open bookmarks.
    */
-  pdf_open_document(pdf_filename, do_encryption, enable_objstm,
+  pdf_open_document(pdf_filename, dvi_filename, dvi_comment(),
+                    ver_major, ver_minor,
+                    do_encryption, keybits, permission, opasswd, upasswd,
+                    enable_objstm,
                     paper_width, paper_height, annot_grow, bookmark_open,
                     !(opt_flags & OPT_PDFDOC_NO_DEST_REMOVE));
+
+  /* Changing compression level should be possible anywhere in the process of
+   * PDF generation but there are no guarantee that it is reflected immediately.
+   * Writing PDF stream object can be delayed in dvipdfmx.
+   */
+  pdf_set_compression(compression_level);
 
   /* Ignore_colors placed here since
    * they are considered as device's capacity.
    */
   pdf_init_device(dvi2pts, pdfdecimaldigits, ignore_colors);
 
+  /* Miscellaneous option flags */
   if (opt_flags & OPT_CIDFONT_FIXEDPITCH)
     CIDFont_set_flags(CIDFONT_FORCE_FIXEDPITCH);
-
   /* Please move this to spc_init_specials(). */
   if (opt_flags & OPT_TPIC_TRANSPARENT_FILL)
     tpic_set_fill_mode(1);
-
   if (opt_flags & OPT_PDFOBJ_NO_PREDICTOR)
     pdf_set_use_predictor(0); /* No prediction */
 

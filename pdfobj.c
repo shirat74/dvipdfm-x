@@ -257,7 +257,7 @@ init_pdf_struct (PDF *p)
 static PDF _pdf;
 #endif
 
-PDF *
+static PDF *
 pdf_new (void) {
 #if 0
   PDF *p = NEW(1, PDF);
@@ -268,7 +268,8 @@ pdf_new (void) {
   return p;
 }
 
-void
+#if 0
+static void
 pdf_delete (PDF **pp)
 {
   PDF *p;
@@ -284,15 +285,14 @@ pdf_delete (PDF **pp)
     pdf_release_obj(p->xref_stream);
   if (p->output_stream)
     pdf_release_obj(p->output_stream);
-#if 0
   /* Not sure */
   if (p->current_objstm)
     pdf_release_obj(p->current_objstm);
-#endif
 
   RELEASE(p);
   *pp = NULL;
 }
+#endif
 
 /* Internal static routines */
 
@@ -368,13 +368,16 @@ pdf_set_use_predictor (int bval)
 }
 
 void
-pdf_set_version (unsigned version)
+pdf_set_version (int ver_major, int ver_minor)
 {
   PDF *p = &_pdf;
-  /* Don't forget to update CIDFont_stdcc_def[] in cid.c too! */
-  if (version >= PDF_VERSION_MIN && version <= PDF_VERSION_MAX) {
-    p->version.minor = version;
+  if (ver_major != 1 ||
+      ver_minor < PDF_VERSION_MIN || ver_minor > PDF_VERSION_MAX) {
+    WARN("Unsupported PDF version %d.%d ... Ignoring.", ver_major, ver_minor);
+    return;
   }
+  p->version.major = ver_major;
+  p->version.minor = ver_minor;
 }
 
 unsigned
@@ -420,6 +423,12 @@ pdf_out_init (const char *filename, int enable_encrypt, int enable_objstm)
 {
   PDF *p = &_pdf;
   char v;
+
+  /* For a moment we simply discard returned value. (its pointer to _pdf)
+   * This is underway work to place all file static variable into an object
+   * representing PDF file. There are too manay things to be done.
+   */
+  pdf_new();
 
   add_xref_entry(p, 0, 0, 0, 0xffff);
   p->obj.next_label = 1;
@@ -1049,16 +1058,16 @@ pdf_string_length (pdf_obj *object)
  * characters in an output string.
  */
 int
-pdfobj_escape_str (char *buffer, int bufsize, const unsigned char *s, int len)
+pdfobj_escape_str (char *dst, size_t dstlen,
+                   const unsigned char *src, size_t srclen)
 {
-  int result = 0;
-  int i;
+  int  pos = 0, i;
 
-  for (i = 0; i < len; i++) {
+  for (i = 0; i < srclen; i++) {
     unsigned char ch;
 
-    ch = s[i];
-    if (result > bufsize - 4)
+    ch = src[i];
+    if (pos + 4 > dstlen)
       ERROR("pdfobj_escape_str: Buffer overflow");
 
     /*
@@ -1066,36 +1075,36 @@ pdfobj_escape_str (char *buffer, int bufsize, const unsigned char *s, int len)
      * smaller size for most documents when zlib compressed.
      */
     if (ch < 32 || ch > 126) {
-      buffer[result++] = '\\';
+      dst[pos++] = '\\';
 #if 0
-      if (i < len - 1 && !isdigit(s[i+1]))
-	result += sprintf(buffer+result, "%o", ch);
+      if (i < srclen - 1 && !isdigit(src[i+1]))
+        pos += sprintf(dst + pos, "%o", ch);
       else
-	result += sprintf(buffer+result, "%03o", ch);
+        pos += sprintf(dst + pos, "%03o", ch);
 #endif
-      result += sprintf(buffer+result, "%03o", ch);
+      pos += sprintf(dst + pos, "%03o", ch);
     } else {
       switch (ch) {
       case '(':
-	buffer[result++] = '\\';
-	buffer[result++] = '(';
-	break;
+        dst[pos++] = '\\';
+        dst[pos++] = '(';
+        break;
       case ')':
-	buffer[result++] = '\\';
-	buffer[result++] = ')';
-	break;
+        dst[pos++] = '\\';
+	      dst[pos++] = ')';
+        break;
       case '\\':
-	buffer[result++] = '\\';
-	buffer[result++] = '\\';
-	break;
+        dst[pos++] = '\\';
+        dst[pos++] = '\\';
+        break;
       default:
-	buffer[result++] = ch;
-	break;
+        dst[pos++] = ch;
+        break;
       }
     }
   }
 
-  return result;
+  return  pos;
 }
 
 static void
@@ -1219,7 +1228,7 @@ static void
 write_name (PDF *p, pdf_name *name)
 {
   char *s;
-  int i, length;
+  int   i, length;
 
   s      = name->name;
   length = name->name ? strlen(name->name) : 0;
@@ -3757,7 +3766,6 @@ pdf_file_get_catalog (pdf_file *pf)
 pdf_file *
 pdf_open (const char *ident, FILE *file)
 {
-  PDF *p = &_pdf;
   pdf_file *pf = NULL;
 
   ASSERT(pdf_files);
@@ -3770,15 +3778,6 @@ pdf_open (const char *ident, FILE *file)
   } else {
     pdf_obj *new_version;
     int version = check_for_pdf_version(file);
-
-    if (version < 1 || version > p->version.minor) {
-      WARN("pdf_open: Not a PDF 1.[1-%u] file.", p->version.minor);
-   /*
-    * Try to embed the PDF image, even if the PDF version is newer than
-    * the setting.
-    *  return NULL;
-    */
-    }
 
     pf = pdf_file_new(file);
     pf->version = version;

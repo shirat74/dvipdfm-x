@@ -2,17 +2,17 @@
 
     Copyright (C) 2002-2015 by Jin-Hwan Cho and Shunsaku Hirata,
     the dvipdfmx project team.
-    
+
     This program is free software; you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
     the Free Software Foundation; either version 2 of the License, or
     (at your option) any later version.
-    
+
     This program is distributed in the hope that it will be useful,
     but WITHOUT ANY WARRANTY; without even the implied warranty of
     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
     GNU General Public License for more details.
-    
+
     You should have received a copy of the GNU General Public License
     along with this program; if not, write to the Free Software
     Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA.
@@ -87,13 +87,6 @@ static const unsigned char padding_bytes[32] = {
   0x2f, 0x0c, 0xa9, 0xfe, 0x64, 0x53, 0x69, 0x7a
 };
 
-static unsigned char verbose = 0;
-
-void pdf_enc_set_verbose (void)
-{
-  if (verbose < 255) verbose++;
-}
-
 static void
 pdf_enc_init (int use_aes, int encrypt_metadata)
 {
@@ -108,12 +101,12 @@ pdf_enc_init (int use_aes, int encrypt_metadata)
 "%s-%s, Copyright 2002-2015 by Jin-Hwan Cho, Matthias Franz, and Shunsaku Hirata"
 
 void
-pdf_enc_compute_id_string (char *dviname, char *pdfname)
+pdf_enc_compute_id_string (const char *str1, const char *str2)
 {
   struct pdf_sec *p = &sec_data;
-  char *date_string, *producer;
-  time_t current_time;
-  struct tm *bd_time;
+  char           *date_string, *producer;
+  time_t          current_time;
+  struct tm      *bd_time;
   MD5_CONTEXT     md5;
 
   /* FIXME: This should be placed in main() or somewhere. */
@@ -135,10 +128,10 @@ pdf_enc_compute_id_string (char *dviname, char *pdfname)
   MD5_write(&md5, (unsigned char *)producer, strlen(producer));
   RELEASE(producer);
 
-  if (dviname)
-    MD5_write(&md5, (unsigned char *)dviname, strlen(dviname));
-  if (pdfname)
-    MD5_write(&md5, (unsigned char *)pdfname, strlen(pdfname));
+  if (str1)
+    MD5_write(&md5, (unsigned char *)str1, strlen(str1));
+  if (str2)
+    MD5_write(&md5, (unsigned char *)str2, strlen(str2));
   MD5_final(p->ID, &md5);
 }
 
@@ -539,17 +532,17 @@ preproc_password (const char *passwd, char *outbuf, int V)
 }
 
 void
-pdf_enc_set_passwd (unsigned int bits, unsigned int perm,
+pdf_enc_set_passwd (int keybits, int32_t permission,
                     const char *oplain, const char *uplain)
 {
   struct pdf_sec *p = &sec_data;
   char            input[128], opasswd[128], upasswd[128];
-  char *retry_passwd;
+  char           *retry_passwd;
   int             version;
 
   version = pdf_get_version();
 
-  p->key_size = (int) (bits / 8);
+  p->key_size = (int) (keybits / 8);
   if (p->key_size == 5) /* 40bit */
     p->V = 1;
   else if (p->key_size <= 16) {
@@ -557,13 +550,13 @@ pdf_enc_set_passwd (unsigned int bits, unsigned int perm,
   } else if (p->key_size == 32) {
     p->V = 5;
   } else {
-    WARN("Key length %d unsupported.", bits);
+    WARN("Key length %d unsupported.", keybits);
     p->key_size = 5;
     p->V = 2;
   }
   check_version(p, version);
 
-  p->P = (int32_t) (perm | 0xC0U);
+  p->P = (int32_t) (permission | 0xC0U);
   switch (p->V) {
   case 1:
     p->R = (p->P < 0x100L) ? 2 : 3;
@@ -598,7 +591,7 @@ pdf_enc_set_passwd (unsigned int bits, unsigned int perm,
       strncpy(input, getpass("Owner password: "), MAX_PWD_LEN);
       retry_passwd = getpass("Re-enter owner password: ");
       if (!strncmp(input, retry_passwd, MAX_PWD_LEN))
-	break;
+        break;
       fputs("Password is not identical.\nTry again.\n", stderr);
       fflush(stderr);
     }
@@ -613,7 +606,7 @@ pdf_enc_set_passwd (unsigned int bits, unsigned int perm,
       strncpy(input, getpass("User password: "), MAX_PWD_LEN);
       retry_passwd = getpass("Re-enter user password: ");
       if (!strncmp(input, retry_passwd, MAX_PWD_LEN))
-	break;
+        break;
       fputs("Password is not identical.\nTry again.\n", stderr);
       fflush(stderr);
     }
@@ -699,7 +692,7 @@ pdf_encrypt_data (const unsigned char *plain, size_t plain_len,
 }
 
 pdf_obj *
-pdf_encrypt_obj (void)
+pdf_get_encrypt_dict (void)
 {
   struct pdf_sec *p = &sec_data;
   pdf_obj *doc_encrypt;

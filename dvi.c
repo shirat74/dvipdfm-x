@@ -45,7 +45,6 @@
 #include "pdfdev.h"
 #include "pdfdoc.h"
 #include "pdfparse.h"
-#include "pdfencrypt.h"
 
 #include "fontmap.h"
 
@@ -2224,10 +2223,10 @@ scan_special (double *wd, double *ht, double *xo, double *yo, int *lm,
               char *owner_pw, char *user_pw,
               const char *buf, uint32_t size)
 {
-  char  *q;
+  char       *q;
   const char *p = buf, *endptr;
-  int    ns_pdf = 0, error = 0;
-  double tmp;
+  int         ns_pdf = 0, error = 0;
+  double      tmp;
 
   endptr = p + size;
 
@@ -2281,6 +2280,7 @@ scan_special (double *wd, double *ht, double *xo, double *yo, int *lm,
             if (!error)
               *yo = tmp * dvi_tell_mag();
           } else if (!strcmp(kp, "default")) {
+            /* What is the purpose of this??? */
             *wd = paper_width;
             *ht = paper_height;
             *lm = landscape_mode;
@@ -2351,14 +2351,14 @@ scan_special (double *wd, double *ht, double *xo, double *yo, int *lm,
           if (!strcmp(kp, "ownerpw")) {
             if ((obj = parse_pdf_string(&p, endptr))) {
               if (pdf_string_value(obj))
-                strncpy(owner_pw, pdf_string_value(obj), MAX_PWD_LEN);
+                strncpy(owner_pw, pdf_string_value(obj), 127);
               pdf_release_obj(obj);
             } else
               error = -1;
           } else if (!strcmp(kp, "userpw")) {
             if ((obj = parse_pdf_string(&p, endptr))) {
               if (pdf_string_value(obj))
-                strncpy(user_pw, pdf_string_value(obj), MAX_PWD_LEN);
+                strncpy(user_pw, pdf_string_value(obj), 127);
               pdf_release_obj(obj);
             } else
               error = -1;

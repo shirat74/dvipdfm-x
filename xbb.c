@@ -283,10 +283,8 @@ int extractbb (int argc, char *argv[])
 
   pdf_files_init();
 
-  pdf_set_version(PDF_VERSION_MAX);
-
   opterr = 0;
-  
+
   while ((c = getopt_long(argc, argv, optstrig, long_options, NULL)) != -1) {
     switch(c) {
     case 'h':
@@ -300,7 +298,7 @@ int extractbb (int argc, char *argv[])
     case 'B':
       if (strcasecmp (optarg, "cropbox") == 0) PageBox = 1;
       else if (strcasecmp (optarg, "mediabox") == 0) PageBox = 2;
-      else if (strcasecmp (optarg, "artbox") == 0) PageBox = 3; 
+      else if (strcasecmp (optarg, "artbox") == 0) PageBox = 3;
       else if (strcasecmp (optarg, "trimbox") == 0) PageBox = 4;
       else if (strcasecmp (optarg, "bleedbox") == 0) PageBox = 5;
       else {
@@ -331,7 +329,7 @@ int extractbb (int argc, char *argv[])
     default:
       fprintf(stderr, "%s: %s \"-%c\"", my_name,
               c == ':' ? "Missing argument for" : "Unknown option",
-              optopt); 
+              optopt);
       usage();
     }
   }

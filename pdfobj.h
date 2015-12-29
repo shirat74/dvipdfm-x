@@ -52,9 +52,6 @@ typedef struct pdf_file pdf_file;
 typedef struct pdf      PDF;
 
 /* External interface to pdf routines */
-extern PDF     *pdf_new    (void);
-extern void     pdf_delete (PDF **p);
-
 extern int      pdf_obj_get_verbose (void);
 extern void     pdf_obj_set_verbose (void);
 extern void     pdf_error_cleanup   (void);
@@ -62,7 +59,7 @@ extern void     pdf_error_cleanup   (void);
 extern void     pdf_out_init      (const char *filename,
                                    int enable_encrypt, int enable_objstm);
 extern void     pdf_out_flush     (void);
-extern void     pdf_set_version   (unsigned version);
+extern void     pdf_set_version   (int major, int minor);
 extern unsigned pdf_get_version   (void);
 
 extern void     pdf_release_obj (pdf_obj *object);
@@ -197,13 +194,10 @@ extern pdf_obj  *pdf_file_get_catalog (pdf_file *pf);
 extern pdf_obj *pdf_deref_obj     (pdf_obj *object);
 extern pdf_obj *pdf_import_object (pdf_obj *object);
 
-extern int      pdfobj_escape_str (char *buffer, int size, const unsigned char *s, int len);
+extern int      pdfobj_escape_str (char *dst, size_t dstlen,
+                                   const unsigned char *src, size_t srclen);
 
-extern pdf_obj *pdf_new_indirect  (pdf_file *pf, unsigned label, unsigned short generation);
-
-#define MAX_IMAGES 5000 /* This may be enough */
-extern int PageBox;
-extern uint8_t PageBox_of_id[];
-extern int ImageSpecial;
+extern pdf_obj *pdf_new_indirect  (pdf_file *pf,
+                                   uint32_t  label, uint16_t generation);
 
 #endif  /* _PDFOBJ_H_ */
