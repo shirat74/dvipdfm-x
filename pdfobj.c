@@ -49,24 +49,26 @@
 #define ARRAY_ALLOC_SIZE       256
 #define IND_OBJECTS_ALLOC_SIZE 512
 
-#define OBJ_NO_OBJSTM   (1 << 0)
 /* Objects with this flag will not be put into an object stream.
-   For instance, all stream objects have this flag set.          */
-#define OBJ_NO_ENCRYPT  (1 << 1)
+ * For instance, all stream objects have this flag set.
+ */
+#define OBJ_NO_OBJSTM   (1 << 0)
 /* Objects with this flag will not be encrypted.
-   This implies OBJ_NO_OBJSTM if encryption is turned on.        */
+ * This implies OBJ_NO_OBJSTM if encryption is turned on.
+ */
+#define OBJ_NO_ENCRYPT  (1 << 1)
 
 /* Any of these types can be represented as follows */
 struct pdf_obj
 {
-  int type;
+  int           type;
 
-  unsigned int   label;  /* Only used for indirect objects
-			    all other "label" to zero */
-  unsigned short generation;  /* Only used if "label" is used */
-  unsigned refcount;  /* Number of links to this object */
-  int      flags;
-  void    *data;
+  uint32_t      label;       /* Only used for indirect objects
+                                all other "label" to zero */
+  uint16_t      generation;  /* Only used if "label" is used */
+  uint16_t      refcount;    /* Number of links to this object */
+  int32_t       flags;
+  void         *data;
 };
 
 struct pdf_boolean
@@ -82,18 +84,18 @@ struct pdf_number
 struct pdf_string
 {
   unsigned char *string;
-  unsigned short length;
+  size_t         length;
 };
 
 struct pdf_name
 {
-  char *name;
+  char   *name;
 };
 
 struct pdf_array
 {
-  unsigned int max;
-  unsigned int size;
+  uint32_t         max;
+  uint32_t         size;
   struct pdf_obj **values;
 };
 
@@ -128,8 +130,8 @@ struct pdf_stream
   struct pdf_obj     *dict;
   unsigned char      *stream;
   int                *objstm_data;    /* used for object streams */
-  unsigned int        stream_length;
-  unsigned int        max_length;
+  size_t              stream_length;
+  size_t              max_length;
   int32_t             _flags;
   struct decode_parms decodeparms;
 };
@@ -138,8 +140,8 @@ struct pdf_indirect
 {
   pdf_file      *pf;
   pdf_obj       *obj;             /* used when PF == NULL */
-  unsigned       label;
-  unsigned short generation;
+  uint32_t       label;
+  uint16_t       generation;
 };
 
 typedef void                pdf_null;
@@ -152,30 +154,14 @@ typedef struct pdf_dict     pdf_dict;
 typedef struct pdf_stream   pdf_stream;
 typedef struct pdf_indirect pdf_indirect;
 
-static FILE *pdf_output_file = NULL;
-
-static int pdf_output_file_position = 0;
-static int pdf_output_line_position = 0;
-static int compression_saved        = 0;
-
-#define FORMAT_BUF_SIZE 4096
-static char format_buffer[FORMAT_BUF_SIZE];
-
 typedef struct xref_entry
 {
   unsigned char  type;       /* object storage type              */
-  unsigned int   field2;     /* offset in file or object stream  */
-  unsigned short field3;     /* generation or index              */
+  uint32_t       field2;     /* offset in file or object stream  */
+  uint16_t       field3;     /* generation or index              */
   pdf_obj       *direct;     /* used for imported objects        */
   pdf_obj       *indirect;   /* used for imported objects        */
 } xref_entry;
-
-static xref_entry *output_xref;
-
-static unsigned int pdf_max_ind_objects;
-static unsigned int next_label;
-
-static unsigned int startxref;
 
 struct pdf_file
 {
@@ -188,66 +174,121 @@ struct pdf_file
   int         version;
 };
 
-static pdf_obj *output_stream;
+static int verbose   = 0;
+static int error_out = 0;
 
 #define OBJSTM_MAX_OBJS  200
 /* the limit is only 100 for linearized PDF */
 
-static int enc_mode;
-static int doc_enc_mode;
+struct pdf {
+  struct {
+    int    enc_mode; /* boolean */
+  } state;
 
-static pdf_obj *trailer_dict;
-static pdf_obj *xref_stream;
+  struct {
+    int    major;
+    int    minor;
+  } version;
+
+  struct {
+    struct {
+      int  level;
+      int  use_predictor;
+    } compression;
+
+    int    encrypt;
+    int    use_objstm;
+  } options;
+
+  struct {
+    FILE  *file;
+    size_t file_position;
+    int    line_position;
+    size_t compression_saved;
+  } output;
+
+  struct {
+    uint32_t    next_label;
+    uint32_t    max_ind_objects;
+    xref_entry *xref;
+  } obj;
+
+  pdf_obj    *trailer;
+  pdf_obj    *xref_stream;
+  pdf_obj    *output_stream;
+  uint32_t    startxref;
+  xref_entry *output_xref;
+  pdf_obj    *current_objstm;
+
+};
+
+typedef struct pdf PDF;
+static PDF _pdf = {
+  {0},
+  { 1, PDF_VERSION_DEFAULT },
+  {
+    { 9, 1 },
+    0,
+    0
+  },
+  { NULL, 0, 0, 0 },
+  { 0, 0, NULL },
+  NULL,
+  NULL,
+  NULL,
+  0,
+  NULL,
+  NULL
+};
 
 /* Internal static routines */
 
 static int check_for_pdf_version (FILE *file);
 
-static void pdf_flush_obj (pdf_obj *object, FILE *file);
-static void pdf_label_obj (pdf_obj *object);
-static void pdf_write_obj (pdf_obj *object, FILE *file);
+static void pdf_flush_obj (PDF *p, pdf_obj *object);
+static void pdf_label_obj (PDF *p, pdf_obj *object);
+static void pdf_write_obj (PDF *p, pdf_obj *object);
 
 static void  set_objstm_data (pdf_obj *objstm, int *data);
 static int  *get_objstm_data (pdf_obj *objstm);
 static void  release_objstm  (pdf_obj *objstm);
 
-static void pdf_out_char (FILE *file, char c);
-static void pdf_out      (FILE *file, const void *buffer, int length);
+static void pdf_out_char (PDF *p, char c);
+static void pdf_out      (PDF *p, const void *buffer, int length);
 
 static pdf_obj *pdf_new_ref  (pdf_obj *object);
 static void release_indirect (pdf_indirect *data);
-static void write_indirect   (pdf_indirect *indirect, FILE *file);
+static void write_indirect   (PDF *p, pdf_indirect *indirect);
 
 static void release_boolean (pdf_obj *data);
-static void write_boolean   (pdf_boolean *data, FILE *file);
+static void write_boolean   (PDF *p, pdf_boolean *data);
 
-static void write_null   (FILE *file);
+static void write_null   (PDF *p);
 
 static void release_number (pdf_number *number);
-static void write_number   (pdf_number *number, FILE *file);
+static void write_number   (PDF *p, pdf_number *number);
 
-static void write_string   (pdf_string *str, FILE *file);
+static void write_string   (PDF *p, pdf_string *str);
 static void release_string (pdf_string *str);
 
-static void write_name   (pdf_name *name, FILE *file);
+static void write_name   (PDF *p, pdf_name *name);
 static void release_name (pdf_name *name);
 
-static void write_array   (pdf_array *array, FILE *file);
+static void write_array   (PDF *p, pdf_array *array);
 static void release_array (pdf_array *array);
 
-static void write_dict   (pdf_dict *dict, FILE *file);
+static void write_dict   (PDF *p, pdf_dict *dict);
 static void release_dict (pdf_dict *dict);
 
-static void write_stream   (pdf_stream *stream, FILE *file);
+static void write_stream   (PDF *p, pdf_stream *stream);
 static void release_stream (pdf_stream *stream);
 
-static int  verbose = 0;
-static char compression_level = 9;
-static char compression_use_predictor = 1;
 
 void
 pdf_set_compression (int level)
 {
+  PDF *p = &_pdf;
+
 #ifndef   HAVE_ZLIB
   ERROR("You don't have compression compiled in. Possibly libz wasn't found by configure.");
 #else
@@ -256,7 +297,7 @@ pdf_set_compression (int level)
     WARN("Unable to set compression level -- your zlib doesn't have compress2().");
 #endif
   if (level >= 0 && level <= 9)
-    compression_level = level;
+    p->options.compression.level = level;
   else {
     ERROR("set_compression: invalid compression level: %d", level);
   }
@@ -268,24 +309,26 @@ pdf_set_compression (int level)
 void
 pdf_set_use_predictor (int bval)
 {
-  compression_use_predictor = bval ? 1 : 0;
-}
+  PDF *p = &_pdf;
 
-static unsigned pdf_version = PDF_VERSION_DEFAULT;
+  p->options.compression.use_predictor = bval ? 1 : 0;
+}
 
 void
 pdf_set_version (unsigned version)
 {
+  PDF *p = &_pdf;
   /* Don't forget to update CIDFont_stdcc_def[] in cid.c too! */
   if (version >= PDF_VERSION_MIN && version <= PDF_VERSION_MAX) {
-    pdf_version = version;
+    p->version.minor = version;
   }
 }
 
 unsigned
 pdf_get_version (void)
 {
-  return pdf_version;
+  PDF *p = &_pdf;
+  return p->version.minor;
 }
 
 int
@@ -300,113 +343,120 @@ pdf_obj_set_verbose(void)
   verbose++;
 }
 
-static pdf_obj *current_objstm = NULL;
-static int do_objstm;
-
 static void
-add_xref_entry (unsigned label, unsigned char type, unsigned int field2, unsigned short field3)
+add_xref_entry (PDF *p,
+                unsigned label, unsigned char type,
+                unsigned int field2, unsigned short field3)
 {
-  if (label >= pdf_max_ind_objects) {
-    pdf_max_ind_objects = (label/IND_OBJECTS_ALLOC_SIZE+1)*IND_OBJECTS_ALLOC_SIZE;
-    output_xref = RENEW(output_xref, pdf_max_ind_objects, xref_entry);
+  if (label >= p->obj.max_ind_objects) {
+    p->obj.max_ind_objects =
+      (label/IND_OBJECTS_ALLOC_SIZE+1)*IND_OBJECTS_ALLOC_SIZE;
+    p->output_xref = RENEW(p->output_xref, p->obj.max_ind_objects, xref_entry);
   }
 
-  output_xref[label].type   = type;
-  output_xref[label].field2 = field2;
-  output_xref[label].field3 = field3;
-  output_xref[label].direct   = NULL;
-  output_xref[label].indirect = NULL;
+  p->output_xref[label].type   = type;
+  p->output_xref[label].field2 = field2;
+  p->output_xref[label].field3 = field3;
+  p->output_xref[label].direct   = NULL;
+  p->output_xref[label].indirect = NULL;
 }
 
 #define BINARY_MARKER "%\344\360\355\370\n"
 void
-pdf_out_init (const char *filename, int do_encryption, int enable_objstm)
+pdf_out_init (const char *filename, int enable_encrypt, int enable_objstm)
 {
+  PDF *p = &_pdf;
   char v;
 
-  output_xref = NULL;
-  pdf_max_ind_objects = 0;
-  add_xref_entry(0, 0, 0, 0xffff);
-  next_label = 1;
+  p->output_xref = NULL;
+  p->obj.max_ind_objects = 0;
+  add_xref_entry(p, 0, 0, 0, 0xffff);
+  p->obj.next_label = 1;
 
-  if (pdf_version >= 5) {
+  if (p->version.minor >= 5) {
+    /* Enable XRef stream and Object stream only when it is enabled. */
     if (enable_objstm) {
-      xref_stream = pdf_new_stream(STREAM_COMPRESS);
-      xref_stream->flags |= OBJ_NO_ENCRYPT;
-      trailer_dict = pdf_stream_dict(xref_stream);
-      pdf_add_dict(trailer_dict, pdf_new_name("Type"), pdf_new_name("XRef"));
-      do_objstm = 1;
+      p->xref_stream = pdf_new_stream(STREAM_COMPRESS);
+      p->xref_stream->flags |= OBJ_NO_ENCRYPT;
+      p->trailer = pdf_stream_dict(p->xref_stream);
+      pdf_add_dict(p->trailer, pdf_new_name("Type"), pdf_new_name("XRef"));
+      p->options.use_objstm = 1;
     } else {
-      trailer_dict = pdf_new_dict();
-      do_objstm = 0;
+      p->xref_stream = NULL;
+      p->trailer     = pdf_new_dict();
+      p->options.use_objstm = 0;
     }
   } else {
-    xref_stream = NULL;
-    trailer_dict = pdf_new_dict();
-    do_objstm = 0;
+    p->xref_stream = NULL;
+    p->trailer     = pdf_new_dict();
+    /* Silently ignore object stream option for PDF < 1.5 */
+    p->options.use_objstm = 0;
   }
 
-  output_stream = NULL;
+  p->output_stream = NULL;
 
   if (filename == NULL) { /* no filename: writing to stdout */
 #ifdef WIN32
     setmode(fileno(stdout), _O_BINARY);
 #endif
-    pdf_output_file = stdout;
+    p->output.file = stdout;
   } else {
-    pdf_output_file = MFOPEN(filename, FOPEN_WBIN_MODE);
-    if (!pdf_output_file) {
+    p->output.file = MFOPEN(filename, FOPEN_WBIN_MODE);
+    if (!p->output.file) {
       if (strlen(filename) < 128)
         ERROR("Unable to open \"%s\".", filename);
       else
         ERROR("Unable to open file.");
     }
   }
-  pdf_out(pdf_output_file, "%PDF-1.", strlen("%PDF-1."));
-  v = '0' + pdf_version;
-  pdf_out(pdf_output_file, &v, 1);
-  pdf_out(pdf_output_file, "\n", 1);
-  pdf_out(pdf_output_file, BINARY_MARKER, strlen(BINARY_MARKER));
+  pdf_out(p, "%PDF-1.", strlen("%PDF-1."));
+  v = '0' + p->version.minor;
+  pdf_out(p, &v, 1);
+  pdf_out(p, "\n", 1);
+  pdf_out(p, BINARY_MARKER, strlen(BINARY_MARKER));
 
-  enc_mode = 0;
-  doc_enc_mode = do_encryption;
+  p->state.enc_mode  = 0;
+  p->options.encrypt = enable_encrypt;
 }
 
 static void
-dump_xref_table (void)
+dump_xref_table (PDF *p)
 {
-  int length;
-  unsigned int i;
+  int   length, i;
+  char  buf[32];
 
-  pdf_out(pdf_output_file, "xref\n", 5);
+  pdf_out(p, "xref\n", 5);
 
-  length = sprintf(format_buffer, "%d %u\n", 0, next_label);
-  pdf_out(pdf_output_file, format_buffer, length);
+  length = sprintf(buf, "%d %u\n", 0, p->obj.next_label);
+  pdf_out(p, buf, length);
 
   /*
    * Every space counts.  The space after the 'f' and 'n' is * *essential*.
    * The PDF spec says the lines must be 20 characters long including the
    * end of line character.
    */
-  for (i = 0; i < next_label; i++) {
-    unsigned char type = output_xref[i].type;
+  for (i = 0; i < p->obj.next_label; i++) {
+    unsigned char type = p->output_xref[i].type;
     if (type > 1)
       ERROR("object type %hu not allowed in xref table", type);
-    length = sprintf(format_buffer, "%010u %05hu %c \n",
-		     output_xref[i].field2, output_xref[i].field3,
-		     type ? 'n' : 'f');
-    pdf_out(pdf_output_file, format_buffer, length);
+    length = sprintf(buf, "%010u %05hu %c \n",
+		                 p->output_xref[i].field2, p->output_xref[i].field3,
+		                 type ? 'n' : 'f');
+    pdf_out(p, buf, length);
   }
 }
 
 static void
-dump_trailer_dict (void)
+dump_trailer (PDF *p)
 {
-  pdf_out(pdf_output_file, "trailer\n", 8);
-  enc_mode = 0;
-  write_dict(trailer_dict->data, pdf_output_file);
-  pdf_release_obj(trailer_dict);
-  pdf_out_char(pdf_output_file, '\n');
+  pdf_obj *trailer = p->trailer;
+
+  pdf_out(p, "trailer\n", 8);
+  p->state.enc_mode = 0;
+  write_dict(p, trailer->data);
+  pdf_release_obj(trailer);
+  p->trailer = NULL;
+  pdf_out_char(p, '\n');
 }
 
 /*
@@ -414,7 +464,7 @@ dump_trailer_dict (void)
  * contributed by Matthias Franz (March 21, 2007)
  */
 static void
-dump_xref_stream (void)
+dump_xref_stream (PDF *p)
 {
   unsigned int pos, i;
   unsigned poslen;
@@ -423,7 +473,7 @@ dump_xref_stream (void)
   pdf_obj *w;
 
   /* determine the necessary size of the offset field */
-  pos = startxref; /* maximal offset value */
+  pos = p->startxref; /* maximal offset value */
   poslen = 1;
   while (pos >>= 8)
     poslen++;
@@ -432,39 +482,43 @@ dump_xref_stream (void)
   pdf_add_array(w, pdf_new_number(1));      /* type                */
   pdf_add_array(w, pdf_new_number(poslen)); /* offset (big-endian) */
   pdf_add_array(w, pdf_new_number(2));      /* generation          */
-  pdf_add_dict(trailer_dict, pdf_new_name("W"), w);
+  pdf_add_dict(p->trailer, pdf_new_name("W"), w);
 
   /* We need the xref entry for the xref stream right now */
-  add_xref_entry(next_label-1, 1, startxref, 0);
+  add_xref_entry(p, p->obj.next_label - 1, 1, p->startxref, 0);
 
-  for (i = 0; i < next_label; i++) {
+  for (i = 0; i < p->obj.next_label; i++) {
     unsigned j;
-    unsigned short f3;
-    buf[0] = output_xref[i].type;
-    pos = output_xref[i].field2;
+    uint16_t f3;
+    buf[0] = p->output_xref[i].type;
+    pos    = p->output_xref[i].field2;
     for (j = poslen; j--; ) {
       buf[1+j] = (unsigned char) pos;
       pos >>= 8;
     }
-    f3 = output_xref[i].field3;
+    f3 = p->output_xref[i].field3;
     buf[poslen+1] = (unsigned char) (f3 >> 8);
     buf[poslen+2] = (unsigned char) (f3);
-    pdf_add_stream(xref_stream, &buf, poslen+3);
+    pdf_add_stream(p->xref_stream, &buf, poslen+3);
   }
 
-  pdf_release_obj(xref_stream);
+  pdf_release_obj(p->xref_stream);
+  p->xref_stream = NULL;
 }
 
 void
 pdf_out_flush (void)
 {
-  if (pdf_output_file) {
+  PDF *p = &_pdf;
+  char buf[16];
+
+  if (p->output.file) {
     int length;
 
     /* Flush current object stream */
-    if (current_objstm) {
-      release_objstm(current_objstm);
-      current_objstm =NULL;
+    if (p->current_objstm) {
+      release_objstm(p->current_objstm);
+      p->current_objstm =NULL;
     }
 
     /*
@@ -472,156 +526,176 @@ pdf_out_flush (void)
      * for the xref stream dictionary (= trailer).
      * Labelling it in pdf_out_init (with 1)  does not work (why?).
      */
-    if (xref_stream)
-      pdf_label_obj(xref_stream);
+    if (p->xref_stream)
+      pdf_label_obj(p, p->xref_stream);
 
     /* Record where this xref is for trailer */
-    startxref = pdf_output_file_position;
+    p->startxref = p->output.file_position;
 
-    pdf_add_dict(trailer_dict, pdf_new_name("Size"),
-		 pdf_new_number(next_label));
+    pdf_add_dict(p->trailer,
+                 pdf_new_name("Size"), pdf_new_number(p->obj.next_label));
 
-    if (xref_stream)
-      dump_xref_stream();
+    if (p->xref_stream)
+      dump_xref_stream(p);
     else {
-      dump_xref_table();
-      dump_trailer_dict();
+      dump_xref_table(p);
+      dump_trailer(p);
     }
 
     /* Done with xref table */
-    RELEASE(output_xref);
+    RELEASE(p->output_xref);
+    p->output_xref = NULL;
 
-    pdf_out(pdf_output_file, "startxref\n", 10);
-    length = sprintf(format_buffer, "%u\n", startxref);
-    pdf_out(pdf_output_file, format_buffer, length);
-    pdf_out(pdf_output_file, "%%EOF\n", 6);
+    pdf_out(p, "startxref\n", 10);
+    length = sprintf(buf, "%u\n", p->startxref);
+    pdf_out(p, buf, length);
+    pdf_out(p, "%%EOF\n", 6);
 
     MESG("\n");
     if (verbose) {
-      if (compression_level > 0) {
-	MESG("Compression saved %ld bytes%s\n", compression_saved,
-	     pdf_version < 5 ? ". Try \"-V 5\" for better compression" : "");
+      if (p->options.compression.level > 0) {
+        MESG("Compression saved %ld bytes%s\n",
+              p->output.compression_saved,
+	            p->version.minor < 5 ?
+                ". Try \"-V 5\" for better compression" : "");
       }
     }
-    MESG("%ld bytes written", pdf_output_file_position);
+    MESG("%ld bytes written", p->output.file_position);
 
-    MFCLOSE(pdf_output_file);
+    MFCLOSE(p->output.file);
+    p->output.file = NULL;
   }
 }
 
 void
 pdf_error_cleanup (void)
 {
+  PDF *p = &_pdf;
   /*
    * This routine is the cleanup required for an abnormal exit.
    * For now, simply close the file.
    */
-  if (pdf_output_file)
-    MFCLOSE(pdf_output_file);
+  if (p->output.file)
+    MFCLOSE(p->output.file);
+  p->output.file = NULL;
 }
 
 
 void
 pdf_set_root (pdf_obj *object)
 {
-  if (pdf_add_dict(trailer_dict, pdf_new_name("Root"), pdf_ref_obj(object))) {
+  PDF *p = &_pdf;
+  if (pdf_lookup_dict(p->trailer, "Root"))
     ERROR("Root object already set!");
-  }
+  pdf_add_dict(p->trailer, pdf_new_name("Root"), pdf_ref_obj(object));
   /* Adobe Readers don't like a document catalog inside an encrypted
    * object stream, although the PDF v1.5 spec seems to allow this.
    * Note that we don't set OBJ_NO_ENCRYPT since the name dictionary in
    * a document catalog may contain strings, which should be encrypted.
    */
-  if (doc_enc_mode)
+  if (p->options.encrypt)
     object->flags |= OBJ_NO_OBJSTM;
 }
 
 void
 pdf_set_info (pdf_obj *object)
 {
-  if (pdf_add_dict(trailer_dict, pdf_new_name("Info"), pdf_ref_obj(object))) {
-    ERROR ("Info object already set!");
-  }
+  PDF *p = &_pdf;
+  if (pdf_lookup_dict(p->trailer, "Info"))
+    ERROR("Info object already set!");
+  pdf_add_dict(p->trailer, pdf_new_name("Info"), pdf_ref_obj(object));
 }
 
 void
-pdf_set_id (pdf_obj *id)
+pdf_set_id (pdf_obj *object)
 {
-  if (pdf_add_dict(trailer_dict, pdf_new_name("ID"), id)) {
+  PDF *p = &_pdf;
+  if (pdf_lookup_dict(p->trailer, "ID"))
     ERROR ("ID already set!");
-  }
+  pdf_add_dict(p->trailer, pdf_new_name("ID"), object);
 }
 
 void
-pdf_set_encrypt (pdf_obj *encrypt)
+pdf_set_encrypt (pdf_obj *object)
 {
-  if (pdf_add_dict(trailer_dict, pdf_new_name("Encrypt"), pdf_ref_obj(encrypt))) {
+  PDF *p = &_pdf;
+  ASSERT(p->options.encrypt);
+
+  if (pdf_lookup_dict(p->trailer, "Encrypt"))
     ERROR("Encrypt object already set!");
-  }
-  encrypt->flags |= OBJ_NO_ENCRYPT;
+  pdf_add_dict(p->trailer, pdf_new_name("Encrypt"), pdf_ref_obj(object));
+  object->flags |= OBJ_NO_ENCRYPT;
 }
 
-static
-void pdf_out_char (FILE *file, char c)
+static void
+pdf_out_char (PDF *p, char c)
 {
-  if (output_stream && file ==  pdf_output_file)
-    pdf_add_stream(output_stream, &c, 1);
-  else {
-    fputc(c, file);
-    /* Keep tallys for xref table *only* if writing a pdf file. */
-    if (file == pdf_output_file) {
-      pdf_output_file_position += 1;
+  if (error_out) {
+    fputc(c, stderr);
+  } else {
+    if (p->output_stream)
+      pdf_add_stream(p->output_stream, &c, 1);
+    else {
+      fputc(c, p->output.file);
+      p->output.file_position += 1;
       if (c == '\n')
-        pdf_output_line_position  = 0;
+        p->output.line_position  = 0;
       else
-        pdf_output_line_position += 1;
+        p->output.line_position += 1;
     }
   }
 }
 
+static void pdf_out_xchar (PDF *p, char c);
+
 static char xchar[] = "0123456789abcdef";
-
-#define pdf_out_xchar(f,c) do {\
-  pdf_out_char((f), xchar[((c) >> 4) & 0x0f]);\
-  pdf_out_char((f), xchar[(c) & 0x0f]);\
-} while (0)
-
-static
-void pdf_out (FILE *file, const void *buffer, int length)
+static void
+pdf_out_xchar (PDF *p, char c)
 {
-  if (output_stream && file ==  pdf_output_file)
-    pdf_add_stream(output_stream, buffer, length);
-  else {
-    fwrite(buffer, 1, length, file);
-    /* Keep tallys for xref table *only* if writing a pdf file */
-    if (file == pdf_output_file) {
-      pdf_output_file_position += length;
-      pdf_output_line_position += length;
+  pdf_out_char(p, xchar[(c >> 4) & 0x0f]);
+  pdf_out_char(p, xchar[c & 0x0f]);
+}
+
+static void
+pdf_out (PDF *p, const void *buffer, int length)
+{
+  if (error_out) {
+    fwrite(buffer, 1, length, stderr);
+  } else {
+    if (p->output_stream)
+      pdf_add_stream(p->output_stream, buffer, length);
+    else {
+      fwrite(buffer, 1, length, p->output.file);
+      p->output.file_position += length;
+      p->output.line_position += length;
       /* "foo\nbar\n "... */
-      if (length > 0 &&
-	((const char *)buffer)[length-1] == '\n')
-        pdf_output_line_position = 0;
+      if (length > 0 && ((const char *)buffer)[length-1] == '\n')
+        p->output.line_position = 0;
     }
   }
 }
 
 /*  returns 1 if a white-space character is necessary to separate
     an object of type1 followed by an object of type2              */
-static
-int pdf_need_white (int type1, int type2)
+static int
+need_white (int type1, int type2)
 {
   return !(type1 == PDF_STRING || type1 == PDF_ARRAY || type1 == PDF_DICT ||
 	   type2 == PDF_STRING || type2 == PDF_NAME ||
 	   type2 == PDF_ARRAY || type2 == PDF_DICT);
 }
 
-static
-void pdf_out_white (FILE *file)
+static void
+pdf_out_white (PDF *p)
 {
-  if (file == pdf_output_file && pdf_output_line_position >= 80) {
-    pdf_out_char(file, '\n');
+  /* MARK */
+#if 0
+  if (file == p->output.file && p->output.line_position >= 80) {
+#endif
+  if (p->output.line_position >= 80) {
+    pdf_out_char(p, '\n');
   } else {
-    pdf_out_char(file, ' ');
+    pdf_out_char(p, ' ');
   }
 }
 
@@ -660,7 +734,7 @@ pdf_obj_typeof (pdf_obj *object)
 }
 
 static void
-pdf_label_obj (pdf_obj *object)
+pdf_label_obj (PDF *p, pdf_obj *object)
 {
   if (INVALIDOBJ(object))
     ERROR("pdf_label_obj(): passed invalid object.");
@@ -669,7 +743,7 @@ pdf_label_obj (pdf_obj *object)
    * Don't change label on an already labeled object. Ignore such calls.
    */
   if (object->label == 0) {
-    object->label      = next_label++;
+    object->label      = p->obj.next_label++;
     object->generation = 0;
   }
 }
@@ -713,7 +787,9 @@ pdf_ref_obj (pdf_obj *object)
 
   if (object->refcount == 0) {
     MESG("\nTrying to refer already released object!!!\n");
-    pdf_write_obj(object, stderr);
+    error_out = 1;
+    pdf_write_obj(NULL, object);
+    error_out = 0;
     ERROR("Cannot continue...");
   }
 
@@ -731,14 +807,16 @@ release_indirect (pdf_indirect *data)
 }
 
 static void
-write_indirect (pdf_indirect *indirect, FILE *file)
+write_indirect (PDF *p, pdf_indirect *indirect)
 {
-  int length;
+  int   length;
+  char  buf[64];
 
-  ASSERT(!indirect->pf);
+  // ASSERT(!indirect->pf);
 
-  length = sprintf(format_buffer, "%u %hu R", indirect->label, indirect->generation);
-  pdf_out(file, format_buffer, length);
+  length = sprintf(buf, "%u %hu R",
+                   indirect->label, indirect->generation);
+  pdf_out(p, buf, length);
 }
 
 /* The undefined object is used as a placeholder in pdfnames.c
@@ -767,9 +845,9 @@ pdf_new_null (void)
 }
 
 static void
-write_null (FILE *file)
+write_null (PDF *p)
 {
-  pdf_out(file, "null", 4);
+  pdf_out(p, "null", 4);
 }
 
 pdf_obj *
@@ -793,12 +871,12 @@ release_boolean (pdf_obj *data)
 }
 
 static void
-write_boolean (pdf_boolean *data, FILE *file)
+write_boolean (PDF *p, pdf_boolean *data)
 {
   if (data->value) {
-    pdf_out(file, "true", 4);
+    pdf_out(p, "true", 4);
   } else {
-    pdf_out(file, "false", 5);
+    pdf_out(p, "false", 5);
   }
 }
 
@@ -835,15 +913,15 @@ release_number (pdf_number *data)
 }
 
 static void
-write_number (pdf_number *number, FILE *file)
+write_number (PDF *p, pdf_number *number)
 {
-  int count;
+  int  count;
+  char buf[512]; /* enough space to represent "double" */
 
-  count = pdf_sprint_number(format_buffer, number->value);
+  count = pdf_sprint_number(buf, number->value);
 
-  pdf_out(file, format_buffer, count);
+  pdf_out(p, buf, count);
 }
-
 
 void
 pdf_set_number (pdf_obj *object, double value)
@@ -971,20 +1049,22 @@ pdfobj_escape_str (char *buffer, int bufsize, const unsigned char *s, int len)
 }
 
 static void
-write_string (pdf_string *str, FILE *file)
+write_string (PDF *p, pdf_string *str)
 {
   unsigned char *s = NULL;
-  char wbuf[FORMAT_BUF_SIZE]; /* Shouldn't use format_buffer[]. */
-  int  nescc = 0, i, count;
-  size_t len = 0;
+  char          *buf;
+  int            nescc = 0, i, count;
+  size_t         size, len = 0;
 
-  if (enc_mode) {
+  if (p->state.enc_mode) {
     pdf_encrypt_data(str->string, str->length, &s, &len);
   } else {
-  s = str->string;
+    s   = str->string;
     len = str->length;
   }
 
+  size = len * 3 + 2;
+  buf  = NEW(size, char);
   /*
    * Count all ASCII non-printable characters.
    */
@@ -997,13 +1077,13 @@ write_string (pdf_string *str, FILE *file)
    * ASCII hex string.
    */
   if (nescc > len / 3) {
-    pdf_out_char(file, '<');
+    pdf_out_char(p, '<');
     for (i = 0; i < len; i++) {
-      pdf_out_xchar(file, s[i]);
+      pdf_out_xchar(p, s[i]);
     }
-    pdf_out_char(file, '>');
+    pdf_out_char(p, '>');
   } else {
-    pdf_out_char(file, '(');
+    pdf_out_char(p, '(');
     /*
      * This section of code probably isn't speed critical.  Escaping the
      * characters in the string one at a time may seem slow, but it's
@@ -1013,12 +1093,13 @@ write_string (pdf_string *str, FILE *file)
      * handled as quickly as possible since there are so many of them.
      */
     for (i = 0; i < len; i++) {
-      count = pdfobj_escape_str(wbuf, FORMAT_BUF_SIZE, &(s[i]), 1);
-      pdf_out(file, wbuf, count);
+      count = pdfobj_escape_str(buf, size, &(s[i]), 1);
+      pdf_out(p, buf, count);
     }
-    pdf_out_char(file, ')');
+    pdf_out_char(p, ')');
   }
-  if (enc_mode && s)
+  RELEASE(buf);
+  if (p->state.enc_mode && s)
     RELEASE(s);
 }
 
@@ -1078,7 +1159,7 @@ pdf_new_name (const char *name)
 }
 
 static void
-write_name (pdf_name *name, FILE *file)
+write_name (PDF *p, pdf_name *name)
 {
   char *s;
   int i, length;
@@ -1105,14 +1186,14 @@ write_name (pdf_name *name, FILE *file)
                      (c) == '{' || (c) == '}' || \
                      (c) == '%')
 #endif
-  pdf_out_char(file, '/');
+  pdf_out_char(p, '/');
   for (i = 0; i < length; i++) {
     if (s[i] < '!' || s[i] > '~' || s[i] == '#' || is_delim(s[i])) {
       /*     ^ "space" is here. */
-      pdf_out_char (file, '#');
-      pdf_out_xchar(file, s[i]);
+      pdf_out_char (p, '#');
+      pdf_out_xchar(p, s[i]);
     } else {
-      pdf_out_char (file, s[i]);
+      pdf_out_char (p, s[i]);
     }
   }
 }
@@ -1161,25 +1242,26 @@ pdf_new_array (void)
 }
 
 static void
-write_array (pdf_array *array, FILE *file)
+write_array (PDF *p, pdf_array *array)
 {
-  pdf_out_char(file, '[');
+  pdf_out_char(p, '[');
   if (array->size > 0) {
     unsigned int i;
     int type1 = PDF_UNDEFINED, type2;
 
     for (i = 0; i < array->size; i++) {
       if (array->values[i]) {
-	type2 = array->values[i]->type;
-	if (type1 != PDF_UNDEFINED && pdf_need_white(type1, type2))
-	  pdf_out_white(file);
-	type1 = type2;
-	pdf_write_obj(array->values[i], file);
-      } else
-	WARN("PDF array element #ld undefined.", i);
+        type2 = array->values[i]->type;
+        if (type1 != PDF_UNDEFINED && need_white(type1, type2))
+          pdf_out_white(p);
+        type1 = type2;
+        pdf_write_obj(p, array->values[i]);
+      } else {
+        WARN("PDF array element #ld undefined.", i);
+      }
     }
   }
-  pdf_out_char(file, ']');
+  pdf_out_char(p, ']');
 }
 
 pdf_obj *
@@ -1345,25 +1427,25 @@ pdf_pop_array (pdf_obj *array)
 #endif
 
 static void
-write_dict (pdf_dict *dict, FILE *file)
+write_dict (PDF *p, pdf_dict *dict)
 {
 #if 0
-  pdf_out (file, "<<\n", 3); /* dropping \n saves few kb. */
+  pdf_out (p, "<<\n", 3); /* dropping \n saves few kb. */
 #else
-  pdf_out (file, "<<", 2);
+  pdf_out (p, "<<", 2);
 #endif
   while (dict->key != NULL) {
-    pdf_write_obj(dict->key, file);
-    if (pdf_need_white(PDF_NAME, (dict->value)->type)) {
-      pdf_out_white(file);
+    pdf_write_obj(p, dict->key);
+    if (need_white(PDF_NAME, (dict->value)->type)) {
+      pdf_out_white(p);
     }
-    pdf_write_obj(dict->value, file);
+    pdf_write_obj(p, dict->value);
 #if 0
-    pdf_out_char (file, '\n'); /* removing this saves few kb. */
+    pdf_out_char (p, '\n'); /* removing this saves few kb. */
 #endif
     dict = dict->next;
   }
-  pdf_out (file, ">>", 2);
+  pdf_out (p, ">>", 2);
 }
 
 pdf_obj *
@@ -1666,38 +1748,38 @@ filter_PNG15_apply_filter (unsigned char *raster,
   for (j = 0; j < rows; j++) {
     int type = 0;
     unsigned char *pp = dst + j * (rowbytes + 1);
-    unsigned char *p  = raster + j * rowbytes;
+    unsigned char *cp = raster + j * rowbytes;
     uint32_t sum[5]   = {0, 0, 0, 0, 0};
     /* First calculated sum of values to make a heuristic guess
      * of optimal predictor function.
      */
     for (i = 0; i < rowbytes; i++) {
-      int left  = (i - bytes_per_pixel >= 0) ? p[i - bytes_per_pixel] : 0;
-      int up    = (j > 0) ? *(p+i-rowbytes) : 0;
+      int left  = (i - bytes_per_pixel >= 0) ? cp[i - bytes_per_pixel] : 0;
+      int up    = (j > 0) ? *(cp + i - rowbytes) : 0;
       int uplft = (j > 0) ?
                     ((i - bytes_per_pixel >= 0) ?
-                      *(p+i-rowbytes-bytes_per_pixel) : 0) : 0;
+                      *(cp + i - rowbytes - bytes_per_pixel) : 0) : 0;
       /* Type 0 -- None */
-      sum[0] += p[i];
+      sum[0] += cp[i];
       /* Type 1 -- Sub */
-      sum[1] += abs((int) p[i] - left);
+      sum[1] += abs((int) cp[i] - left);
       /* Type 2 -- Up */
-      sum[2] += abs((int) p[i] - up);
+      sum[2] += abs((int) cp[i] - up);
       /* Type 3 -- Average */
       {
         int tmp = floor((up + left) / 2);
-        sum[3] += abs((int) p[i] - tmp);
+        sum[3] += abs((int) cp[i] - tmp);
       }
       /* Type 4 -- Peath */
       {
         int q = left + up - uplft;
         int qa = abs(q - left), qb = abs(q - up), qc = abs(q - uplft);
         if (qa <= qb && qa <= qc)
-          sum[4] += abs((int) p[i] - left);
+          sum[4] += abs((int) cp[i] - left);
         else if (qb <= qc)
-          sum[4] += abs((int) p[i] - up);
+          sum[4] += abs((int) cp[i] - up);
         else
-          sum[4] += abs((int) p[i] - uplft);
+          sum[4] += abs((int) cp[i] - uplft);
       }
     }
     {
@@ -1713,46 +1795,46 @@ filter_PNG15_apply_filter (unsigned char *raster,
     pp[0] = type;
     switch (type) {
     case 0:
-      memcpy(pp+1, p, rowbytes);
+      memcpy(pp+1, cp, rowbytes);
       break;
     case 1:
       for (i = 0; i < rowbytes; i++) {
-        int left = (i - bytes_per_pixel >= 0) ? p[i - bytes_per_pixel] : 0;
-        pp[i+1] = p[i] - left;
+        int left = (i - bytes_per_pixel >= 0) ? cp[i - bytes_per_pixel] : 0;
+        pp[i+1] = cp[i] - left;
       }
       break;
     case 2:
       for (i = 0; i < rowbytes; i++) {
-        int up  = (j > 0) ? *(p+i - rowbytes) : 0;
-        pp[i+1] = p[i] - up;
+        int up  = (j > 0) ? *(cp + i - rowbytes) : 0;
+        pp[i+1] = cp[i] - up;
       }
       break;
     case 3:
       {
         for (i = 0; i < rowbytes; i++) {
-          int up   = (j > 0) ? *(p+i-rowbytes) : 0;
-          int left = (i - bytes_per_pixel >= 0) ? p[i - bytes_per_pixel] : 0;
+          int up   = (j > 0) ? *(cp + i - rowbytes) : 0;
+          int left = (i - bytes_per_pixel >= 0) ? cp[i - bytes_per_pixel] : 0;
           int tmp  = floor((up + left) / 2);
-          pp[i+1]  = p[i] - tmp;
+          pp[i+1]  = cp[i] - tmp;
         }
       }
       break;
     case 4: /* Peath */
       {
         for (i = 0; i < rowbytes; i++) {
-          int up   = (j > 0) ? *(p+i-rowbytes) : 0;
-          int left = (i - bytes_per_pixel >= 0) ? p[i - bytes_per_pixel] : 0;
+          int up   = (j > 0) ? *(cp + i - rowbytes) : 0;
+          int left = (i - bytes_per_pixel >= 0) ? cp[i - bytes_per_pixel] : 0;
           int uplft = (j > 0) ?
                         ((i - bytes_per_pixel >= 0) ?
-                          *(p+i-rowbytes-bytes_per_pixel) : 0) : 0;
+                          *(cp + i - rowbytes-bytes_per_pixel) : 0) : 0;
           int q = left + up - uplft;
           int qa = abs(q - left), qb = abs(q - up), qc = abs(q - uplft);
           if (qa <= qb && qa <= qc)
-            pp[i+1] = p[i] - left;
+            pp[i+1] = cp[i] - left;
           else if (qb <= qc)
-            pp[i+1] = p[i] - up;
+            pp[i+1] = cp[i] - up;
           else
-            pp[i+1] = p[i] - uplft;
+            pp[i+1] = cp[i] - uplft;
         }
       }
       break;
@@ -1915,7 +1997,7 @@ filter_create_predictor_dict (int predictor, int32_t columns,
 }
 
 static void
-write_stream (pdf_stream *stream, FILE *file)
+write_stream (PDF *p, pdf_stream *stream)
 {
   unsigned char *filtered;
   unsigned int   filtered_length;
@@ -1946,11 +2028,11 @@ write_stream (pdf_stream *stream, FILE *file)
   /* Apply compression filter if requested */
   if (stream->stream_length > 0 &&
       (stream->_flags & STREAM_COMPRESS) &&
-      compression_level > 0) {
+      p->options.compression.level > 0) {
     pdf_obj *filters;
 
     /* First apply predictor filter if requested. */
-    if ( compression_use_predictor &&
+    if ( p->options.compression.use_predictor &&
         (stream->_flags & STREAM_USE_PREDICTOR) &&
         !pdf_lookup_dict(stream->dict, "DecodeParms")) {
       int      bits_per_pixel  = stream->decodeparms.colors *
@@ -2016,18 +2098,19 @@ write_stream (pdf_stream *stream, FILE *file)
     }
 #ifdef HAVE_ZLIB_COMPRESS2
     if (compress2(buffer, &buffer_length, filtered,
-		  filtered_length, compression_level)) {
+		              filtered_length, p->options.compression.level)) {
       ERROR("Zlib error");
     }
 #else
     if (compress(buffer, &buffer_length, filtered,
-		 filtered_length)) {
+		             filtered_length)) {
       ERROR ("Zlib error");
     }
 #endif /* HAVE_ZLIB_COMPRESS2 */
     RELEASE(filtered);
-    compression_saved += filtered_length - buffer_length
-      - (filters ? strlen("/FlateDecode "): strlen("/Filter/FlateDecode\n"));
+    p->output.compression_saved +=
+      filtered_length - buffer_length
+        - (filters ? strlen("/FlateDecode "): strlen("/Filter/FlateDecode\n"));
 
     filtered        = buffer;
     filtered_length = buffer_length;
@@ -2035,7 +2118,7 @@ write_stream (pdf_stream *stream, FILE *file)
 #endif /* HAVE_ZLIB */
 
   /* AES will change the size of data! */
-  if (enc_mode) {
+  if (p->state.enc_mode) {
     unsigned char *cipher = NULL;
     size_t         cipher_len = 0;
     pdf_encrypt_data(filtered, filtered_length, &cipher, &cipher_len);
@@ -2060,12 +2143,12 @@ write_stream (pdf_stream *stream, FILE *file)
   pdf_add_dict(stream->dict,
 	       pdf_new_name("Length"), pdf_new_number(filtered_length));
 
-  pdf_write_obj(stream->dict, file);
+  pdf_write_obj(p, stream->dict);
 
-  pdf_out(file, "\nstream\n", 8);
+  pdf_out(p, "\nstream\n", 8);
 
   if (filtered_length > 0)
-    pdf_out(file, filtered, filtered_length);
+    pdf_out(p, filtered, filtered_length);
   RELEASE(filtered);
 
   /*
@@ -2075,8 +2158,8 @@ write_stream (pdf_stream *stream, FILE *file)
    * filters, this could be a problem.
    */
 
-  pdf_out(file, "\n", 1);
-  pdf_out(file, "endstream", 9);
+  pdf_out(p, "\n", 1);
+  pdf_out(p, "endstream", 9);
 }
 
 static void
@@ -2255,8 +2338,7 @@ static int
 filter_row_TIFF2 (unsigned char *dst, const unsigned char *src,
                   struct decode_parms *parms)
 {
-  const unsigned char *p = src;
-  unsigned char *col;
+  unsigned char  *col;
   /* bits_per_component < 8 here */
   int  mask = (1 << parms->bits_per_component) - 1;
   int  inbuf, outbuf; /* 2 bytes buffer */
@@ -2271,7 +2353,7 @@ filter_row_TIFF2 (unsigned char *dst, const unsigned char *src,
     for (ci = 0; ci < parms->colors; ci++) {
       if (inbits < parms->bits_per_component) {
          /* need more byte */
-         inbuf   = (inbuf << 8) | p[j++];
+         inbuf   = (inbuf << 8) | src[j++];
          inbits += 8;
       }
       /* predict current color component */
@@ -2303,8 +2385,8 @@ static int
 filter_decoded (pdf_obj *dst, const void *src, int srclen,
                 struct decode_parms *parms)
 {
-  const unsigned char *p = (const unsigned char *) src;
-  const unsigned char *endptr = p + srclen;
+  const unsigned char *ptr = (const unsigned char *) src;
+  const unsigned char *endptr = ptr + srclen;
   unsigned char *prev, *buf;
   int bits_per_pixel  = parms->colors * parms->bits_per_component;
   int bytes_per_pixel = (bits_per_pixel + 7) / 8;
@@ -2322,36 +2404,36 @@ filter_decoded (pdf_obj *dst, const void *src, int srclen,
   case 2: /* TIFF Predictor 2 */
     {
       if (parms->bits_per_component == 8) {
-        while (p + length < endptr) {
+        while (ptr + length < endptr) {
           /* Same as PNG Sub */
           for (i = 0; i < length; i++) {
             int pv = i - bytes_per_pixel >= 0 ? buf[i - bytes_per_pixel] : 0;
-            buf[i] = (unsigned char)(((int) p[i] + pv) & 0xff);
+            buf[i] = (unsigned char)(((int) ptr[i] + pv) & 0xff);
           }
           pdf_add_stream(dst, buf, length);
-          p += length;
+          ptr += length;
         }
       } else if (parms->bits_per_component == 16) {
-        while (p + length < endptr) {
+        while (ptr + length < endptr) {
           for (i = 0; i < length; i += 2) {
             int  b  = i - bytes_per_pixel;
             char hi = b >= 0 ? buf[b] : 0;
             char lo = b >= 0 ? buf[b + 1] : 0;
             int  pv = (hi << 8) | lo;
-            int  cv = (p[i] << 8) | p[i + 1];
+            int  cv = (ptr[i] << 8) | ptr[i + 1];
             int  c  = pv + cv;
             buf[i]     = (unsigned char) (c >> 8);
             buf[i + 1] = (unsigned char) (c & 0xff);
           }
           pdf_add_stream(dst, buf, length);
-          p += length;
+          ptr += length;
         }
       } else { /* bits per component 1, 2, 4 */
-        while (!error && p + length < endptr) {
-          error = filter_row_TIFF2(buf, p, parms);
+        while (!error && ptr + length < endptr) {
+          error = filter_row_TIFF2(buf, ptr, parms);
           if (!error) {
             pdf_add_stream(dst, buf, length);
-            p += length;
+            ptr += length;
           }
         }
       }
@@ -2367,27 +2449,27 @@ filter_decoded (pdf_obj *dst, const void *src, int srclen,
     {
       int type = parms->predictor - 10;
 
-      while (!error && p + length < endptr) {
+      while (!error && ptr + length < endptr) {
         if (parms->predictor == 15)
-          type = *p;
-        else if (*p != type) {
+          type = *ptr;
+        else if (*ptr != type) {
           WARN("Mismatched Predictor type in data stream.");
           error = -1;
         }
-        p++;
+        ptr++;
         switch (type) {
         case 0: /* Do nothing just skip first byte */
-          memcpy(buf, p, length);
+          memcpy(buf, ptr, length);
           break;
         case 1:
           for (i = 0; i < length; i++) {
             int pv = i - bytes_per_pixel >= 0 ? buf[i - bytes_per_pixel] : 0;
-            buf[i] = (unsigned char)(((int) p[i] + pv) & 0xff);
+            buf[i] = (unsigned char)(((int) ptr[i] + pv) & 0xff);
           }
           break;
         case 2:
           for (i = 0; i < length; i++) {
-            buf[i] = (unsigned char)(((int) p[i] + (int) prev[i]) & 0xff);
+            buf[i] = (unsigned char)(((int) ptr[i] + (int) prev[i]) & 0xff);
           }
           break;
         case 3:
@@ -2395,25 +2477,27 @@ filter_decoded (pdf_obj *dst, const void *src, int srclen,
             int up   = prev[i];
             int left = i - bytes_per_pixel >= 0 ? buf[i - bytes_per_pixel] : 0;
             int tmp  = floor((up + left) / 2);
-            buf[i] = (unsigned char)((p[i] + tmp) & 0xff);
+            buf[i] = (unsigned char)((ptr[i] + tmp) & 0xff);
           }
           break;
         case 4:
           for (i = 0; i < length; i++) {
-            int a = i - bytes_per_pixel >= 0 ? buf[i - bytes_per_pixel] : 0; /* left */
+            int a = i - bytes_per_pixel >= 0 ?
+                      buf[i - bytes_per_pixel] : 0; /* left */
             int b = prev[i]; /* above */
-            int c = i - bytes_per_pixel >= 0 ? prev[i - bytes_per_pixel] : 0; /* upper left */
+            int c = i - bytes_per_pixel >= 0 ?
+                      prev[i - bytes_per_pixel] : 0; /* upper left */
             int q = a + b - c;
             int qa = q - a, qb = q - b, qc = q - c;
             qa = qa < 0 ? -qa : qa;
             qb = qb < 0 ? -qb : qb;
             qc = qc < 0 ? -qc : qc;
             if (qa <= qb && qa <= qc)
-              buf[i] = (unsigned char) (((int) p[i] + a) & 0xff);
+              buf[i] = (unsigned char) (((int) ptr[i] + a) & 0xff);
             else if (qb <= qc)
-              buf[i] = (unsigned char) (((int) p[i] + b) & 0xff);
+              buf[i] = (unsigned char) (((int) ptr[i] + b) & 0xff);
             else
-              buf[i] = (unsigned char) (((int) p[i] + c) & 0xff);
+              buf[i] = (unsigned char) (((int) ptr[i] + c) & 0xff);
           }
           break;
         default:
@@ -2423,7 +2507,7 @@ filter_decoded (pdf_obj *dst, const void *src, int srclen,
         if (!error) {
           pdf_add_stream(dst, buf, length); /* highly inefficient */
           memcpy(prev, buf, length);
-          p += length;
+          ptr += length;
         }
       }
     }
@@ -2436,11 +2520,13 @@ filter_decoded (pdf_obj *dst, const void *src, int srclen,
   RELEASE(prev);
   RELEASE(buf);
 
-  return error;
+  return  error;
 }
 
 static int
-pdf_add_stream_flate_filtered (pdf_obj *dst, const void *data, int len, struct decode_parms *parms)
+pdf_add_stream_flate_filtered (pdf_obj *dst,
+                               const void *data, int len,
+                               struct decode_parms *parms)
 {
   pdf_obj *tmp;
   z_stream z;
@@ -2479,7 +2565,9 @@ pdf_add_stream_flate_filtered (pdf_obj *dst, const void *data, int len, struct d
   if (WBUF_SIZE - z.avail_out > 0)
     pdf_add_stream(tmp, wbuf, WBUF_SIZE - z.avail_out);
 
-  error = filter_decoded(dst, pdf_stream_dataptr(tmp), pdf_stream_length(tmp), parms);
+  error = filter_decoded(dst,
+                         pdf_stream_dataptr(tmp), pdf_stream_length(tmp),
+                         parms);
   pdf_release_obj(tmp);
 
   return ((!error && inflateEnd(&z) == Z_OK) ? 0 : -1);
@@ -2542,7 +2630,9 @@ pdf_concat_stream (pdf_obj *dst, pdf_obj *src)
       char  *filter_name = pdf_name_value(filter);
       if (filter_name && !strcmp(filter_name, "FlateDecode")) {
         if (have_parms)
-          error = pdf_add_stream_flate_filtered(dst, stream_data, stream_length, &parms);
+          error = pdf_add_stream_flate_filtered(dst,
+                                                stream_data, stream_length,
+                                                &parms);
         else
           error = pdf_add_stream_flate(dst, stream_data, stream_length);
       } else {
@@ -2596,72 +2686,75 @@ pdf_stream_get_flags (pdf_obj *stream)
 #endif
 
 static void
-pdf_write_obj (pdf_obj *object, FILE *file)
+pdf_write_obj (PDF *p, pdf_obj *object)
 {
   if (object == NULL) {
-    write_null(file);
+    write_null(p);
     return;
   }
 
   if (INVALIDOBJ(object) || PDF_OBJ_UNDEFINED(object))
     ERROR("pdf_write_obj: Invalid object, type = %d\n", object->type);
 
-  if (file == stderr)
+  if (error_out)
     fprintf(stderr, "{%d}", object->refcount);
 
   switch (object->type) {
   case PDF_BOOLEAN:
-    write_boolean(object->data, file);
+    write_boolean(p, object->data);
     break;
   case PDF_NUMBER:
-    write_number (object->data, file);
+    write_number (p, object->data);
     break;
   case PDF_STRING:
-    write_string (object->data, file);
+    write_string (p, object->data);
     break;
   case PDF_NAME:
-    write_name(object->data, file);
+    write_name(p, object->data);
     break;
   case PDF_ARRAY:
-    write_array(object->data, file);
+    write_array(p, object->data);
     break;
   case PDF_DICT:
-    write_dict (object->data, file);
+    write_dict (p, object->data);
     break;
   case PDF_STREAM:
-    write_stream(object->data, file);
+    write_stream(p, object->data);
     break;
   case PDF_NULL:
-    write_null(file);
+    write_null(p);
     break;
   case PDF_INDIRECT:
-    write_indirect(object->data, file);
+    write_indirect(p, object->data);
     break;
   }
 }
 
 /* Write the object to the file */
 static void
-pdf_flush_obj (pdf_obj *object, FILE *file)
+pdf_flush_obj (PDF *p, pdf_obj *object)
 {
-  int length;
+  int  length;
+  char buf[64];
 
   /*
    * Record file position
    */
-  add_xref_entry(object->label, 1,
-		 pdf_output_file_position, object->generation);
-  length = sprintf(format_buffer, "%u %hu obj\n", object->label, object->generation);
-  enc_mode = doc_enc_mode && !(object->flags & OBJ_NO_ENCRYPT);
+  add_xref_entry(p, object->label, 1,
+		             p->output.file_position, object->generation);
+  length = sprintf(buf,
+                   "%u %hu obj\n", object->label, object->generation);
+  p->state.enc_mode =
+   (p->options.encrypt && !(object->flags & OBJ_NO_ENCRYPT)) ? 1 : 0;
   pdf_enc_set_label(object->label);
   pdf_enc_set_generation(object->generation);
-  pdf_out(file, format_buffer, length);
-  pdf_write_obj(object, file);
-  pdf_out(file, "\nendobj\n", 8);
+  pdf_out(p, buf, length);
+  pdf_write_obj(p, object);
+  pdf_out(p, "\nendobj\n", 8);
 }
 
 static int
-pdf_add_objstm (pdf_obj *objstm, pdf_obj *object)
+pdf_add_objstm (PDF *p, pdf_obj *objstm, pdf_obj *object)
 {
   int *data, pos;
 
@@ -2673,14 +2766,14 @@ pdf_add_objstm (pdf_obj *objstm, pdf_obj *object)
   data[2*pos]   = object->label;
   data[2*pos+1] = pdf_stream_length(objstm);
 
-  add_xref_entry(object->label, 2, objstm->label, pos-1);
+  add_xref_entry(p, object->label, 2, objstm->label, pos-1);
 
   /* redirect output into objstm */
-  output_stream = objstm;
-  enc_mode = 0;
-  pdf_write_obj(object, pdf_output_file);
-  pdf_out_char(pdf_output_file, '\n');
-  output_stream = NULL;
+  p->output_stream = objstm;
+  p->state.enc_mode = 0;
+  pdf_write_obj(p, object);
+  pdf_out_char(p, '\n');
+  p->output_stream = NULL;
 
   return pos;
 }
@@ -2688,12 +2781,13 @@ pdf_add_objstm (pdf_obj *objstm, pdf_obj *object)
 static void
 release_objstm (pdf_obj *objstm)
 {
-  int *data = get_objstm_data(objstm);
-  int pos = data[0];
-  pdf_obj *dict;
-  pdf_stream *stream;
+  int           *data = get_objstm_data(objstm);
+  int            pos  = data[0];
+  pdf_obj       *dict;
+  pdf_stream    *stream;
   unsigned char *old_buf;
-  unsigned int old_length;
+  unsigned int   old_length;
+
   stream = (pdf_stream *) objstm->data;
 
   /* Precede stream data by offset table */
@@ -2706,30 +2800,38 @@ release_objstm (pdf_obj *objstm)
   {
     int i = 2*pos, *val = data+2;
     while (i--) {
-      int length = sprintf(format_buffer, "%d ", *(val++));
-      pdf_add_stream(objstm, format_buffer, length);
+      char buf[32];
+      int  length = sprintf(buf, "%d ", *(val++));
+      pdf_add_stream(objstm, buf, length);
     }
   }
 
   dict = pdf_stream_dict(objstm);
   pdf_add_dict(dict, pdf_new_name("Type"), pdf_new_name("ObjStm"));
   pdf_add_dict(dict, pdf_new_name("N"), pdf_new_number(pos));
-  pdf_add_dict(dict, pdf_new_name("First"), pdf_new_number(stream->stream_length));
+  pdf_add_dict(dict,
+               pdf_new_name("First"), pdf_new_number(stream->stream_length));
 
   pdf_add_stream(objstm, old_buf, old_length);
   RELEASE(old_buf);
   pdf_release_obj(objstm);
 }
 
+/* pdf_release_obj() here actually is not just for freeing objects
+ * but is also for flushing objects.
+ */
 void
 pdf_release_obj (pdf_obj *object)
 {
+  PDF *p = &_pdf;
   if (object == NULL)
     return;
   if (INVALIDOBJ(object) || object->refcount <= 0) {
     MESG("\npdf_release_obj: object=%p, type=%d, refcount=%d\n",
-	 object, object->type, object->refcount);
-    pdf_write_obj(object, stderr);
+	       object, object->type, object->refcount);
+    error_out = 1;
+    pdf_write_obj(p, object);
+    error_out = 0;
     ERROR("pdf_release_obj:  Called with invalid object.");
   }
   object->refcount -= 1;
@@ -2738,23 +2840,23 @@ pdf_release_obj (pdf_obj *object)
      * Nothing is using this object so it's okay to remove it.
      * Nonzero "label" means object needs to be written before it's destroyed.
      */
-    if (object->label && pdf_output_file != NULL) {
-      if (!do_objstm || object->flags & OBJ_NO_OBJSTM
-	  || (doc_enc_mode && object->flags & OBJ_NO_ENCRYPT)
-	  || object->generation)
-	pdf_flush_obj(object, pdf_output_file);
+    if (object->label && p->output.file != NULL) {
+      if (!p->options.use_objstm || object->flags & OBJ_NO_OBJSTM
+	        || (p->options.encrypt && object->flags & OBJ_NO_ENCRYPT)
+	        || object->generation)
+        pdf_flush_obj(p, object);
       else {
-        if (!current_objstm) {
-	  int *data = NEW(2*OBJSTM_MAX_OBJS+2, int);
-	  data[0] = data[1] = 0;
-	  current_objstm = pdf_new_stream(STREAM_COMPRESS);
-	  set_objstm_data(current_objstm, data);
-	  pdf_label_obj(current_objstm);
-	}
-	if (pdf_add_objstm(current_objstm, object) == OBJSTM_MAX_OBJS) {
-	  release_objstm(current_objstm);
-	  current_objstm = NULL;
-	}
+        if (!p->current_objstm) {
+	        int *data = NEW(2*OBJSTM_MAX_OBJS+2, int);
+	        data[0] = data[1] = 0;
+	        p->current_objstm = pdf_new_stream(STREAM_COMPRESS);
+	        set_objstm_data(p->current_objstm, data);
+	        pdf_label_obj(p, p->current_objstm);
+	      }
+        if (pdf_add_objstm(p, p->current_objstm, object) == OBJSTM_MAX_OBJS) {
+          release_objstm(p->current_objstm);
+          p->current_objstm = NULL;
+        }
       }
     }
     switch (object->type) {
@@ -2876,9 +2978,9 @@ parse_trailer (pdf_file *pf)
     WARN("buffer:\n->%s<-\n", work_buffer);
     result = NULL;
   } else {
-    const char *p = work_buffer + strlen("trailer");
-    skip_white(&p, work_buffer + WORK_BUFFER_SIZE);
-    result = parse_pdf_dict(&p, work_buffer + WORK_BUFFER_SIZE, pf);
+    const char *ptr = work_buffer + strlen("trailer");
+    skip_white(&ptr, work_buffer + WORK_BUFFER_SIZE);
+    result = parse_pdf_dict(&ptr, work_buffer + WORK_BUFFER_SIZE, pf);
   }
 
   return result;
@@ -2936,10 +3038,10 @@ static pdf_obj *
 pdf_read_object (unsigned int obj_num, unsigned short obj_gen,
 		pdf_file *pf, int offset, int limit)
 {
-  int      length;
-  char    *buffer;
-  const char *p, *endptr;
-  pdf_obj *result;
+  int         length;
+  char       *buffer;
+  const char *ptr, *endptr;
+  pdf_obj    *result = NULL;
 
   length = limit - offset;
 
@@ -2951,12 +3053,12 @@ pdf_read_object (unsigned int obj_num, unsigned short obj_gen,
   seek_absolute(pf->file, offset);
   fread(buffer, sizeof(char), length, pf->file);
 
-  p      = buffer;
-  endptr = p + length;
+  ptr    = buffer;
+  endptr = ptr + length;
 
   /* Check for obj_num and obj_gen */
   {
-    const char   *q = p; /* <== p */
+    const char   *q = ptr; /* <== ptr */
     char         *sp;
     unsigned int  n, g;
 
@@ -2983,22 +3085,22 @@ pdf_read_object (unsigned int obj_num, unsigned short obj_gen,
       return NULL;
     }
 
-    p = q; /* ==> p */
+    ptr = q; /* ==> ptr */
   }
 
 
-  skip_white(&p, endptr);
-  if (memcmp(p, "obj", strlen("obj"))) {
+  skip_white(&ptr, endptr);
+  if (memcmp(ptr, "obj", strlen("obj"))) {
     WARN("Didn't find \"obj\".");
     RELEASE(buffer);
     return NULL;
   }
-  p += strlen("obj");
+  ptr += strlen("obj");
 
-  result = parse_pdf_object(&p, endptr, pf);
+  result = parse_pdf_object(&ptr, endptr, pf);
 
-  skip_white(&p, endptr);
-  if (memcmp(p, "endobj", strlen("endobj"))) {
+  skip_white(&ptr, endptr);
+  if (memcmp(ptr, "endobj", strlen("endobj"))) {
     WARN("Didn't find \"endobj\".");
     if (result)
       pdf_release_obj(result);
@@ -3006,20 +3108,19 @@ pdf_read_object (unsigned int obj_num, unsigned short obj_gen,
   }
   RELEASE(buffer);
 
-  return result;
+  return  result;
 }
 
 static pdf_obj *
 read_objstm (pdf_file *pf, unsigned int num)
 {
-  unsigned int offset = pf->xref_table[num].field2;
-  unsigned short gen = pf->xref_table[num].field3;
-  int limit = next_object_offset(pf, num), n, first, *header = NULL;
-  char *data = NULL, *q;
-  const char *p, *endptr;
-  int i;
-
-  pdf_obj *objstm, *dict, *type, *n_obj, *first_obj;
+  uint32_t    offset = pf->xref_table[num].field2;
+  uint16_t    gen    = pf->xref_table[num].field3;
+  int         limit = next_object_offset(pf, num), n, first, *header = NULL;
+  char       *data  = NULL, *q;
+  const char *ptr, *endptr;
+  int         i;
+  pdf_obj    *objstm, *dict, *type, *n_obj, *first_obj;
 
   objstm = pdf_read_object(num, gen, pf, offset, limit);
 
@@ -3064,23 +3165,24 @@ read_objstm (pdf_file *pf, unsigned int num)
   memcpy(data, pdf_stream_dataptr(objstm), first);
   data[first] = 0;
 
-  p      = data;
-  endptr = p + first;
-  i = 2*n;
+  ptr    = data;
+  endptr = ptr + first;
+  i = 2 * n;
   while (i--) {
-    *(header++) = strtoul(p, &q, 10);
-    if (q == p)
+    *(header++) = strtoul(ptr, &q, 10);
+    if (q == ptr)
       goto error;
-    p = q;
+    ptr = q;
   }
 
   /* Any garbage after last entry? */
-  skip_white(&p, endptr);
-  if (p != endptr)
+  skip_white(&ptr, endptr);
+  if (ptr != endptr)
     goto error;
   RELEASE(data);
 
-  return pf->xref_table[num].direct = objstm;
+  pf->xref_table[num].direct = objstm;
+  return  objstm;
 
  error:
   WARN("Cannot parse object stream.");
@@ -3088,7 +3190,7 @@ read_objstm (pdf_file *pf, unsigned int num)
     RELEASE(data);
   if (objstm)
     pdf_release_obj(objstm);
-  return NULL;
+  return  NULL;
 }
 
 /* Label without corresponding object definition are replaced by the
@@ -3098,7 +3200,7 @@ read_objstm (pdf_file *pf, unsigned int num)
 static pdf_obj *
 pdf_get_object (pdf_file *pf, unsigned int obj_num, unsigned short obj_gen)
 {
-  pdf_obj *result;
+  pdf_obj *result = NULL;
 
   if (!checklabel(pf, obj_num, obj_gen)) {
     WARN("Trying to read nonexistent or deleted object: %lu %u",
@@ -3113,35 +3215,36 @@ pdf_get_object (pdf_file *pf, unsigned int obj_num, unsigned short obj_gen)
   if (pf->xref_table[obj_num].type == 1) {
     /* type == 1 */
     unsigned int offset;
-    int limit;
+    int          limit;
     offset = pf->xref_table[obj_num].field2;
     limit  = next_object_offset(pf, obj_num);
     result = pdf_read_object(obj_num, obj_gen, pf, offset, limit);
   } else {
     /* type == 2 */
-    unsigned int   objstm_num = pf->xref_table[obj_num].field2;
-    unsigned short index = pf->xref_table[obj_num].field3;
-    pdf_obj *objstm;
-    int  *data, n, first, length;
-    const char *p, *q;
+    unsigned int objstm_num = pf->xref_table[obj_num].field2;
+    uint16_t     index = pf->xref_table[obj_num].field3;
+    pdf_obj     *objstm;
+    int         *data, n, first, length;
+    const char  *ptr, *endptr;
 
     if (objstm_num >= pf->num_obj ||
-	pf->xref_table[objstm_num].type != 1 ||
-	!((objstm = pf->xref_table[objstm_num].direct) ||
-	  (objstm = read_objstm(pf, objstm_num))))
+        pf->xref_table[objstm_num].type != 1 ||
+        !((objstm = pf->xref_table[objstm_num].direct) ||
+        (objstm = read_objstm(pf, objstm_num))))
       goto error;
 
-    data = get_objstm_data(objstm);
-    n = *(data++);
+    data  = get_objstm_data(objstm);
+    n     = *(data++);
     first = *(data++);
 
     if (index >= n || data[2*index] != obj_num)
       goto error;
 
     length = pdf_stream_length(objstm);
-    p = (const char *) pdf_stream_dataptr(objstm) + first + data[2*index+1];
-    q = p + (index == n-1 ? length : first+data[2*index+3]);
-    result = parse_pdf_object(&p, q, pf);
+    ptr    = (const char *) pdf_stream_dataptr(objstm)
+               + first + data[2*index+1];
+    endptr = ptr + (index == n-1 ? length : first+data[2*index+3]);
+    result = parse_pdf_object(&ptr, endptr, pf);
     if (!result)
       goto error;
   }
@@ -3164,10 +3267,11 @@ pdf_get_object (pdf_file *pf, unsigned int obj_num, unsigned short obj_gen)
 static pdf_obj *
 pdf_new_ref (pdf_obj *object)
 {
+  PDF *p = &_pdf;
   pdf_obj *result;
 
   if (object->label == 0) {
-    pdf_label_obj(object);
+    pdf_label_obj(p, object);
   }
   result = pdf_new_indirect(NULL, object->label, object->generation);
   OBJ_OBJ(result) = object;
@@ -3293,9 +3397,9 @@ parse_xref_table (pdf_file *pf, int xref_pos)
         return -1;
       }
       if (!pf->xref_table[i].field2) {
-	pf->xref_table[i].type   = (flag == 'n');
-	pf->xref_table[i].field2 = offset;
-	pf->xref_table[i].field3 = obj_gen;
+        pf->xref_table[i].type   = (flag == 'n');
+        pf->xref_table[i].field2 = offset;
+        pf->xref_table[i].field3 = obj_gen;
       }
     }
   }
@@ -3304,7 +3408,7 @@ parse_xref_table (pdf_file *pf, int xref_pos)
 }
 
 static unsigned int
-parse_xrefstm_field (const char **p, int length, unsigned int def)
+parse_xrefstm_field (const char **data, int length, unsigned int def)
 {
   unsigned int val = 0;
 
@@ -3313,7 +3417,7 @@ parse_xrefstm_field (const char **p, int length, unsigned int def)
 
   while (length--) {
     val <<= 8;
-    val |= (unsigned char) *((*p)++);
+    val |= (unsigned char) *((*data)++);
   }
 
   return val;
@@ -3321,9 +3425,9 @@ parse_xrefstm_field (const char **p, int length, unsigned int def)
 
 static int
 parse_xrefstm_subsec (pdf_file *pf,
-		      const char **p, int *length,
-		      int *W, int wsum,
-		      int first, int size) {
+                      const char **data, int *length,
+                      int *W, int wsum,
+                      int first, int size) {
   xref_entry *e;
 
   if ((*length -= wsum*size) < 0)
@@ -3338,7 +3442,7 @@ parse_xrefstm_subsec (pdf_file *pf,
     unsigned int   field2;
     unsigned short field3;
 
-    type = (unsigned char) parse_xrefstm_field(p, W[0], 1);
+    type = (unsigned char) parse_xrefstm_field(data, W[0], 1);
     if (type > 2)
       WARN("Unknown cross-reference stream entry type.");
 #if 0
@@ -3347,14 +3451,14 @@ parse_xrefstm_subsec (pdf_file *pf,
       return -1;
 #endif
 
-    field2 = (unsigned int)  parse_xrefstm_field(p, W[1], 0);
-    field3 = (unsigned short) parse_xrefstm_field(p, W[2], 0);
+    field2 = (unsigned int)  parse_xrefstm_field(data, W[1], 0);
+    field3 = (unsigned short) parse_xrefstm_field(data, W[2], 0);
 
     if (!e->field2) {
       e->type   = type;
       e->field2 = field2;
       e->field3 = field3;
-      }
+    }
     e++;
   }
 
@@ -3364,11 +3468,11 @@ parse_xrefstm_subsec (pdf_file *pf,
 static int
 parse_xref_stream (pdf_file *pf, int xref_pos, pdf_obj **trailer)
 {
-  pdf_obj *xrefstm, *size_obj, *W_obj, *index_obj;
+  pdf_obj     *xrefstm, *size_obj, *W_obj, *index_obj;
   unsigned int size;
-  int length;
-  int W[3], i, wsum = 0;
-  const char *p;
+  int          length;
+  int          W[3], i, wsum = 0;
+  const char  *data;
 
   xrefstm = pdf_read_object(0, 0, pf, xref_pos, pf->file_size);
   if (!PDF_OBJ_STREAMTYPE(xrefstm))
@@ -3402,13 +3506,13 @@ parse_xref_stream (pdf_file *pf, int xref_pos, pdf_obj **trailer)
     wsum += (W[i] = (int) pdf_number_value(tmp));
   }
 
-  p = pdf_stream_dataptr(xrefstm);
+  data = pdf_stream_dataptr(xrefstm);
 
   index_obj = pdf_lookup_dict(*trailer, "Index");
   if (index_obj) {
     unsigned int index_len;
     if (!PDF_OBJ_ARRAYTYPE(index_obj) ||
-	((index_len = pdf_array_length(index_obj)) % 2 ))
+        ((index_len = pdf_array_length(index_obj)) % 2 ))
       goto error;
 
     i = 0;
@@ -3416,13 +3520,14 @@ parse_xref_stream (pdf_file *pf, int xref_pos, pdf_obj **trailer)
       pdf_obj *first = pdf_get_array(index_obj, i++);
       size_obj  = pdf_get_array(index_obj, i++);
       if (!PDF_OBJ_NUMBERTYPE(first) ||
-	  !PDF_OBJ_NUMBERTYPE(size_obj) ||
-	  parse_xrefstm_subsec(pf, &p, &length, W, wsum,
-			       (int) pdf_number_value(first),
-			       (int) pdf_number_value(size_obj)))
-	goto error;
+          !PDF_OBJ_NUMBERTYPE(size_obj) ||
+          parse_xrefstm_subsec(pf, &data, &length, W, wsum,
+                               (int) pdf_number_value(first),
+                               (int) pdf_number_value(size_obj))) {
+        goto error;
+      }
     }
-  } else if (parse_xrefstm_subsec(pf, &p, &length, W, wsum, 0, size))
+  } else if (parse_xrefstm_subsec(pf, &data, &length, W, wsum, 0, size))
       goto error;
 
   if (length)
@@ -3462,37 +3567,39 @@ read_xref (pdf_file *pf)
       pdf_obj *xrefstm;
 
       if (!(trailer = parse_trailer(pf)))
-	goto error;
+        goto error;
 
       if (!main_trailer)
-	main_trailer = pdf_link_obj(trailer);
+        main_trailer = pdf_link_obj(trailer);
 
       if ((xrefstm = pdf_lookup_dict(trailer, "XRefStm"))) {
-	pdf_obj *new_trailer = NULL;
-	if (PDF_OBJ_NUMBERTYPE(xrefstm) &&
-	    parse_xref_stream(pf, (int) pdf_number_value(xrefstm),
+        pdf_obj *new_trailer = NULL;
+        if (PDF_OBJ_NUMBERTYPE(xrefstm) &&
+            parse_xref_stream(pf, (int) pdf_number_value(xrefstm),
 			      &new_trailer))
-	  pdf_release_obj(new_trailer);
-	else
-	  WARN("Skipping hybrid reference section.");
+          pdf_release_obj(new_trailer);
+        else
+          WARN("Skipping hybrid reference section.");
 	/* Many PDF 1.5 xref streams use DecodeParms, which we cannot
-	   parse. This way we can use at least xref tables in hybrid
-	   documents. Or should we better stop parsing the file?
-	*/
+	 * parse. This way we can use at least xref tables in hybrid
+	 * documents. Or should we better stop parsing the file?
+	 */
       }
 
     } else if (!res && parse_xref_stream(pf, xref_pos, &trailer)) {
       /* cross-reference stream */
       if (!main_trailer)
-	main_trailer = pdf_link_obj(trailer);
-    } else
+      	main_trailer = pdf_link_obj(trailer);
+    } else {
       goto error;
+    }
 
     if ((prev = pdf_lookup_dict(trailer, "Prev"))) {
       if (PDF_OBJ_NUMBERTYPE(prev))
-	xref_pos = (int) pdf_number_value(prev);
-      else
-	goto error;
+        xref_pos = (int) pdf_number_value(prev);
+      else {
+      	goto error;
+      }
     } else
       xref_pos = 0;
 
@@ -3594,6 +3701,7 @@ pdf_file_get_catalog (pdf_file *pf)
 pdf_file *
 pdf_open (const char *ident, FILE *file)
 {
+  PDF *p = &_pdf;
   pdf_file *pf = NULL;
 
   ASSERT(pdf_files);
@@ -3607,13 +3715,13 @@ pdf_open (const char *ident, FILE *file)
     pdf_obj *new_version;
     int version = check_for_pdf_version(file);
 
-    if (version < 1 || version > pdf_version) {
-      WARN("pdf_open: Not a PDF 1.[1-%u] file.", pdf_version);
-/*
-  Try to embed the PDF image, even if the PDF version is newer than
-  the setting.
-      return NULL;
-*/
+    if (version < 1 || version > p->version.minor) {
+      WARN("pdf_open: Not a PDF 1.[1-%u] file.", p->version.minor);
+   /*
+    * Try to embed the PDF image, even if the PDF version is newer than
+    * the setting.
+    *  return NULL;
+    */
     }
 
     pf = pdf_file_new(file);
@@ -3638,14 +3746,14 @@ pdf_open (const char *ident, FILE *file)
       unsigned int minor;
 
       if (!PDF_OBJ_NAMETYPE(new_version) ||
-	  sscanf(pdf_name_value(new_version), "1.%u", &minor) != 1) {
-	pdf_release_obj(new_version);
-	WARN("Illegal Version entry in document catalog. Broken PDF file?");
-	goto error;
+          sscanf(pdf_name_value(new_version), "1.%u", &minor) != 1) {
+        pdf_release_obj(new_version);
+        WARN("Illegal Version entry in document catalog. Broken PDF file?");
+        goto error;
       }
 
       if (pf->version < minor)
-	pf->version = minor;
+        pf->version = minor;
 
       pdf_release_obj(new_version);
     }
@@ -3690,12 +3798,13 @@ check_for_pdf_version (FILE *file)
 int
 check_for_pdf (FILE *file)
 {
+  PDF *p = &_pdf;
   int version = check_for_pdf_version(file);
 
   if (version < 0)  /* not a PDF file */
     return 0;
 
-  if (version <= pdf_version)
+  if (version <= p->version.minor)
     return 1;
 
   WARN("Version of PDF file (1.%d) is newer than version limit specification.",
@@ -3795,15 +3904,15 @@ pdf_import_object (pdf_obj *object)
 
       tmp = pdf_import_object(pdf_stream_dict(object));
       if (!tmp)
-	return NULL;
+        return NULL;
 
       imported    = pdf_new_stream(0);
       stream_dict = pdf_stream_dict(imported);
       pdf_merge_dict(stream_dict, tmp);
       pdf_release_obj(tmp);
       pdf_add_stream(imported,
-		     pdf_stream_dataptr(object),
-		     pdf_stream_length(object));
+                     pdf_stream_dataptr(object),
+                     pdf_stream_length(object));
     }
     break;
 
@@ -3823,8 +3932,8 @@ pdf_import_object (pdf_obj *object)
     for (i = 0; i < pdf_array_length(object); i++) {
       tmp = pdf_import_object(pdf_get_array(object, i));
       if (!tmp) {
-	pdf_release_obj(imported);
-	return NULL;
+        pdf_release_obj(imported);
+        return NULL;
       }
       pdf_add_array(imported, tmp);
     }
