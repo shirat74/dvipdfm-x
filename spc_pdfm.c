@@ -2,19 +2,19 @@
 
     Copyright (C) 2007-2015 by Jin-Hwan Cho and Shunsaku Hirata,
     the dvipdfmx project team.
-
+    
     Copyright (C) 1998, 1999 by Mark A. Wicks <mwicks@kettering.edu>
 
     This program is free software; you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
     the Free Software Foundation; either version 2 of the License, or
     (at your option) any later version.
-
+    
     This program is distributed in the hope that it will be useful,
     but WITHOUT ANY WARRANTY; without even the implied warranty of
     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
     GNU General Public License for more details.
-
+    
     You should have received a copy of the GNU General Public License
     along with this program; if not, write to the Free Software
     Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA.
@@ -275,7 +275,7 @@ safeputresdict (pdf_obj *kp, pdf_obj *vp, void *dp)
 /* Think what happens if you do
  *
  *  pdf:put @resources << /Font << >> >>
- *
+ * 
  */
 static int
 spc_handler_pdfm_put (struct spc_env *spe, struct spc_arg *ap)
@@ -392,8 +392,8 @@ reencodestring (CMap *cmap, pdf_obj *instring)
   obufleft = WBUF_SIZE - 2;
 
   CMap_decode(cmap,
-              &inbufcur, &inbufleft,
-              &obufcur, &obufleft);
+	      &inbufcur, &inbufleft,
+	      &obufcur, &obufleft);
 
   if (inbufleft > 0) {
     return  -1;
@@ -539,7 +539,7 @@ parse_pdf_dict_with_tounicode (const char **pp, const char *endptr, struct touni
     return  parse_pdf_dict(pp, endptr, NULL);
 
   /* :( */
-  if (cd && cd->unescape_backslash)
+  if (cd && cd->unescape_backslash) 
     dict = parse_pdf_tainted_dict(pp, endptr);
   else {
     dict = parse_pdf_dict(pp, endptr, NULL);
@@ -567,7 +567,7 @@ spc_handler_pdfm_annot (struct spc_env *spe, struct spc_arg *args)
   }
 
   transform_info_clear(&ti);
-  if (spc_util_read_dimtrns(spe, &ti, args, NULL, 0) < 0) {
+  if (spc_util_read_dimtrns(spe, &ti, args, 0) < 0) {
     if (ident)
       RELEASE(ident);
     return  -1;
@@ -745,7 +745,7 @@ spc_handler_pdfm_btrans (struct spc_env *spe, struct spc_arg *args)
   transform_info  ti;
 
   transform_info_clear(&ti);
-  if (spc_util_read_dimtrns(spe, &ti, args, NULL, 0) < 0) {
+  if (spc_util_read_dimtrns(spe, &ti, args, 0) < 0) {
     return -1;
   }
 
@@ -908,7 +908,7 @@ spc_handler_pdfm_bead (struct spc_env *spe, struct spc_arg *args)
 
   /* If okay so far, try to get a bounding box */
   transform_info_clear(&ti);
-  if (spc_util_read_dimtrns(spe, &ti, args, NULL, 0) < 0) {
+  if (spc_util_read_dimtrns(spe, &ti, args, 0) < 0) {
     RELEASE(article_name);
     return  -1;
   }
@@ -962,8 +962,6 @@ spc_handler_pdfm_bead (struct spc_env *spe, struct spc_arg *args)
   return 0;
 }
 
-int ImageSpecial = 0; /* default value */
-
 static int
 spc_handler_pdfm_image (struct spc_env *spe, struct spc_arg *args)
 {
@@ -972,12 +970,7 @@ spc_handler_pdfm_image (struct spc_env *spe, struct spc_arg *args)
   char            *ident = NULL;
   pdf_obj         *fspec, *attr = NULL;
   transform_info   ti;
-  int              page_no;
-
-/*
-  Initialize the PageBox as the default value
-*/
-  PageBox = 0;
+  load_options     options = {1, 0, NULL};
 
   skip_white(&args->curptr, args->endptr);
   if (args->curptr[0] == '@') {
@@ -990,9 +983,15 @@ spc_handler_pdfm_image (struct spc_env *spe, struct spc_arg *args)
     }
   }
 
+  /* 2015/12/29
+   * There should not be "page" and "pagebox" in read_dimtrns().
+   * It is for reading "dimensions" and "transformations" and "page" is
+   * completely unrelated.
+   */
   transform_info_clear(&ti);
-  page_no = 1;
-  if (spc_util_read_dimtrns(spe, &ti, args, &page_no, 0) < 0) {
+  if (spc_util_read_blahblah(spe, &ti,
+                             &options.page_no, &options.bbox_type, args) < 0) {
+    spc_warn(spe, "Reading option field in pdf:image failed.");
     if (ident)
       RELEASE(ident);
     return  -1;
@@ -1015,16 +1014,14 @@ spc_handler_pdfm_image (struct spc_env *spe, struct spc_arg *args)
 
   skip_white(&args->curptr, args->endptr);
   if (args->curptr < args->endptr) {
-    attr = parse_pdf_object(&args->curptr, args->endptr, NULL);
+    options.dict = parse_pdf_object(&args->curptr, args->endptr, NULL);
     if (!attr || !PDF_OBJ_DICTTYPE(attr)) {
       spc_warn(spe, "Ignore invalid attribute dictionary.");
       if (attr) pdf_release_obj(attr);
     }
   }
 
-  ImageSpecial = 1;
-  xobj_id = pdf_ximage_findresource(pdf_string_value(fspec), page_no, attr);
-  ImageSpecial = 0;
+  xobj_id = pdf_ximage_findresource(pdf_string_value(fspec), options);
 
   if (xobj_id < 0) {
     spc_warn(spe, "Could not find image resource...");
@@ -1041,8 +1038,6 @@ spc_handler_pdfm_image (struct spc_env *spe, struct spc_arg *args)
       RELEASE(ident);
     return  -1;
   }
-
-  PageBox_of_id[xobj_id] = (uint8_t)PageBox;
 
   if (!(ti.flags & INFO_DO_HIDE))
     pdf_dev_put_image(xobj_id, &ti, spe->x_user, spe->y_user);
@@ -1553,7 +1548,7 @@ spc_handler_pdfm_bform (struct spc_env *spe, struct spc_arg *args)
   }
 
   transform_info_clear(&ti);
-  if (spc_util_read_dimtrns(spe, &ti, args, NULL, 0) < 0) {
+  if (spc_util_read_dimtrns(spe, &ti, args, 0) < 0) {
     RELEASE(ident);
     return  -1;
   }
@@ -1653,6 +1648,7 @@ spc_handler_pdfm_uxobj (struct spc_env *spe, struct spc_arg *args)
   int              xobj_id;
   char            *ident;
   transform_info   ti;
+  load_options     options = {1, 0, NULL};
 
   skip_white(&args->curptr, args->endptr);
 
@@ -1664,7 +1660,7 @@ spc_handler_pdfm_uxobj (struct spc_env *spe, struct spc_arg *args)
 
   transform_info_clear(&ti);
   if (args->curptr < args->endptr) {
-    if (spc_util_read_dimtrns(spe, &ti, args, NULL, 0) < 0) {
+    if (spc_util_read_dimtrns(spe, &ti, args, 0) < 0) {
       RELEASE(ident);
       return  -1;
     }
@@ -1676,7 +1672,7 @@ spc_handler_pdfm_uxobj (struct spc_env *spe, struct spc_arg *args)
    */
   xobj_id = findresource(sd, ident);
   if (xobj_id < 0) {
-    xobj_id = pdf_ximage_findresource(ident, 0, NULL);
+    xobj_id = pdf_ximage_findresource(ident, options);
     if (xobj_id < 0) {
       spc_warn(spe, "Specified (image) object doesn't exist: %s", ident);
       RELEASE(ident);
@@ -1891,7 +1887,7 @@ static struct spc_handler pdfm_handlers[] = {
   {"bead",       spc_handler_pdfm_bead},
   {"thread",     spc_handler_pdfm_bead},
 
-  {"destination", spc_handler_pdfm_dest},
+  {"destination", spc_handler_pdfm_dest}, 
   {"dest",        spc_handler_pdfm_dest},
 
 
