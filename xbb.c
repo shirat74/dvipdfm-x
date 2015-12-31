@@ -283,8 +283,6 @@ int extractbb (int argc, char *argv[])
 
   pdf_files_init();
 
-  pdf_set_version(PDF_VERSION_MAX);
-
   opterr = 0;
   
   while ((c = getopt_long(argc, argv, optstrig, long_options, NULL)) != -1) {
