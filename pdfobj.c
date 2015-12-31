@@ -431,7 +431,7 @@ pdf_out_init (const char *filename, int ver_major, int ver_minor,
    */
   pdf_new();
 
-  pdf_set_version(ver_major, ver_minor)
+  pdf_set_version(ver_major, ver_minor);
 
   add_xref_entry(p, 0, 0, 0, 0xffff);
   p->obj.next_label = 1;
