@@ -416,6 +416,8 @@ pdf_include_page (pdf_ximage        *ximage,
          "than output PDF: %d.", pdf_get_version());
   }
 
+  if (options.page_no == 0)
+    options.page_no = 1;
   pdf_ximage_init_form_info(&info);
 
   page = pdf_doc_get_page(pf,
