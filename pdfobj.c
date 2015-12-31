@@ -367,7 +367,7 @@ pdf_set_use_predictor (int bval)
   p->options.compression.use_predictor = bval ? 1 : 0;
 }
 
-void
+static void
 pdf_set_version (int ver_major, int ver_minor)
 {
   PDF *p = &_pdf;
@@ -419,7 +419,8 @@ add_xref_entry (PDF *p,
 
 #define BINARY_MARKER "%\344\360\355\370\n"
 void
-pdf_out_init (const char *filename, int enable_encrypt, int enable_objstm)
+pdf_out_init (const char *filename, int ver_major, int ver_minor,
+              int enable_encrypt, int enable_objstm)
 {
   PDF *p = &_pdf;
   char v;
@@ -429,6 +430,8 @@ pdf_out_init (const char *filename, int enable_encrypt, int enable_objstm)
    * representing PDF file. There are too manay things to be done.
    */
   pdf_new();
+
+  pdf_set_version(ver_major, ver_minor)
 
   add_xref_entry(p, 0, 0, 0, 0xffff);
   p->obj.next_label = 1;

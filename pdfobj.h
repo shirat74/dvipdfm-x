@@ -57,9 +57,9 @@ extern void     pdf_obj_set_verbose (void);
 extern void     pdf_error_cleanup   (void);
 
 extern void     pdf_out_init      (const char *filename,
+                                   int ver_major, int ver_minor,
                                    int enable_encrypt, int enable_objstm);
 extern void     pdf_out_flush     (void);
-extern void     pdf_set_version   (int major, int minor);
 extern unsigned pdf_get_version   (void);
 
 extern void     pdf_release_obj (pdf_obj *object);

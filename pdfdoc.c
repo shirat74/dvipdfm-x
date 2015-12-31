@@ -2520,7 +2520,8 @@ pdf_open_document (const char *filename,
 {
   pdf_doc *p = &pdoc;
 
-  pdf_out_init(filename, enable_encrypt, enable_objstm);
+  pdf_out_init(filename, ver_major, ver_minor,
+               enable_encrypt, enable_objstm);
 
   pdf_doc_init_catalog(p);
 
@@ -2547,7 +2548,6 @@ pdf_open_document (const char *filename,
 
   pdf_doc_set_bgcolor(NULL);
 
-  pdf_set_version(ver_major, ver_minor);
   /* Please fix this: put somewhere other than pdfencrypt... */
   pdf_enc_compute_id_string(id_str, filename);
   if (enable_encrypt) {
