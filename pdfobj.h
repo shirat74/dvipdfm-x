@@ -25,7 +25,6 @@
 
 #include <stdio.h>
 
-
 /* Here is the complete list of PDF object types */
 
 #define PDF_BOOLEAN     1
@@ -56,12 +55,12 @@ extern int      pdf_obj_get_verbose (void);
 extern void     pdf_obj_set_verbose (void);
 extern void     pdf_error_cleanup   (void);
 
-extern void     pdf_out_init      (const char *filename, const char *id_str,
+extern PDF     *pdf_out_init      (const char *filename, const char *id_str,
                                    int ver_major, int ver_minor,
                                    int enable_encrypt, int keybits, int32_t permission,
                                    const char *opasswd, const char *upasswd,
                                    int enable_objstm);
-extern void     pdf_out_flush     (void);
+extern void     pdf_out_flush     (PDF *p);
 extern unsigned pdf_get_version   (void);
 
 extern void     pdf_release_obj (pdf_obj *object);
@@ -179,10 +178,8 @@ extern int         pdf_compare_reference (pdf_obj *ref1, pdf_obj *ref2);
 extern void      pdf_set_compression   (int level);
 extern void      pdf_set_use_predictor (int bval);
 
-extern void      pdf_set_info     (pdf_obj *obj);
-extern void      pdf_set_root     (pdf_obj *obj);
-extern void      pdf_set_id       (pdf_obj *id);
-extern void      pdf_set_encrypt  (pdf_obj *encrypt);
+extern void      pdf_set_info     (PDF *p, pdf_obj *obj);
+extern void      pdf_set_root     (PDF *p, pdf_obj *obj);
 
 extern void      pdf_files_init    (void);
 extern void      pdf_files_close   (void);

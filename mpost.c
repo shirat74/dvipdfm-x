@@ -1606,7 +1606,7 @@ mps_include_page (const char *ident, FILE *fp)
 }
 
 int
-mps_do_page (FILE *image_file)
+mps_do_page (pdf_doc *p, FILE *image_file)
 {
   int       error = 0;
   pdf_rect  bbox;
@@ -1637,7 +1637,7 @@ mps_do_page (FILE *image_file)
   mp_cmode = MP_CMODE_MPOST;
 
   pdf_doc_begin_page  (1.0, -Xorigin, -Yorigin); /* scale, xorig, yorig */
-  pdf_doc_set_mediabox(pdf_doc_current_page_number(), &bbox);
+  pdf_doc_set_mediabox(p, pdf_doc_current_page_number(), &bbox);
 
   dir_mode = pdf_dev_get_dirmode();
   pdf_dev_set_autorotate(0);

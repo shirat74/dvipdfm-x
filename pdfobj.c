@@ -346,11 +346,13 @@ static void release_dict (pdf_dict *dict);
 static void write_stream   (PDF *p, pdf_stream *stream);
 static void release_stream (pdf_stream *stream);
 
-
 void
 pdf_set_compression (int level)
 {
   PDF *p = &_pdf;
+
+  if (!p)
+    return;
 
 #ifndef   HAVE_ZLIB
   ERROR("You don't have compression compiled in. Possibly libz wasn't found by configure.");
@@ -373,6 +375,9 @@ void
 pdf_set_use_predictor (int bval)
 {
   PDF *p = &_pdf;
+
+  if (!p)
+    return;
 
   p->options.compression.use_predictor = bval ? 1 : 0;
 }
@@ -465,7 +470,7 @@ add_xref_entry (PDF *p,
 }
 
 #define BINARY_MARKER "%\344\360\355\370\n"
-void
+PDF *
 pdf_out_init (const char *filename, const char *id_str,
               int ver_major, int ver_minor,
               int enable_encrypt, int keybits, int32_t permission,
@@ -537,12 +542,15 @@ pdf_out_init (const char *filename, const char *id_str,
       p->sec_data = pdf_sec_init(id, keybits, permission, 1, 1);
       if (!p->sec_data)
         enable_encrypt = 0;
-      else {
+      else { /* Encryption */
         pdf_obj *encrypt;
 
         pdf_sec_set_password(p->sec_data, opasswd, upasswd);
         encrypt = pdf_sec_get_encrypt_dict(p->sec_data);
-        pdf_set_encrypt(encrypt);
+        pdf_add_dict(p->trailer,
+                     pdf_new_name("Encrypt"),
+                     pdf_ref_obj(encrypt));
+        encrypt->flags |= OBJ_NO_ENCRYPT;
         pdf_release_obj(encrypt);
       }
     }
@@ -554,6 +562,8 @@ pdf_out_init (const char *filename, const char *id_str,
 
   p->state.enc_mode  = 0;
   p->options.encrypt = enable_encrypt;
+
+  return p;
 }
 
 static void
@@ -650,10 +660,12 @@ dump_xref_stream (PDF *p)
 }
 
 void
-pdf_out_flush (void)
+pdf_out_flush (PDF *p)
 {
-  PDF *p = &_pdf;
   char buf[16];
+
+  if (!p)
+    return;
 
   if (p->output.file) {
     int length;
@@ -727,9 +739,11 @@ pdf_error_cleanup (void)
 
 
 void
-pdf_set_root (pdf_obj *object)
+pdf_set_root (PDF *p, pdf_obj *object)
 {
-  PDF *p = &_pdf;
+  if (!p)
+    return;
+
   if (pdf_lookup_dict(p->trailer, "Root"))
     ERROR("Root object already set!");
   pdf_add_dict(p->trailer, pdf_new_name("Root"), pdf_ref_obj(object));
@@ -743,24 +757,14 @@ pdf_set_root (pdf_obj *object)
 }
 
 void
-pdf_set_info (pdf_obj *object)
+pdf_set_info (PDF *p, pdf_obj *object)
 {
-  PDF *p = &_pdf;
+  if (!p)
+    return;
+
   if (pdf_lookup_dict(p->trailer, "Info"))
     ERROR("Info object already set!");
   pdf_add_dict(p->trailer, pdf_new_name("Info"), pdf_ref_obj(object));
-}
-
-void
-pdf_set_encrypt (pdf_obj *object)
-{
-  PDF *p = &_pdf;
-  ASSERT(p->options.encrypt);
-
-  if (pdf_lookup_dict(p->trailer, "Encrypt"))
-    ERROR("Encrypt object already set!");
-  pdf_add_dict(p->trailer, pdf_new_name("Encrypt"), pdf_ref_obj(object));
-  object->flags |= OBJ_NO_ENCRYPT;
 }
 
 static void

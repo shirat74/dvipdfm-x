@@ -28,9 +28,11 @@
 
 #define PDF_DOC_GRABBING_NEST_MAX 4
 
+typedef struct pdf_doc pdf_doc;
+
 extern void     pdf_doc_set_verbose (void);
 
-extern void     pdf_open_document  (const char *filename,
+extern pdf_doc *pdf_open_document  (const char *filename,
                                     const char *id_str,
                                     const char *creator,
                                     int         ver_major,
@@ -46,7 +48,7 @@ extern void     pdf_open_document  (const char *filename,
                                     double      annot_grow_amount,
                                     int         bookmark_open_depth,
                                     int         check_gotos);
-extern void     pdf_close_document (void);
+extern void     pdf_close_document (pdf_doc *p);
 
 /* They just return PDF dictionary object.
  * Callers are completely responsible for doing right thing...
@@ -87,7 +89,8 @@ extern void     pdf_doc_begin_page   (double scale,
                                       double x_origin, double y_origin);
 extern void     pdf_doc_end_page     (void);
 
-extern void     pdf_doc_set_mediabox (unsigned page_no, const pdf_rect *mediabox);
+extern void     pdf_doc_set_mediabox (pdf_doc *p,
+                                      unsigned page_no, const pdf_rect *mediabox);
 
 extern void     pdf_doc_add_page_content  (const char *buffer, unsigned length);
 extern void     pdf_doc_add_page_resource (const char *category,

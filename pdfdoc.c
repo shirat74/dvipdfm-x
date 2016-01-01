@@ -202,6 +202,8 @@ struct name_dict
 
 typedef struct pdf_doc
 {
+  PDF  *pdf; /* Object representing PDF file */
+
   struct {
     pdf_obj *dict;
 
@@ -237,10 +239,10 @@ typedef struct pdf_doc
 
   struct name_dict *names;
 
-  int check_gotos;
-  struct ht_table gotos;
+  struct ht_table   gotos;
 
   struct {
+    int    check_gotos;
     int    outline_open_depth;
     double annot_grow;
   } opt;
@@ -260,7 +262,7 @@ pdf_doc_init_catalog (pdf_doc *p)
   p->root.threads    = NULL;
 
   p->root.dict = pdf_new_dict();
-  pdf_set_root(p->root.dict);
+  pdf_set_root(p->pdf, p->root.dict);
 
   return;
 }
@@ -375,7 +377,7 @@ static void pdf_doc_close_page_tree (pdf_doc *p);
 static void pdf_doc_init_names  (pdf_doc *p, int check_gotos);
 static void pdf_doc_close_names (pdf_doc *p);
 
-static void pdf_doc_add_goto (pdf_obj *annot_dict);
+static void pdf_doc_add_goto (pdf_doc *p, pdf_obj *annot_dict);
 
 static void pdf_doc_init_docinfo  (pdf_doc *p);
 static void pdf_doc_close_docinfo (pdf_doc *p);
@@ -486,7 +488,7 @@ static void
 pdf_doc_init_docinfo (pdf_doc *p)
 {
   p->info = pdf_new_dict();
-  pdf_set_info(p->info);
+  pdf_set_info(p->pdf, p->info);
 
   return;
 }
@@ -1498,7 +1500,7 @@ pdf_doc_bookmarks_add (pdf_obj *dict, int is_open)
 
   p->outlines.current = item;
 
-  pdf_doc_add_goto(dict);
+  pdf_doc_add_goto(p, dict);
 
   return;
 }
@@ -1561,7 +1563,7 @@ pdf_doc_init_names (pdf_doc *p, int check_gotos)
   p->names[NUM_NAME_CATEGORY].category = NULL;
   p->names[NUM_NAME_CATEGORY].data     = NULL;
 
-  p->check_gotos   = check_gotos;
+  p->opt.check_gotos = check_gotos;
   ht_init_table(&p->gotos, (void (*) (void *)) pdf_release_obj);
 
   return;
@@ -1591,12 +1593,13 @@ pdf_doc_add_names (const char *category,
 }
 
 static void
-pdf_doc_add_goto (pdf_obj *annot_dict)
+pdf_doc_add_goto (pdf_doc *p, pdf_obj *annot_dict)
 {
-  pdf_obj *subtype = NULL, *A = NULL, *S = NULL, *D = NULL, *D_new, *dict;
+  pdf_obj    *subtype = NULL, *A = NULL, *S = NULL, *D = NULL;
+  pdf_obj    *D_new, *dict;
   const char *dest, *key;
 
-  if (!pdoc.check_gotos)
+  if (!p->opt.check_gotos)
     return;
 
   /*
@@ -1655,16 +1658,16 @@ pdf_doc_add_goto (pdf_obj *annot_dict)
   else
     goto error;
 
-  D_new = ht_lookup_table(&pdoc.gotos, dest, strlen(dest));
+  D_new = ht_lookup_table(&p->gotos, dest, strlen(dest));
   if (!D_new) {
     char buf[10];
 
     /* We use hexadecimal notation for our numeric destinations.
      * Other bases (e.g., 10+26 or 10+2*26) would be more efficient.
      */
-    sprintf(buf, "%x", ht_table_size(&pdoc.gotos));
+    sprintf(buf, "%x", ht_table_size(&p->gotos));
     D_new = pdf_new_string(buf, strlen(buf));
-    ht_append_table(&pdoc.gotos, dest, strlen(dest), D_new);
+    ht_append_table(&p->gotos, dest, strlen(dest), D_new);
   }
 
   {
@@ -1730,16 +1733,16 @@ pdf_doc_close_names (pdf_doc *p)
       pdf_obj  *name_tree;
       int count;
 
-      if (!pdoc.check_gotos || strcmp(p->names[i].category, "Dests"))
+      if (!p->opt.check_gotos || strcmp(p->names[i].category, "Dests"))
         name_tree = pdf_names_create_tree(data, &count, NULL);
       else {
-        name_tree = pdf_names_create_tree(data, &count, &pdoc.gotos);
+        name_tree = pdf_names_create_tree(data, &count, &p->gotos);
 
         if (verbose && count < data->count)
           MESG("\nRemoved %ld unused PDF destinations\n", data->count-count);
 
-        if (count < pdoc.gotos.count)
-          warn_undef_dests(data, &pdoc.gotos);
+        if (count < p->gotos.count)
+          warn_undef_dests(data, &p->gotos);
       }
 
       if (name_tree) {
@@ -1781,7 +1784,8 @@ pdf_doc_close_names (pdf_doc *p)
   return;
 }
 
-static void pdf_doc_get_mediabox (unsigned page_no, pdf_rect *mediabox);
+static void pdf_doc_get_mediabox (pdf_doc *p,
+                                  unsigned page_no, pdf_rect *mediabox);
 
 void
 pdf_doc_add_annot (unsigned page_no, const pdf_rect *rect,
@@ -1801,7 +1805,7 @@ pdf_doc_add_annot (unsigned page_no, const pdf_rect *rect,
   {
     pdf_rect  mediabox;
 
-    pdf_doc_get_mediabox(page_no, &mediabox);
+    pdf_doc_get_mediabox(p, page_no, &mediabox);
     pdf_dev_get_coord(&xpos, &ypos);
     annbox.llx = rect->llx - xpos; annbox.lly = rect->lly - ypos;
     annbox.urx = rect->urx - xpos; annbox.ury = rect->ury - ypos;
@@ -1831,7 +1835,7 @@ pdf_doc_add_annot (unsigned page_no, const pdf_rect *rect,
   pdf_add_array(page->annots, pdf_ref_obj(annot_dict));
 
   if (new_annot)
-    pdf_doc_add_goto(annot_dict);
+    pdf_doc_add_goto(p, annot_dict);
 
   return;
 }
@@ -2110,10 +2114,13 @@ pdf_doc_close_articles (pdf_doc *p)
 
 /* page_no = 0 for root page tree node. */
 void
-pdf_doc_set_mediabox (unsigned page_no, const pdf_rect *mediabox)
+pdf_doc_set_mediabox (pdf_doc *p,
+                      unsigned page_no, const pdf_rect *mediabox)
 {
-  pdf_doc  *p = &pdoc;
   pdf_page *page;
+
+  if (!p)
+    return;
 
   if (page_no == 0) {
     p->pages.mediabox.llx = mediabox->llx;
@@ -2133,10 +2140,12 @@ pdf_doc_set_mediabox (unsigned page_no, const pdf_rect *mediabox)
 }
 
 static void
-pdf_doc_get_mediabox (unsigned page_no, pdf_rect *mediabox)
+pdf_doc_get_mediabox (pdf_doc *p,
+                      unsigned page_no, pdf_rect *mediabox)
 {
-  pdf_doc  *p = &pdoc;
   pdf_page *page;
+
+  ASSERT(p);
 
   if (page_no == 0) {
     mediabox->llx = p->pages.mediabox.llx;
@@ -2432,7 +2441,7 @@ doc_fill_page_background (pdf_doc *p)
     return;
   }
 
-  pdf_doc_get_mediabox(pdf_doc_current_page_number(), &r);
+  pdf_doc_get_mediabox(p, pdf_doc_current_page_number(), &r);
 
   currentpage = LASTPAGE(p);
   ASSERT(currentpage);
@@ -2500,7 +2509,7 @@ pdf_doc_add_page_content (const char *buffer, unsigned length)
   return;
 }
 
-void
+pdf_doc *
 pdf_open_document (const char *filename,
                    const char *creator,        /* Creator string */
                    const char *id_str,         /* For computation of ID */
@@ -2519,10 +2528,12 @@ pdf_open_document (const char *filename,
                    int         check_gotos)
 {
   pdf_doc *p = &pdoc;
+  PDF     *pdf;
 
-  pdf_out_init(filename, id_str, ver_major, ver_minor,
-               enable_encrypt, keybits, permission, opasswd, upasswd,
-               enable_objstm);
+  pdf = pdf_out_init(filename, id_str, ver_major, ver_minor,
+                     enable_encrypt,
+                     keybits, permission, opasswd, upasswd,
+                     enable_objstm);
 
   pdf_doc_init_catalog(p);
 
@@ -2563,14 +2574,16 @@ pdf_open_document (const char *filename,
   }
 
   p->pending_forms = NULL;
+  p->pdf = pdf;
 
-  return;
+  return p;
 }
 
 void
-pdf_close_document (void)
+pdf_close_document (pdf_doc *p)
 {
-  pdf_doc *p = &pdoc;
+  if (!p)
+    return;
 
   /*
    * Following things were kept around so user can add dictionary items.
@@ -2589,7 +2602,7 @@ pdf_close_document (void)
 
   pdf_close_resources(); /* Should be at last. */
 
-  pdf_out_flush();
+  pdf_out_flush(p->pdf);
 
   if (thumb_basename)
     RELEASE(thumb_basename);

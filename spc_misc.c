@@ -35,6 +35,7 @@
 #include "pdfparse.h"
 #include "pdfobj.h"
 
+#include "pdfdoc.h"
 #include "pdfcolor.h"
 #include "pdfdraw.h"
 #include "pdfximage.h"

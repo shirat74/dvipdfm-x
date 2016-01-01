@@ -736,7 +736,7 @@ error_cleanup (void)
  } while (0)
 
 static void
-do_dvi_pages (void)
+do_dvi_pages (pdf_doc *p)
 {
   int      page_no, page_count, i, step;
   double   page_width, page_height;
@@ -764,7 +764,7 @@ do_dvi_pages (void)
   mediabox.urx = paper_width;
   mediabox.ury = paper_height;
 
-  pdf_doc_set_mediabox(0, &mediabox); /* Root node */
+  pdf_doc_set_mediabox(p, 0, &mediabox); /* Root node */
 
   for (i = 0; i < num_page_ranges && dvi_npages(); i++) {
     if (page_ranges[i].last < 0)
@@ -801,7 +801,7 @@ do_dvi_pages (void)
           mediabox.lly = 0.0;
           mediabox.urx = page_width;
           mediabox.ury = page_height;
-          pdf_doc_set_mediabox(page_count+1, &mediabox);
+          pdf_doc_set_mediabox(p, page_count+1, &mediabox);
         }
         dvi_do_page(page_height, x_offset, y_offset);
         page_count++;
@@ -828,14 +828,14 @@ do_dvi_pages (void)
 }
 
 static void
-do_mps_pages (void)
+do_mps_pages (pdf_doc *p)
 {
   FILE  *fp;
 
   /* _FIXME_ */
   fp = MFOPEN(dvi_filename, FOPEN_RBIN_MODE);
   if (fp) {
-    mps_do_page(fp);
+    mps_do_page(p, fp);
     MFCLOSE(fp);
   } else {
     int  i, page_no, step, page_count = 0;
@@ -853,7 +853,7 @@ do_mps_pages (void)
         fp = MFOPEN(filename, FOPEN_RBIN_MODE);
         if (fp) {
           MESG("[%ld<%s>", page_no + 1, filename);
-          mps_do_page(fp);
+          mps_do_page(p, fp);
           page_count++;
           MESG("]");
           MFCLOSE(fp);
@@ -895,11 +895,12 @@ DLLPROC (int argc, char *argv[])
 main (int argc, char *argv[])
 #endif
 {
-  double dvi2pts;
-  char *base;
+  pdf_doc *p;
+  double   dvi2pts;
+  char    *base;
 #ifdef WIN32
   int ac;
-  char **av, *enc;
+  char   **av, *enc;
 #endif
 
 #ifdef MIKTEX
@@ -1036,12 +1037,14 @@ main (int argc, char *argv[])
    * annot_grow:    Margin of annotation.
    * bookmark_open: Miximal depth of open bookmarks.
    */
-  pdf_open_document(pdf_filename, dvi_filename, dvi_comment(),
-                    ver_major, ver_minor,
-                    do_encryption, keybits, permission, opasswd, upasswd,
-                    enable_objstm,
-                    paper_width, paper_height, annot_grow, bookmark_open,
-                    !(opt_flags & OPT_PDFDOC_NO_DEST_REMOVE));
+  p = pdf_open_document(pdf_filename, dvi_filename, dvi_comment(),
+                        ver_major, ver_minor,
+                        do_encryption, keybits, permission,
+                        opasswd, upasswd,
+                        enable_objstm,
+                        paper_width, paper_height,
+                        annot_grow, bookmark_open,
+                        !(opt_flags & OPT_PDFDOC_NO_DEST_REMOVE));
 
   /* Changing compression level should be possible anywhere in the process of
    * PDF generation but there are no guarantee that it is reflected immediately.
@@ -1064,9 +1067,9 @@ main (int argc, char *argv[])
     pdf_set_use_predictor(0); /* No prediction */
 
   if (mp_mode) {
-    do_mps_pages();
+    do_mps_pages(p);
   } else {
-    do_dvi_pages();
+    do_dvi_pages(p);
   }
 
   pdf_files_close();
@@ -1074,7 +1077,7 @@ main (int argc, char *argv[])
   /* Order of close... */
   pdf_close_device  ();
   /* pdf_close_document flushes XObject (image) and other resources. */
-  pdf_close_document();
+  pdf_close_document(p);
 
   pdf_close_fontmaps(); /* pdf_font may depend on fontmap. */
 

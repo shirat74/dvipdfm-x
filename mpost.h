@@ -24,7 +24,6 @@
 #define _MPOST_H_
 
 #include  "mfileio.h"
-#include  "pdfximage.h"
 #include  "pdfdev.h"
 
 extern int  mps_scan_bbox    (const char **pp, const char *endptr, pdf_rect *bbox);
@@ -38,6 +37,6 @@ extern int  mps_stack_depth  (void);
 
 extern void mps_eop_cleanup  (void);
 
-extern int  mps_do_page      (FILE *fp);
+extern int  mps_do_page      (pdf_doc *p, FILE *fp);
 
 #endif /* _MPOST_H_ */
