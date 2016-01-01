@@ -48,8 +48,6 @@
 
 #include "pdflimits.h"
 
-#include "dvi.h"
-
 #include "pdfdev.h"
 
 #include "cff.h"
