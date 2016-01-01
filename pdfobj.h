@@ -56,9 +56,11 @@ extern int      pdf_obj_get_verbose (void);
 extern void     pdf_obj_set_verbose (void);
 extern void     pdf_error_cleanup   (void);
 
-extern void     pdf_out_init      (const char *filename,
+extern void     pdf_out_init      (const char *filename, const char *id_str,
                                    int ver_major, int ver_minor,
-                                   int enable_encrypt, int enable_objstm);
+                                   int enable_encrypt, int keybits, int32_t permission,
+                                   const char *opasswd, const char *upasswd,
+                                   int enable_objstm);
 extern void     pdf_out_flush     (void);
 extern unsigned pdf_get_version   (void);
 

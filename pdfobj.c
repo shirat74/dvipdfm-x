@@ -28,12 +28,17 @@
 #include <string.h>
 /* floor and abs */
 #include <math.h>
+/* time: for computing ID */
+#include <time.h>
 
 #include "system.h"
 #include "mem.h"
 #include "error.h"
 #include "mfileio.h"
 #include "dpxutil.h"
+/* MD5 */
+#include "dpxcrypt.h"
+
 #include "pdflimits.h"
 #include "pdfencrypt.h"
 #include "pdfparse.h"
@@ -211,6 +216,8 @@ struct pdf {
     uint32_t    max_ind_objects;
   } obj;
 
+  pdf_sec    *sec_data;
+
   pdf_obj    *trailer;
   uint32_t    startxref;
   xref_entry *xref_table;
@@ -243,6 +250,8 @@ init_pdf_struct (PDF *p)
 
   p->obj.next_label = 0;
   p->obj.max_ind_objects = 0;
+
+  p->sec_data   = NULL;
 
   p->trailer    = NULL;
   p->startxref  = 0;
@@ -401,6 +410,40 @@ pdf_obj_set_verbose(void)
   verbose++;
 }
 
+#define PRODUCER  "dvipdfmx"
+#define COPYRIGHT \
+"Copyright 2002-2015 by Jin-Hwan Cho, Matthias Franz, and Shunsaku Hirata"
+
+static void 
+compute_id (unsigned char *id, const char *str1, const char *str2)
+{
+  char         date_string[16], producer[128];
+  time_t       current_time;
+  struct tm   *bd_time;
+  MD5_CONTEXT  md5;
+
+  ASSERT(id);
+
+  MD5_init(&md5);
+
+  time(&current_time);
+  bd_time = localtime(&current_time);
+  sprintf(date_string, "%04d%02d%02d%02d%02d%02d",
+          bd_time->tm_year + 1900, bd_time->tm_mon + 1, bd_time->tm_mday,
+          bd_time->tm_hour, bd_time->tm_min, bd_time->tm_sec);
+  MD5_write(&md5, (unsigned char *)date_string, strlen(date_string));
+
+  ASSERT(strlen(PRODUCER)+strlen(VERSION)+strlen(COPYRIGHT)+3 < 128);
+  sprintf(producer, "%s-%s, %s", PRODUCER, VERSION, COPYRIGHT);
+  MD5_write(&md5, (unsigned char *)producer, strlen(producer));
+
+  if (str1)
+    MD5_write(&md5, (unsigned char *)str1, strlen(str1));
+  if (str2)
+    MD5_write(&md5, (unsigned char *)str2, strlen(str2));
+  MD5_final(id, &md5);
+}
+
 static void
 add_xref_entry (PDF *p,
                 uint32_t label, unsigned char type,
@@ -423,8 +466,11 @@ add_xref_entry (PDF *p,
 
 #define BINARY_MARKER "%\344\360\355\370\n"
 void
-pdf_out_init (const char *filename, int ver_major, int ver_minor,
-              int enable_encrypt, int enable_objstm)
+pdf_out_init (const char *filename, const char *id_str,
+              int ver_major, int ver_minor,
+              int enable_encrypt, int keybits, int32_t permission,
+              const char *opasswd, const char *upasswd,
+              int enable_objstm)
 {
   PDF *p = &_pdf;
   char v;
@@ -479,6 +525,32 @@ pdf_out_init (const char *filename, int ver_major, int ver_minor,
   pdf_out(p, &v, 1);
   pdf_out(p, "\n", 1);
   pdf_out(p, BINARY_MARKER, strlen(BINARY_MARKER));
+
+
+  /* Computatin of ID and setup security handler */
+  {
+    unsigned char id[16];
+    pdf_obj      *id_array;
+
+    compute_id(id, id_str, filename);
+    if (enable_encrypt) {
+      p->sec_data = pdf_sec_init(id, keybits, permission, 1, 1);
+      if (!p->sec_data)
+        enable_encrypt = 0;
+      else {
+        pdf_obj *encrypt;
+
+        pdf_sec_set_password(p->sec_data, opasswd, upasswd);
+        encrypt = pdf_sec_get_encrypt_dict(p->sec_data);
+        pdf_set_encrypt(encrypt);
+        pdf_release_obj(encrypt);
+      }
+    }
+    id_array = pdf_new_array();
+    pdf_add_array(id_array, pdf_new_string(id, 16));
+    pdf_add_array(id_array, pdf_new_string(id, 16));
+    pdf_add_dict (p->trailer, pdf_new_name("ID"), id_array);
+  }
 
   p->state.enc_mode  = 0;
   p->options.encrypt = enable_encrypt;
@@ -636,6 +708,8 @@ pdf_out_flush (void)
     MFCLOSE(p->output.file);
     p->output.file = NULL;
   }
+  if (p->sec_data)
+    pdf_sec_delete(&p->sec_data);
 }
 
 void
@@ -675,15 +749,6 @@ pdf_set_info (pdf_obj *object)
   if (pdf_lookup_dict(p->trailer, "Info"))
     ERROR("Info object already set!");
   pdf_add_dict(p->trailer, pdf_new_name("Info"), pdf_ref_obj(object));
-}
-
-void
-pdf_set_id (pdf_obj *object)
-{
-  PDF *p = &_pdf;
-  if (pdf_lookup_dict(p->trailer, "ID"))
-    ERROR ("ID already set!");
-  pdf_add_dict(p->trailer, pdf_new_name("ID"), object);
 }
 
 void
@@ -1146,7 +1211,7 @@ write_string (PDF *p, pdf_string *str)
   ASSERT(p);
 
   if (p->state.enc_mode) {
-    pdf_encrypt_data(str->string, str->length, &s, &len);
+    pdf_sec_encrypt_data(p->sec_data, str->string, str->length, &s, &len);
   } else {
     s   = str->string;
     len = str->length;
@@ -2226,7 +2291,7 @@ write_stream (PDF *p, pdf_stream *stream)
   if (p->state.enc_mode) {
     unsigned char *cipher = NULL;
     size_t         cipher_len = 0;
-    pdf_encrypt_data(filtered, filtered_length, &cipher, &cipher_len);
+    pdf_sec_encrypt_data(p->sec_data, filtered, filtered_length, &cipher, &cipher_len);
     RELEASE(filtered);
     filtered        = cipher;
     filtered_length = cipher_len;
@@ -2855,8 +2920,8 @@ pdf_flush_obj (PDF *p, pdf_obj *object)
                    "%u %hu obj\n", object->label, object->generation);
   p->state.enc_mode =
    (p->options.encrypt && !(object->flags & OBJ_NO_ENCRYPT)) ? 1 : 0;
-  pdf_enc_set_label(object->label);
-  pdf_enc_set_generation(object->generation);
+  pdf_sec_set_label(p->sec_data, object->label);
+  pdf_sec_set_generation(p->sec_data, object->generation);
   pdf_out(p, buf, length);
   pdf_write_obj(p, object);
   pdf_out(p, "\nendobj\n", 8);

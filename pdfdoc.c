@@ -2520,8 +2520,9 @@ pdf_open_document (const char *filename,
 {
   pdf_doc *p = &pdoc;
 
-  pdf_out_init(filename, ver_major, ver_minor,
-               enable_encrypt, enable_objstm);
+  pdf_out_init(filename, id_str, ver_major, ver_minor,
+               enable_encrypt, keybits, permission, opasswd, upasswd,
+               enable_objstm);
 
   pdf_doc_init_catalog(p);
 
@@ -2547,16 +2548,6 @@ pdf_open_document (const char *filename,
   pdf_doc_init_page_tree(p, media_width, media_height);
 
   pdf_doc_set_bgcolor(NULL);
-
-  /* Please fix this: put somewhere other than pdfencrypt... */
-  pdf_enc_compute_id_string(id_str, filename);
-  if (enable_encrypt) {
-    pdf_enc_set_passwd(keybits, permission, opasswd, upasswd);
-    pdf_obj *encrypt = pdf_get_encrypt_dict();
-    pdf_set_encrypt(encrypt);
-    pdf_release_obj(encrypt);
-  }
-  pdf_set_id(pdf_enc_id_array());
 
   /* Create a default name for thumbnail image files */
   if (manual_thumb_enabled) {

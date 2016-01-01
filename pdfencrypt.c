@@ -46,7 +46,7 @@
  *
  * Supported: 40-128 bit RC4, 128 bit AES, 256 bit AES
  *
- * TODO: Convert password to PDFDocEncoding. SASLPrep stringpref for AESV3.
+ * TODO: Convert password to PDFDocEncoding. SASLPrep stringprep for AESV3.
  */
 
 /* PDF-2.0 is not published yet. */
@@ -59,7 +59,7 @@
 #include "dvipdfmx.h"
 #include "pdfencrypt.h"
 
-static struct pdf_sec {
+struct pdf_sec {
    unsigned char key[32];
    int           key_size;
 
@@ -78,7 +78,7 @@ static struct pdf_sec {
      uint64_t objnum;
      uint16_t gennum;
    } label;
-} sec_data;
+};
 
 static const unsigned char padding_bytes[32] = {
   0x28, 0xbf, 0x4e, 0x5e, 0x4e, 0x75, 0x8a, 0x41,
@@ -88,51 +88,101 @@ static const unsigned char padding_bytes[32] = {
 };
 
 static void
-pdf_enc_init (int use_aes, int encrypt_metadata)
+check_version (pdf_sec *p, int version)
 {
-  struct pdf_sec *p = &sec_data;
+  ASSERT(p);
+
+  if (p->V > 2 && version < 4) {
+    WARN("Current encryption setting requires PDF version >= 1.4.");
+    p->V = 1;
+    p->key_size = 5;
+  } else if (p->V == 4 && version < 5) {
+    WARN("Current encryption setting requires PDF version >= 1.5.");
+    p->V = 2;
+  } else if (p->V ==5 && version < 7) {
+    WARN("Current encryption setting requires PDF version >= 1.7" \
+         " (plus Adobe Extension Level 3).");
+    p->V = 4;
+  }
+}
+
+pdf_sec * 
+pdf_sec_init (const unsigned char *id,
+              int keybits, int32_t permission,
+              int use_aes, int encrypt_metadata)
+{
+  pdf_sec *p;
+  int      version;
+
+  p = NEW(1, pdf_sec);
 
   srand((unsigned) time(NULL)); /* For AES IV */
   p->setting.use_aes = use_aes;
   p->setting.encrypt_metadata = encrypt_metadata;
+
+  /* FIXME */
+  version = pdf_get_version();
+
+  p->key_size = (int) (keybits / 8);
+  if (p->key_size == 5) /* 40bit */
+    p->V = 1;
+  else if (p->key_size <= 16) {
+    p->V = p->setting.use_aes ? 4 : 2;
+  } else if (p->key_size == 32) {
+    p->V = 5;
+  } else {
+    WARN("Key length %d unsupported.", keybits);
+    p->key_size = 5;
+    p->V = 2;
+  }
+  check_version(p, version);
+
+  p->P = (int32_t) (permission | 0xC0U);
+  switch (p->V) {
+  case 1:
+    p->R = (p->P < 0x100L) ? 2 : 3;
+    break;
+  case 2: case 3:
+    p->R = 3;
+    break;
+  case 4:
+    p->R = 4;
+    break;
+  case 5:
+#if USE_ADOBE_EXTENSION
+    p->R = 6;
+#else
+    WARN("Encryption V 5 unsupported.");
+    p->R = 4; p->V = 4;
+#endif
+    break;
+  default:
+    p->R = 3;
+    break;
+  }
+
+  if (p->R >= 3)
+    p->P |= 0xFFFFF000U;
+
+  return p;
 }
 
-#define PRODUCER \
-"%s-%s, Copyright 2002-2015 by Jin-Hwan Cho, Matthias Franz, and Shunsaku Hirata"
+void
+pdf_sec_delete (pdf_sec **p)
+{
+  if (!p || !*p)
+    return;
+
+  RELEASE(*p);
+  *p = NULL;
+}
 
 void
-pdf_enc_compute_id_string (const char *str1, const char *str2)
+pdf_sec_set_id (pdf_sec *p, const char *id)
 {
-  struct pdf_sec *p = &sec_data;
-  char           *date_string, *producer;
-  time_t          current_time;
-  struct tm      *bd_time;
-  MD5_CONTEXT     md5;
-
-  /* FIXME: This should be placed in main() or somewhere. */
-  pdf_enc_init(1, 1);
-
-  MD5_init(&md5);
-
-  date_string = NEW(15, char);
-  time(&current_time);
-  bd_time = localtime(&current_time);
-  sprintf(date_string, "%04d%02d%02d%02d%02d%02d",
-          bd_time->tm_year + 1900, bd_time->tm_mon + 1, bd_time->tm_mday,
-          bd_time->tm_hour, bd_time->tm_min, bd_time->tm_sec);
-  MD5_write(&md5, (unsigned char *)date_string, strlen(date_string));
-  RELEASE(date_string);
-
-  producer = NEW(strlen(PRODUCER)+strlen(my_name)+strlen(VERSION), char);
-  sprintf(producer, PRODUCER, my_name, VERSION);
-  MD5_write(&md5, (unsigned char *)producer, strlen(producer));
-  RELEASE(producer);
-
-  if (str1)
-    MD5_write(&md5, (unsigned char *)str1, strlen(str1));
-  if (str2)
-    MD5_write(&md5, (unsigned char *)str2, strlen(str2));
-  MD5_final(p->ID, &md5);
+  if (!p || !id)
+    return;
+  memcpy(p->ID, id, 16);
 }
 
 static void
@@ -193,11 +243,13 @@ compute_owner_password (struct pdf_sec *p,
 }
 
 static void
-compute_encryption_key (struct pdf_sec *p, const char *passwd)
+compute_encryption_key (pdf_sec *p, const char *passwd)
 {
   int  i;
   unsigned char hash[32], padded[32];
   MD5_CONTEXT   md5;
+
+  ASSERT(p && passwd);
 
   passwd_padding(passwd, padded);
   MD5_init (&md5);
@@ -237,7 +289,7 @@ compute_encryption_key (struct pdf_sec *p, const char *passwd)
 }
 
 static void
-compute_user_password (struct pdf_sec *p, const char *uplain)
+compute_user_password (pdf_sec *p, const char *uplain)
 {
   int           i, j;
   ARC4_CONTEXT  arc4;
@@ -372,12 +424,14 @@ compute_hash_V5 (unsigned char       *hash,
 }
 
 static void
-compute_owner_password_V5 (struct pdf_sec *p, const char *oplain)
+compute_owner_password_V5 (pdf_sec *p, const char *oplain)
 {
   unsigned char  vsalt[8], ksalt[8], hash[32];
   unsigned char *OE, iv[AES_BLOCKSIZE];
   size_t         OE_len;
   int  i;
+
+  ASSERT(p);
 
   for (i = 0; i < 8 ; i++) {
     vsalt[i] = rand() % 256;
@@ -397,12 +451,14 @@ compute_owner_password_V5 (struct pdf_sec *p, const char *oplain)
 }
 
 static void
-compute_user_password_V5 (struct pdf_sec *p, const char *uplain)
+compute_user_password_V5 (pdf_sec *p, const char *uplain)
 {
   unsigned char  vsalt[8], ksalt[8], hash[32];
   unsigned char *UE, iv[AES_BLOCKSIZE];
   size_t         UE_len;
   int  i;
+
+  ASSERT(p);
 
   for (i = 0; i < 8 ; i++) {
     vsalt[i] = rand() % 256;
@@ -443,23 +499,6 @@ getpass (const char *prompt)
   return pwd_buf;
 }
 #endif
-
-static void
-check_version (struct pdf_sec *p, int version)
-{
-  if (p->V > 2 && version < 4) {
-    WARN("Current encryption setting requires PDF version >= 1.4.");
-    p->V = 1;
-    p->key_size = 5;
-  } else if (p->V == 4 && version < 5) {
-    WARN("Current encryption setting requires PDF version >= 1.5.");
-    p->V = 2;
-  } else if (p->V ==5 && version < 7) {
-    WARN("Current encryption setting requires PDF version >= 1.7" \
-         " (plus Adobe Extension Level 3).");
-    p->V = 4;
-  }
-}
 
 /* Dummy routine for stringprep - NOT IMPLEMENTED YET
  *
@@ -532,53 +571,14 @@ preproc_password (const char *passwd, char *outbuf, int V)
 }
 
 void
-pdf_enc_set_passwd (int keybits, int32_t permission,
-                    const char *oplain, const char *uplain)
+pdf_sec_set_password (pdf_sec *p,
+                      const char *oplain, const char *uplain)
 {
-  struct pdf_sec *p = &sec_data;
-  char            input[128], opasswd[128], upasswd[128];
-  char           *retry_passwd;
-  int             version;
+  char  input[128], opasswd[128], upasswd[128];
+  char *retry_passwd;
 
-  version = pdf_get_version();
-
-  p->key_size = (int) (keybits / 8);
-  if (p->key_size == 5) /* 40bit */
-    p->V = 1;
-  else if (p->key_size <= 16) {
-    p->V = p->setting.use_aes ? 4 : 2;
-  } else if (p->key_size == 32) {
-    p->V = 5;
-  } else {
-    WARN("Key length %d unsupported.", keybits);
-    p->key_size = 5;
-    p->V = 2;
-  }
-  check_version(p, version);
-
-  p->P = (int32_t) (permission | 0xC0U);
-  switch (p->V) {
-  case 1:
-    p->R = (p->P < 0x100L) ? 2 : 3;
-    break;
-  case 2: case 3:
-    p->R = 3;
-    break;
-  case 4:
-    p->R = 4;
-    break;
-  case 5:
-#if USE_ADOBE_EXTENSION
-    p->R = 6;
-#else
-    WARN("Encryption V 5 unsupported.");
-    p->R = 4; p->V = 4;
-#endif
-    break;
-  default:
-    p->R = 3;
-    break;
-  }
+  if (!p)
+    return;
 
   memset(opasswd, 0, 128);
   memset(upasswd, 0, 128);
@@ -614,9 +614,6 @@ pdf_enc_set_passwd (int keybits, int32_t permission,
       WARN("Invaid UTF-8 string for password.");
   }
 
-  if (p->R >= 3)
-    p->P |= 0xFFFFF000U;
-
   if (p->V < 5) {
     compute_owner_password(p, opasswd, upasswd);
     compute_user_password (p, upasswd);
@@ -633,11 +630,13 @@ pdf_enc_set_passwd (int keybits, int32_t permission,
 }
 
 static void
-calculate_key (struct pdf_sec *p, unsigned char *key)
+calculate_key (pdf_sec *p, unsigned char *key)
 {
   int           len = p->key_size + 5;
   unsigned char tmp[25];
   MD5_CONTEXT   md5;
+
+  ASSERT(p);
 
   memcpy(tmp, p->key, p->key_size);
   tmp[p->key_size  ] = (unsigned char) p->label.objnum        & 0xFF;
@@ -658,11 +657,14 @@ calculate_key (struct pdf_sec *p, unsigned char *key)
 }
 
 void
-pdf_encrypt_data (const unsigned char *plain, size_t plain_len,
-                  unsigned char **cipher, size_t *cipher_len)
+pdf_sec_encrypt_data (pdf_sec *p,
+                      const unsigned char *plain, size_t plain_len,
+                      unsigned char **cipher, size_t *cipher_len)
 {
-  struct pdf_sec *p = &sec_data;
   unsigned char   key[32];
+
+  if (!p)
+    return;
 
   switch (p->V) {
   case 1: case 2:
@@ -692,10 +694,12 @@ pdf_encrypt_data (const unsigned char *plain, size_t plain_len,
 }
 
 pdf_obj *
-pdf_get_encrypt_dict (void)
+pdf_sec_get_encrypt_dict (pdf_sec *p)
 {
-  struct pdf_sec *p = &sec_data;
   pdf_obj *doc_encrypt;
+
+  if (!p)
+    return NULL;
 
   doc_encrypt = pdf_new_dict();
 
@@ -786,27 +790,18 @@ pdf_get_encrypt_dict (void)
   return doc_encrypt;
 }
 
-pdf_obj *pdf_enc_id_array (void)
+void
+pdf_sec_set_label (pdf_sec *p, uint32_t label)
 {
-  struct pdf_sec *p = &sec_data;
-  pdf_obj *id = pdf_new_array();
-
-  pdf_add_array(id, pdf_new_string(p->ID, 16));
-  pdf_add_array(id, pdf_new_string(p->ID, 16));
-
-  return id;
-}
-
-void pdf_enc_set_label (unsigned label)
-{
-  struct pdf_sec *p = &sec_data;
-
+  if (!p)
+    return;
   p->label.objnum = label;
 }
 
-void pdf_enc_set_generation (unsigned generation)
+void
+pdf_sec_set_generation (pdf_sec *p, uint16_t generation)
 {
-  struct pdf_sec *p = &sec_data;
-
+  if (!p)
+    return;
   p->label.gennum = generation;
 }
