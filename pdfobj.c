@@ -297,6 +297,7 @@ pdf_delete (PDF **pp)
 /* Internal static routines */
 
 static int  check_for_pdf_version (FILE *file);
+static void pdf_set_version (PDF *p, int ver_major, int ver_minor);
 
 static void pdf_flush_obj (PDF *p, pdf_obj *object);
 static void pdf_label_obj (PDF *p, pdf_obj *object);
@@ -368,9 +369,10 @@ pdf_set_use_predictor (int bval)
 }
 
 static void
-pdf_set_version (int ver_major, int ver_minor)
+pdf_set_version (PDF *p, int ver_major, int ver_minor)
 {
-  PDF *p = &_pdf;
+  ASSERT(p);
+
   if (ver_major != 1 ||
       ver_minor < PDF_VERSION_MIN || ver_minor > PDF_VERSION_MAX) {
     WARN("Unsupported PDF version %d.%d ... Ignoring.", ver_major, ver_minor);
@@ -404,6 +406,8 @@ add_xref_entry (PDF *p,
                 uint32_t label, unsigned char type,
                 uint32_t field2, uint16_t field3)
 {
+  ASSERT(p);
+
   if (label >= p->obj.max_ind_objects) {
     p->obj.max_ind_objects =
       (label/IND_OBJECTS_ALLOC_SIZE+1)*IND_OBJECTS_ALLOC_SIZE;
@@ -431,7 +435,7 @@ pdf_out_init (const char *filename, int ver_major, int ver_minor,
    */
   pdf_new();
 
-  pdf_set_version(ver_major, ver_minor);
+  pdf_set_version(p, ver_major, ver_minor);
 
   add_xref_entry(p, 0, 0, 0, 0xffff);
   p->obj.next_label = 1;
@@ -486,6 +490,8 @@ dump_xref_table (PDF *p)
   int   length, i;
   char  buf[32];
 
+  ASSERT(p);
+
   pdf_out(p, "xref\n", 5);
 
   length = sprintf(buf, "%d %u\n", 0, p->obj.next_label);
@@ -512,6 +518,8 @@ dump_trailer (PDF *p)
 {
   pdf_obj *trailer = p->trailer;
 
+  ASSERT(p);
+
   pdf_out(p, "trailer\n", 8);
   p->state.enc_mode = 0;
   write_dict(p, trailer->data);
@@ -532,6 +540,8 @@ dump_xref_stream (PDF *p)
   unsigned char buf[7] = {0, 0, 0, 0, 0};
 
   pdf_obj *w;
+
+  ASSERT(p);
 
   /* determine the necessary size of the offset field */
   pos = p->startxref; /* maximal offset value */
@@ -691,6 +701,8 @@ pdf_set_encrypt (pdf_obj *object)
 static void
 pdf_out_char (PDF *p, char c)
 {
+  ASSERT(p);
+
   if (error_out) {
     fputc(c, stderr);
   } else {
@@ -713,6 +725,8 @@ static char xchar[] = "0123456789abcdef";
 static void
 pdf_out_xchar (PDF *p, char c)
 {
+  ASSERT(p);
+
   pdf_out_char(p, xchar[(c >> 4) & 0x0f]);
   pdf_out_char(p, xchar[c & 0x0f]);
 }
@@ -720,6 +734,8 @@ pdf_out_xchar (PDF *p, char c)
 static void
 pdf_out (PDF *p, const void *buffer, int length)
 {
+  ASSERT(p);
+
   if (error_out) {
     fwrite(buffer, 1, length, stderr);
   } else {
@@ -749,6 +765,8 @@ need_white (int type1, int type2)
 static void
 pdf_out_white (PDF *p)
 {
+  ASSERT(p);
+
   /* MARK */
 #if 0
   if (file == p->output.file && p->output.line_position >= 80) {
@@ -797,6 +815,8 @@ pdf_obj_typeof (pdf_obj *object)
 static void
 pdf_label_obj (PDF *p, pdf_obj *object)
 {
+  ASSERT(p);
+
   if (INVALIDOBJ(object))
     ERROR("pdf_label_obj(): passed invalid object.");
 
@@ -874,7 +894,7 @@ write_indirect (PDF *p, pdf_indirect *indirect)
   int   length;
   char  buf[64];
 
-  // ASSERT(!indirect->pf);
+  ASSERT(p);
 
   length = sprintf(buf, "%u %hu R",
                    indirect->label, indirect->generation);
@@ -909,6 +929,8 @@ pdf_new_null (void)
 static void
 write_null (PDF *p)
 {
+  ASSERT(p);
+
   pdf_out(p, "null", 4);
 }
 
@@ -935,6 +957,8 @@ release_boolean (pdf_obj *data)
 static void
 write_boolean (PDF *p, pdf_boolean *data)
 {
+  ASSERT(p);
+
   if (data->value) {
     pdf_out(p, "true", 4);
   } else {
@@ -979,6 +1003,8 @@ write_number (PDF *p, pdf_number *number)
 {
   int  count;
   char buf[512]; /* enough space to represent "double" */
+
+  ASSERT(p);
 
   count = pdf_sprint_number(buf, number->value);
 
@@ -1117,6 +1143,8 @@ write_string (PDF *p, pdf_string *str)
   int            i, num_esc = 0;
   size_t         len = 0;
 
+  ASSERT(p);
+
   if (p->state.enc_mode) {
     pdf_encrypt_data(str->string, str->length, &s, &len);
   } else {
@@ -1233,6 +1261,8 @@ write_name (PDF *p, pdf_name *name)
   char *s;
   int   i, length;
 
+  ASSERT(p);
+
   s      = name->name;
   length = name->name ? strlen(name->name) : 0;
   /*
@@ -1313,6 +1343,8 @@ pdf_new_array (void)
 static void
 write_array (PDF *p, pdf_array *array)
 {
+  ASSERT(p);
+
   pdf_out_char(p, '[');
   if (array->size > 0) {
     unsigned int i;
@@ -1498,6 +1530,8 @@ pdf_pop_array (pdf_obj *array)
 static void
 write_dict (PDF *p, pdf_dict *dict)
 {
+  ASSERT(p);
+
 #if 0
   pdf_out (p, "<<\n", 3); /* dropping \n saves few kb. */
 #else
@@ -2076,6 +2110,8 @@ write_stream (PDF *p, pdf_stream *stream)
   unsigned int   buffer_length;
 #endif
   unsigned char *buffer;
+
+  ASSERT(p);
 
   /*
    * Always work from a copy of the stream. All filters read from
@@ -2757,6 +2793,8 @@ pdf_stream_get_flags (pdf_obj *stream)
 static void
 pdf_write_obj (PDF *p, pdf_obj *object)
 {
+  ASSERT(p);
+
   if (object == NULL) {
     write_null(p);
     return;
@@ -2806,6 +2844,8 @@ pdf_flush_obj (PDF *p, pdf_obj *object)
   int  length;
   char buf[64];
 
+  ASSERT(p);
+
   /*
    * Record file position
    */
@@ -2828,6 +2868,8 @@ pdf_add_objstm (PDF *p, pdf_obj *objstm, pdf_obj *object)
   int *data, pos;
 
   TYPECHECK(objstm, PDF_STREAM);
+  ASSERT(p);
+
 
   data = get_objstm_data(objstm);
   pos = ++data[0];
@@ -3856,17 +3898,11 @@ check_for_pdf_version (FILE *file)
 int
 check_for_pdf (FILE *file)
 {
-  PDF *p = &_pdf;
   int version = check_for_pdf_version(file);
 
   if (version < 0)  /* not a PDF file */
     return 0;
 
-  if (version <= p->version.minor)
-    return 1;
-
-  WARN("Version of PDF file (1.%d) is newer than version limit specification.",
-       version);
   return 1;
 }
 
