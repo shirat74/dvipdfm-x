@@ -201,34 +201,37 @@ typedef struct pdf_doc
     int    check_gotos;
     int    outline_open_depth;
     double annot_grow;
+    int    manual_thumbnail;
+    char  *basename;
   } opt;
 
   struct form_list_node *pending_forms;
 
 } pdf_doc;
-static pdf_doc pdoc;
 
-static char  manual_thumb_enabled  = 0;
-static char *thumb_basename = NULL;
+static pdf_doc pdoc; /* FIXME */
 
 void
-pdf_doc_enable_manual_thumbnails (void)
+pdf_doc_enable_manual_thumbnails (pdf_doc *p)
 {
+  if (!p)
+    return;
 #if HAVE_LIBPNG
-  manual_thumb_enabled = 1;
+  p->opt.manual_thumbnail = 1;
 #else
   WARN("Manual thumbnail is not supported without the libpng library.");
 #endif
 }
 
 static pdf_obj *
-read_thumbnail (const char *thumb_filename)
+read_thumbnail (pdf_doc *p, const char *thumb_filename)
 {
-  pdf_doc *p = &pdoc;
   pdf_obj *image_ref;
   int      xobj_id;
   FILE    *fp;
   load_options options = {1, 0, NULL};
+
+  ASSERT(p);
 
   fp = MFOPEN(thumb_filename, FOPEN_RBIN_MODE);
   if (!fp) {
@@ -2424,14 +2427,14 @@ pdf_doc_finish_page (pdf_doc *p)
     currentpage->resources = NULL;
   }
 
-  if (manual_thumb_enabled) {
+  if (p->opt.manual_thumbnail) {
     char    *thumb_filename;
     pdf_obj *thumb_ref;
 
-    thumb_filename = NEW(strlen(thumb_basename)+7, char);
+    thumb_filename = NEW(strlen(p->opt.basename)+7, char);
     sprintf(thumb_filename, "%s.%ld",
-            thumb_basename, (p->pages.num_entries % 99999) + 1L);
-    thumb_ref = read_thumbnail(thumb_filename);
+            p->opt.basename, (p->pages.num_entries % 99999) + 1L);
+    thumb_ref = read_thumbnail(p, thumb_filename);
     RELEASE(thumb_filename);
     if (thumb_ref)
       pdf_add_dict(currentpage->page_obj, pdf_new_name("Thumb"), thumb_ref);
@@ -2593,16 +2596,18 @@ pdf_open_document (const char *filename,
   pdf_doc_set_bgcolor(p, NULL);
 
   /* Create a default name for thumbnail image files */
-  if (manual_thumb_enabled) {
+  if (p->opt.manual_thumbnail) {
     if (strlen(filename) > 4 &&
         !strncmp(".pdf", filename + strlen(filename) - 4, 4)) {
-      thumb_basename = NEW(strlen(filename)-4+1, char);
-      strncpy(thumb_basename, filename, strlen(filename)-4);
+      p->opt.basename = NEW(strlen(filename)-4+1, char);
+      strncpy(p->opt.basename, filename, strlen(filename)-4);
       thumb_basename[strlen(filename)-4] = 0;
     } else {
-      thumb_basename = NEW(strlen(filename)+1, char);
-      strcpy(thumb_basename, filename);
+      p->opt.basename = NEW(strlen(filename)+1, char);
+      strcpy(p->opt.basename, filename);
     }
+  } else {
+    p->opt.basename = NULL;
   }
 
   p->pending_forms = NULL;
@@ -2636,8 +2641,8 @@ pdf_close_document (pdf_doc *p)
 
   pdf_out_flush(p->pdf);
 
-  if (thumb_basename)
-    RELEASE(thumb_basename);
+  if (p->opt.basename)
+    RELEASE(p->opt.basename);
 
   return;
 }

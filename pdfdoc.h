@@ -142,7 +142,7 @@ extern void     pdf_doc_break_annot (pdf_doc *p);
 extern void     pdf_doc_expand_box  (pdf_doc *p, const pdf_rect *rect);
 
 /* Manual thumbnail */
-extern void     pdf_doc_enable_manual_thumbnails (void);
+extern void     pdf_doc_enable_manual_thumbnails (pdf_doc *p);
 
 #if 0
 /* PageLabels - */

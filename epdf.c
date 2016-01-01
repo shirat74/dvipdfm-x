@@ -756,32 +756,28 @@ pdf_copy_clip (FILE *image_file, int pageNo, double x_user, double y_user)
 	  /* Do nothing. */
 	  break;
 	case OP_RECTANGLE:
-	  if (top < 3)
-	    return -1;
-	  p1.y = stack[top--];
-	  p1.x = stack[top--];
-	  p0.y = stack[top--];
-	  p0.x = stack[top--];
-	  if (M.b == 0 && M.c == 0) {
-	    pdf_tmatrix M0;
-	    M0.a = M.a; M0.b = M.b; M0.c = M.c; M0.d = M.d;
-	    M0.e = 0; M0.f = 0;
-	    pdf_dev_transform(&p0, &M);
-	    pdf_dev_transform(&p1, &M0);
-	    pdf_dev_rectadd(p0.x, p0.y, p1.x, p1.y);
-	  } else {
-	    p2.x = p0.x + p1.x; p2.y = p0.y + p1.y;
-	    p3.x = p0.x; p3.y = p0.y + p1.y;
-	    p1.x += p0.x; p1.y = p0.y;
-	    pdf_dev_transform(&p0, &M);
-	    pdf_dev_transform(&p1, &M);
-	    pdf_dev_transform(&p2, &M);
-	    pdf_dev_transform(&p3, &M);
-	    pdf_dev_moveto(p0.x, p0.y);
-	    pdf_dev_lineto(p1.x, p1.y);
-	    pdf_dev_lineto(p2.x, p2.y);
-	    pdf_dev_lineto(p3.x, p3.y);
-	    pdf_dev_closepath();
+          if (top < 3)
+            return -1;
+          /* rectadd() removed since it completely spoils things */
+          {
+            double w, h;
+
+            h = stack[top--];
+            w = stack[top--];
+            p0.y = stack[top--];
+            p0.x = stack[top--];
+            p1.x = p0.x + w; p1.y = p0.y;
+            p2.x = p0.x + w; p2.y = p0.y + h;
+            p3.x = p0.x;     p3.y = p0.y + h;
+            pdf_dev_transform(&p0, &M);
+            pdf_dev_transform(&p1, &M);
+            pdf_dev_transform(&p2, &M);
+            pdf_dev_transform(&p3, &M);
+            pdf_dev_moveto(p0.x, p0.y);
+            pdf_dev_lineto(p1.x, p1.y);
+            pdf_dev_lineto(p2.x, p2.y);
+            pdf_dev_lineto(p3.x, p3.y);
+            pdf_dev_closepath();
 	  }
 	  break;
 	case OP_CURVETO:

@@ -103,6 +103,7 @@ static int    pdfdecimaldigits = 2;
 static double annot_grow    = 0.0;
 static int    bookmark_open = 0;
 static int    font_dpi      = 600;
+static int    enable_manual_thumbnail = 0;
 
 /* Encryption */
 static int     do_encryption = 0;
@@ -521,7 +522,7 @@ do_args (int argc, char *argv[], const char *source)
       break;
 
     case 't':
-      pdf_doc_enable_manual_thumbnails();
+      enable_manual_thumbnails = 1;
       break;
 
     case 'p':
@@ -1045,6 +1046,9 @@ main (int argc, char *argv[])
                         paper_width, paper_height,
                         annot_grow, bookmark_open,
                         !(opt_flags & OPT_PDFDOC_NO_DEST_REMOVE));
+
+  if (enable_manual_thumbnail)
+    pdf_doc_enable_manual_thumbnail(p);
 
   /* Changing compression level should be possible anywhere in the process of
    * PDF generation but there are no guarantee that it is reflected immediately.
