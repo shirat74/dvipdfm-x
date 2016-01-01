@@ -24,9 +24,10 @@
 #define _SPECIALS_H_
 
 struct spc_env {
-  double x_user, y_user;
-  double mag;
-  int    pg;  /* current page in PDF */
+  pdf_doc *pdf;
+  double   x_user, y_user;
+  double   mag;
+  int      pg;  /* current page in PDF */
 };
 
 struct spc_arg {
@@ -71,6 +72,7 @@ extern int      spc_exec_at_begin_document (void);
 extern int      spc_exec_at_end_document   (void);
 
 extern int      spc_exec_special (const char *p, int32_t size,
+                                  pdf_doc *pdf,
 				  double x_user, double y_user, double mag);
 
 #endif /* _SPECIALS_H_ */

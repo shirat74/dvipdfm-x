@@ -48,7 +48,8 @@
 static int  check_for_ps    (FILE *image_file);
 static int  check_for_mp    (FILE *image_file);
 static int  ps_include_page (pdf_ximage *ximage,
-                             const char *ident, load_options options);
+                             const char *ident,
+                             pdf_doc *pdf, load_options options);
 
 
 #define IMAGE_TYPE_UNKNOWN -1
@@ -252,6 +253,7 @@ source_image_type (FILE *fp)
 
 static int
 load_image (const char *ident, const char *fullname, int format, FILE  *fp,
+            pdf_doc *pdf,
             load_options options)
 {
   struct ic_ *ic = &_ic;
@@ -317,7 +319,7 @@ load_image (const char *ident, const char *fullname, int format, FILE  *fp,
       int result = pdf_include_page(I, fp, fullname, options);
       if (result > 0)
         /* PDF version too recent */
-        result = ps_include_page(I, fullname, options);
+        result = ps_include_page(I, fullname, pdf, options);
       if (result < 0)
         goto error;
     }
@@ -331,7 +333,7 @@ load_image (const char *ident, const char *fullname, int format, FILE  *fp,
   default:
     if (_opts.verbose)
       MESG(format == IMAGE_TYPE_EPS ? "[PS]" : "[UNKNOWN]");
-    if (ps_include_page(I, fullname, options) < 0)
+    if (ps_include_page(I, fullname, pdf, options) < 0)
       goto error;
     if (_opts.verbose)
       MESG(",Page:%ld", I->attr.page_no);
@@ -365,7 +367,8 @@ load_image (const char *ident, const char *fullname, int format, FILE  *fp,
 #define dpx_fclose(f)  (MFCLOSE((f)))
 
 int
-pdf_ximage_findresource (const char *ident, load_options options)
+pdf_ximage_findresource (pdf_doc *pdf,
+                         const char *ident, load_options options)
 {
   struct ic_ *ic = &_ic;
   int         id = -1;
@@ -419,7 +422,7 @@ pdf_ximage_findresource (const char *ident, load_options options)
   case IMAGE_TYPE_MPS:
     if (_opts.verbose)
       MESG("[MPS]");
-    id = mps_include_page(ident, fp);
+    id = mps_include_page(ident, fp, pdf);
     if (id < 0) {
       WARN("Try again with the distiller.");
       format = IMAGE_TYPE_EPS;
@@ -427,7 +430,7 @@ pdf_ximage_findresource (const char *ident, load_options options)
     } else
       break;
   default:
-    id = load_image(ident, fullname, format, fp, options);
+    id = load_image(ident, fullname, format, fp, pdf, options);
     break;
   }
   dpx_fclose(fp);
@@ -596,7 +599,7 @@ pdf_ximage_get_reference (int id)
 
 /* called from pdfdoc.c only for late binding */
 int
-pdf_ximage_defineresource (const char *ident,
+pdf_ximage_defineresource (pdf_doc *p, const char *ident,
                            int subtype, void *info, pdf_obj *resource)
 {
   struct ic_ *ic = &_ic;
@@ -901,7 +904,8 @@ char *get_distiller_template (void)
 }
 
 static int
-ps_include_page (pdf_ximage *ximage, const char *filename, load_options options)
+ps_include_page (pdf_ximage *ximage, const char *filename,
+                 pdf_doc *pdf, load_options options)
 {
   char  *distiller_template = _opts.cmdtmpl;
   char  *temp;

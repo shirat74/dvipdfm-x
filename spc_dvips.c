@@ -164,7 +164,7 @@ spc_handler_ps_file (struct spc_env *spe, struct spc_arg *args)
     return  -1;
   }
 
-  form_id = pdf_ximage_findresource(filename, options);
+  form_id = pdf_ximage_findresource(spe->pdf, filename, options);
   if (form_id < 0) {
     spc_warn(spe, "Failed to read image file: %s", filename);
     RELEASE(filename);
@@ -172,7 +172,7 @@ spc_handler_ps_file (struct spc_env *spe, struct spc_arg *args)
   }
   RELEASE(filename);
 
-  pdf_dev_put_image(form_id, &ti, spe->x_user, spe->y_user);
+  pdf_dev_put_image(spe->pdf, form_id, &ti, spe->x_user, spe->y_user);
 
   return  0;
 }
@@ -198,7 +198,7 @@ spc_handler_ps_plotfile (struct spc_env *spe, struct spc_arg *args)
     return -1;
   }
 
-  form_id = pdf_ximage_findresource(filename, options);
+  form_id = pdf_ximage_findresource(spe->pdf, filename, options);
   if (form_id < 0) {
     spc_warn(spe, "Could not open PS file: %s", filename);
     error = -1;
@@ -207,11 +207,11 @@ spc_handler_ps_plotfile (struct spc_env *spe, struct spc_arg *args)
     p.matrix.d = -1.0; /* xscale = 1.0, yscale = -1.0 */
 #if 0
     /* I don't know how to treat this... */
-    pdf_dev_put_image(form_id, &p,
+    pdf_dev_put_image(spe->pdf, form_id, &p,
 		      block_pending ? pending_x : spe->x_user,
 		      block_pending ? pending_y : spe->y_user);
 #endif
-    pdf_dev_put_image(form_id, &p, 0, 0);
+    pdf_dev_put_image(spe->pdf, form_id, &p, 0, 0);
   }
   RELEASE(filename);
 
@@ -267,6 +267,7 @@ spc_handler_ps_literal (struct spc_env *spe, struct spc_arg *args)
 
     error = mps_exec_inline(&args->curptr,
 			    args->endptr,
+                            spe->pdf,
 			    x_user, y_user);
     if (error) {
       spc_warn(spe, "Interpreting PS code failed!!! Output might be broken!!!");
@@ -709,7 +710,7 @@ spc_handler_ps_tricks_render (struct spc_env *spe, struct spc_arg *args)
       return error;
     }
 
-    form_id = pdf_ximage_findresource(gs_out, options);
+    form_id = pdf_ximage_findresource(spe->pdf, gs_out, options);
     if (form_id < 0) {
       spc_warn(spe, "Failed to read converted PSTricks image file.");
       RELEASE(gs_in);
@@ -717,7 +718,7 @@ spc_handler_ps_tricks_render (struct spc_env *spe, struct spc_arg *args)
       RELEASE(gs_out);
       return  -1;
     }
-    pdf_dev_put_image(form_id, &p, 0, 0);
+    pdf_dev_put_image(spe->pdf, form_id, &p, 0, 0);
 
     dpx_delete_temp_file(gs_out, true);
     dpx_delete_temp_file(gs_in, true);
@@ -845,9 +846,10 @@ spc_handler_ps_default (struct spc_env *spe, struct spc_arg *args)
     pdf_tmatrix M;
     M.a = M.d = 1.0; M.b = M.c = 0.0; M.e = spe->x_user; M.f = spe->y_user;
     pdf_dev_concat(&M);
-  error = mps_exec_inline(&args->curptr,
-			  args->endptr,
-			  spe->x_user, spe->y_user);
+    error = mps_exec_inline(&args->curptr,
+                            args->endptr,
+                            spe->pdf,
+                            spe->x_user, spe->y_user);
     M.e = -spe->x_user; M.f = -spe->y_user;
     pdf_dev_concat(&M);
   }

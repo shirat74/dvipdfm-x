@@ -188,7 +188,7 @@ spc_handler_xtx_backgroundcolor (struct spc_env *spe, struct spc_arg *args)
   if (error)
     spc_warn(spe, "No valid color specified?");
   else {
-    pdf_doc_set_bgcolor(&colorspec);
+    pdf_doc_set_bgcolor(spe->pdf, &colorspec);
   }
 
   return  error;

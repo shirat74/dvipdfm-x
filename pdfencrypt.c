@@ -774,8 +774,9 @@ pdf_sec_get_encrypt_dict (pdf_sec *p)
   }
 
 #ifdef USE_ADOBE_EXTENSION
+  /* FIXME: catalog must be three when this routine is called. */
   if (p->R > 5) {
-    pdf_obj *catalog = pdf_doc_catalog();
+    pdf_obj *catalog = pdf_doc_catalog(NULL); /* FIXME */
     pdf_obj *ext  = pdf_new_dict();
     pdf_obj *adbe = pdf_new_dict();
 

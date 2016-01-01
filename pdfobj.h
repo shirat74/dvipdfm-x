@@ -63,6 +63,9 @@ extern PDF     *pdf_out_init      (const char *filename, const char *id_str,
 extern void     pdf_out_flush     (PDF *p);
 extern unsigned pdf_get_version   (void);
 
+/* FIXME */
+extern void     pdf_set_encrypt_dict (PDF *p);
+
 extern void     pdf_release_obj (pdf_obj *object);
 extern int      pdf_obj_typeof  (pdf_obj *object);
 

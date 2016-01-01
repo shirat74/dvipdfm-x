@@ -197,7 +197,7 @@ static int
 spc_handler_pdfm_bop (struct spc_env *spe, struct spc_arg *args)
 {
   if (args->curptr < args->endptr) {
-    pdf_doc_set_bop_content(args->curptr,
+    pdf_doc_set_bop_content(spe->pdf, args->curptr,
 			    (int) (args->endptr - args->curptr));
   }
 
@@ -210,7 +210,7 @@ static int
 spc_handler_pdfm_eop (struct spc_env *spe, struct spc_arg *args)
 {
   if (args->curptr < args->endptr) {
-    pdf_doc_set_eop_content(args->curptr,
+    pdf_doc_set_eop_content(spe->pdf, args->curptr,
 			    (int) (args->endptr - args->curptr));
   }
 
@@ -613,7 +613,9 @@ spc_handler_pdfm_annot (struct spc_env *spe, struct spc_arg *args)
   if (ident)
     spc_push_object(ident, pdf_link_obj(annot_dict));
   /* Add this reference. */
-  pdf_doc_add_annot(pdf_doc_current_page_number(), &rect, annot_dict, 1);
+  pdf_doc_add_annot(spe->pdf,
+                    pdf_doc_current_page_number(spe->pdf),
+                    &rect, annot_dict, 1);
 
   if (ident) {
     spc_flush_object(ident);
@@ -838,16 +840,16 @@ spc_handler_pdfm_outline (struct spc_env *spe, struct spc_arg *args)
     spc_warn(spe, "Ignoring invalid dictionary.");
     return  -1;
   }
-  current_depth = pdf_doc_bookmarks_depth();
+  current_depth = pdf_doc_bookmarks_depth(spe->pdf);
   if (current_depth > level) {
     while (current_depth-- > level)
-      pdf_doc_bookmarks_up();
+      pdf_doc_bookmarks_up(spe->pdf);
   } else if (current_depth < level) {
     while (current_depth++ < level)
-      pdf_doc_bookmarks_down();
+      pdf_doc_bookmarks_down(spe->pdf);
   }
 
-  pdf_doc_bookmarks_add(item_dict, is_open);
+  pdf_doc_bookmarks_add(spe->pdf, item_dict, is_open);
 
   return 0;
 }
@@ -874,7 +876,7 @@ spc_handler_pdfm_article (struct spc_env *spe, struct spc_arg *args)
     return  -1;
   }
 
-  pdf_doc_begin_article(ident, pdf_link_obj(info_dict));
+  pdf_doc_begin_article(spe->pdf, ident, pdf_link_obj(info_dict));
   spc_push_object(ident, info_dict);
   RELEASE(ident);
 
@@ -952,11 +954,11 @@ spc_handler_pdfm_bead (struct spc_env *spe, struct spc_arg *args)
     pdf_merge_dict (article, article_info);
     pdf_release_obj(article_info);
   } else {
-    pdf_doc_begin_article(article_name, pdf_link_obj(article_info));
+    pdf_doc_begin_article(spe->pdf, article_name, pdf_link_obj(article_info));
     spc_push_object(article_name, article_info);
   }
-  page_no = pdf_doc_current_page_number();
-  pdf_doc_add_bead(article_name, NULL, page_no, &rect);
+  page_no = pdf_doc_current_page_number(spe->pdf);
+  pdf_doc_add_bead(spe->pdf, article_name, NULL, page_no, &rect);
 
   RELEASE(article_name);
   return 0;
@@ -1021,7 +1023,8 @@ spc_handler_pdfm_image (struct spc_env *spe, struct spc_arg *args)
     }
   }
 
-  xobj_id = pdf_ximage_findresource(pdf_string_value(fspec), options);
+  xobj_id = pdf_ximage_findresource(spe->pdf, pdf_string_value(fspec),
+                                    options);
 
   if (xobj_id < 0) {
     spc_warn(spe, "Could not find image resource...");
@@ -1040,7 +1043,8 @@ spc_handler_pdfm_image (struct spc_env *spe, struct spc_arg *args)
   }
 
   if (!(ti.flags & INFO_DO_HIDE))
-    pdf_dev_put_image(xobj_id, &ti, spe->x_user, spe->y_user);
+    pdf_dev_put_image(spe->pdf,
+                      xobj_id, &ti, spe->x_user, spe->y_user);
 
   if (ident) {
     if (compat_mode &&
@@ -1088,7 +1092,7 @@ spc_handler_pdfm_dest (struct spc_env *spe, struct spc_arg *args)
     return  -1;
   }
 
-  pdf_doc_add_names("Dests",
+  pdf_doc_add_names(spe->pdf, "Dests",
                     pdf_string_value (name),
                     pdf_string_length(name),
                     array);
@@ -1135,7 +1139,8 @@ spc_handler_pdfm_names (struct spc_env *spe, struct spc_arg *args)
         pdf_release_obj(category);
         pdf_release_obj(tmp);
         return -1;
-      } else if (pdf_doc_add_names(pdf_name_value(category),
+      } else if (pdf_doc_add_names(spe->pdf,
+                                   pdf_name_value(category),
                                    pdf_string_value (key),
                                    pdf_string_length(key),
                                    pdf_link_obj(value)) < 0) {
@@ -1155,7 +1160,8 @@ spc_handler_pdfm_names (struct spc_env *spe, struct spc_arg *args)
       spc_warn(spe, "PDF object expected but not found.");
       return -1;
     }
-    if (pdf_doc_add_names(pdf_name_value(category),
+    if (pdf_doc_add_names(spe->pdf,
+                          pdf_name_value(category),
                           pdf_string_value (key),
                           pdf_string_length(key),
                           value) < 0) {
@@ -1188,7 +1194,7 @@ spc_handler_pdfm_docinfo (struct spc_env *spe, struct spc_arg *args)
     return  -1;
   }
 
-  docinfo = pdf_doc_docinfo();
+  docinfo = pdf_doc_get_dictionary(spe->pdf, "Info");
   pdf_merge_dict(docinfo, dict);
   pdf_release_obj(dict);
 
@@ -1208,7 +1214,7 @@ spc_handler_pdfm_docview (struct spc_env *spe, struct spc_arg *args)
     return  -1;
   }
 
-  catalog  = pdf_doc_catalog();
+  catalog  = pdf_doc_get_dictionary(spe->pdf, "Catalog");
   /* Avoid overriding whole ViewerPreferences */
   pref_old = pdf_lookup_dict(catalog, "ViewerPreferences");
   pref_add = pdf_lookup_dict(dict,    "ViewerPreferences");
@@ -1582,7 +1588,8 @@ spc_handler_pdfm_bform (struct spc_env *spe, struct spc_arg *args)
     cropbox.ury = ti.height;
   }
 
-  xobj_id = pdf_doc_begin_grabbing(ident, spe->x_user, spe->y_user, &cropbox);
+  xobj_id = pdf_doc_begin_grabbing(spe->pdf, ident,
+                                   spe->x_user, spe->y_user, &cropbox);
 
   if (xobj_id < 0) {
     RELEASE(ident);
@@ -1614,7 +1621,7 @@ spc_handler_pdfm_eform (struct spc_env *spe, struct spc_arg *args)
       attrib = NULL;
     }
   }
-  pdf_doc_end_grabbing(attrib);
+  pdf_doc_end_grabbing(spe->pdf, attrib);
 
   return 0;
 }
@@ -1672,7 +1679,7 @@ spc_handler_pdfm_uxobj (struct spc_env *spe, struct spc_arg *args)
    */
   xobj_id = findresource(sd, ident);
   if (xobj_id < 0) {
-    xobj_id = pdf_ximage_findresource(ident, options);
+    xobj_id = pdf_ximage_findresource(spe->pdf, ident, options);
     if (xobj_id < 0) {
       spc_warn(spe, "Specified (image) object doesn't exist: %s", ident);
       RELEASE(ident);
@@ -1680,7 +1687,7 @@ spc_handler_pdfm_uxobj (struct spc_env *spe, struct spc_arg *args)
     }
   }
 
-  pdf_dev_put_image(xobj_id, &ti, spe->x_user, spe->y_user);
+  pdf_dev_put_image(spe->pdf, xobj_id, &ti, spe->x_user, spe->y_user);
   RELEASE(ident);
 
   return 0;
@@ -1722,7 +1729,7 @@ spc_handler_pdfm_bgcolor (struct spc_env *spe, struct spc_arg *args)
   if (error)
     spc_warn(spe, "No valid color specified?");
   else {
-    pdf_doc_set_bgcolor(&colorspec);
+    pdf_doc_set_bgcolor(spe->pdf, &colorspec);
   }
 
   return  error;
@@ -1769,7 +1776,9 @@ spc_handler_pdfm_mapline (struct spc_env *spe, struct spc_arg *ap)
     *q = '\0';
     mrec = NEW(1, fontmap_rec);
     pdf_init_fontmap_record(mrec);
-    error = pdf_read_fontmap_line(mrec, buffer, (int) (ap->endptr - ap->curptr), is_pdfm_mapline(buffer));
+    error = pdf_read_fontmap_line(mrec, buffer,
+                                  (int) (ap->endptr - ap->curptr),
+                                  is_pdfm_mapline(buffer));
     if (error)
       spc_warn(spe, "Invalid fontmap line.");
     else if (opchr == '+')

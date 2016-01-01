@@ -97,7 +97,7 @@ spc_handler_background (struct spc_env *spe, struct spc_arg *args)
 
   error = spc_util_read_colorspec(spe, &colorspec, args, 1);
   if (!error)
-    pdf_doc_set_bgcolor(&colorspec);
+    pdf_doc_set_bgcolor(spe->pdf, &colorspec);
 
   return  error;
 }

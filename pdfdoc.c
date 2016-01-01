@@ -69,50 +69,6 @@
 
 static int verbose = 0;
 
-static char  manual_thumb_enabled  = 0;
-static char *thumb_basename = NULL;
-
-void
-pdf_doc_enable_manual_thumbnails (void)
-{
-#if HAVE_LIBPNG
-  manual_thumb_enabled = 1;
-#else
-  WARN("Manual thumbnail is not supported without the libpng library.");
-#endif
-}
-
-static pdf_obj *
-read_thumbnail (const char *thumb_filename)
-{
-  pdf_obj *image_ref;
-  int      xobj_id;
-  FILE    *fp;
-  load_options options = {1, 0, NULL};
-
-  fp = MFOPEN(thumb_filename, FOPEN_RBIN_MODE);
-  if (!fp) {
-    WARN("Could not open thumbnail file \"%s\"", thumb_filename);
-    return NULL;
-  }
-  if (!check_for_png(fp) && !check_for_jpeg(fp)) {
-    WARN("Thumbnail \"%s\" not a png/jpeg file!", thumb_filename);
-    MFCLOSE(fp);
-    return NULL;
-  }
-  MFCLOSE(fp);
-
-  xobj_id = pdf_ximage_findresource(thumb_filename, options);
-  if (xobj_id < 0) {
-    WARN("Could not read thumbnail file \"%s\".", thumb_filename);
-    image_ref = NULL;
-  } else {
-    image_ref = pdf_ximage_get_reference(xobj_id);
-  }
-
-  return image_ref;
-}
-
 void
 pdf_doc_set_verbose (void)
 {
@@ -252,6 +208,51 @@ typedef struct pdf_doc
 } pdf_doc;
 static pdf_doc pdoc;
 
+static char  manual_thumb_enabled  = 0;
+static char *thumb_basename = NULL;
+
+void
+pdf_doc_enable_manual_thumbnails (void)
+{
+#if HAVE_LIBPNG
+  manual_thumb_enabled = 1;
+#else
+  WARN("Manual thumbnail is not supported without the libpng library.");
+#endif
+}
+
+static pdf_obj *
+read_thumbnail (const char *thumb_filename)
+{
+  pdf_doc *p = &pdoc;
+  pdf_obj *image_ref;
+  int      xobj_id;
+  FILE    *fp;
+  load_options options = {1, 0, NULL};
+
+  fp = MFOPEN(thumb_filename, FOPEN_RBIN_MODE);
+  if (!fp) {
+    WARN("Could not open thumbnail file \"%s\"", thumb_filename);
+    return NULL;
+  }
+  if (!check_for_png(fp) && !check_for_jpeg(fp)) {
+    WARN("Thumbnail \"%s\" not a png/jpeg file!", thumb_filename);
+    MFCLOSE(fp);
+    return NULL;
+  }
+  MFCLOSE(fp);
+
+  xobj_id = pdf_ximage_findresource(p, thumb_filename, options);
+  if (xobj_id < 0) {
+    WARN("Could not read thumbnail file \"%s\".", thumb_filename);
+    image_ref = NULL;
+  } else {
+    image_ref = pdf_ximage_get_reference(xobj_id);
+  }
+
+  return image_ref;
+}
+
 static void
 pdf_doc_init_catalog (pdf_doc *p)
 {
@@ -388,11 +389,11 @@ static void pdf_doc_init_bookmarks   (pdf_doc *p, int bm_open_depth);
 static void pdf_doc_close_bookmarks  (pdf_doc *p);
 
 void
-pdf_doc_set_bop_content (const char *content, unsigned length)
+pdf_doc_set_bop_content (pdf_doc *p,
+                         const char *content, unsigned length)
 {
-  pdf_doc *p = &pdoc;
-
-  ASSERT(p);
+  if (!p)
+    return;
 
   if (p->pages.bop) {
     pdf_release_obj(p->pages.bop);
@@ -410,9 +411,11 @@ pdf_doc_set_bop_content (const char *content, unsigned length)
 }
 
 void
-pdf_doc_set_eop_content (const char *content, unsigned length)
+pdf_doc_set_eop_content (pdf_doc *p,
+                         const char *content, unsigned length)
 {
-  pdf_doc *p = &pdoc;
+  if (!p)
+    return;
 
   if (p->pages.eop) {
     pdf_release_obj(p->pages.eop);
@@ -609,7 +612,7 @@ pdf_doc_add_page_resource (const char *category,
   duplicate = pdf_lookup_dict(resources, resource_name);
   if (duplicate && pdf_compare_reference(duplicate, resource_ref)) {
     WARN("Conflicting page resource found (page: %d, category: %s, name: %s).",
-         pdf_doc_current_page_number(), category, resource_name);
+         pdf_doc_current_page_number(p), category, resource_name);
     WARN("Ignoring...");
     pdf_release_obj(resource_ref);
   } else {
@@ -1375,10 +1378,12 @@ flush_bookmarks (pdf_olitem *node,
 }
 
 int
-pdf_doc_bookmarks_up (void)
+pdf_doc_bookmarks_up (pdf_doc *p)
 {
-  pdf_doc    *p = &pdoc;
   pdf_olitem *parent, *item;
+
+  if (!p)
+    return -1;
 
   item = p->outlines.current;
   if (!item || !item->parent) {
@@ -1402,10 +1407,12 @@ pdf_doc_bookmarks_up (void)
 }
 
 int
-pdf_doc_bookmarks_down (void)
+pdf_doc_bookmarks_down (pdf_doc *p)
 {
-  pdf_doc    *p = &pdoc;
   pdf_olitem *item, *first;
+
+  if (!p)
+    return -1;
 
   item = p->outlines.current;
   if (!item->dict) {
@@ -1457,20 +1464,18 @@ pdf_doc_bookmarks_down (void)
 }
 
 int
-pdf_doc_bookmarks_depth (void)
+pdf_doc_bookmarks_depth (pdf_doc *p)
 {
-  pdf_doc *p = &pdoc;
-
-  return p->outlines.current_depth;
+  return p ? p->outlines.current_depth : 0;
 }
 
 void
-pdf_doc_bookmarks_add (pdf_obj *dict, int is_open)
+pdf_doc_bookmarks_add (pdf_doc *p, pdf_obj *dict, int is_open)
 {
-  pdf_doc    *p = &pdoc;
   pdf_olitem *item, *next;
 
-  ASSERT(p && dict);
+  if (!p || !dict)
+    return;
 
   item = p->outlines.current;
 
@@ -1570,11 +1575,14 @@ pdf_doc_init_names (pdf_doc *p, int check_gotos)
 }
 
 int
-pdf_doc_add_names (const char *category,
+pdf_doc_add_names (pdf_doc *p,
+                   const char *category,
                    const void *key, int keylen, pdf_obj *value)
 {
-  pdf_doc *p = &pdoc;
-  int      i;
+  int  i;
+
+  if (!p)
+    return -1;
 
   for (i = 0; p->names[i].category != NULL; i++) {
     if (!strcmp(p->names[i].category, category)) {
@@ -1788,15 +1796,18 @@ static void pdf_doc_get_mediabox (pdf_doc *p,
                                   unsigned page_no, pdf_rect *mediabox);
 
 void
-pdf_doc_add_annot (unsigned page_no, const pdf_rect *rect,
+pdf_doc_add_annot (pdf_doc *p,
+                   unsigned page_no, const pdf_rect *rect,
                    pdf_obj *annot_dict, int new_annot)
 {
-  pdf_doc  *p = &pdoc;
   pdf_page *page;
   pdf_obj  *rect_array;
   double    annot_grow = p->opt.annot_grow;
   double    xpos, ypos;
   pdf_rect  annbox;
+
+  if (!p)
+    return;
 
   page = doc_get_page_entry(p, page_no);
   if (!page->annots)
@@ -1857,10 +1868,13 @@ pdf_doc_init_articles (pdf_doc *p)
 }
 
 void
-pdf_doc_begin_article (const char *article_id, pdf_obj *article_info)
+pdf_doc_begin_article (pdf_doc *p,
+                       const char *article_id, pdf_obj *article_info)
 {
-  pdf_doc     *p = &pdoc;
   pdf_article *article;
+
+  if (!p)
+    return;
 
   if (article_id == NULL || strlen(article_id) == 0)
     ERROR("Article thread without internal identifier.");
@@ -1902,13 +1916,16 @@ find_bead (pdf_article *article, const char *bead_id)
 }
 
 void
-pdf_doc_add_bead (const char *article_id,
+pdf_doc_add_bead (pdf_doc *p,
+                  const char *article_id,
                   const char *bead_id, int page_no, const pdf_rect *rect)
 {
-  pdf_doc     *p = &pdoc;
   pdf_article *article;
   pdf_bead    *bead;
   int          i;
+
+  if (!p)
+    return;
 
   if (!article_id) {
     ERROR("No article identifier specified.");
@@ -2171,11 +2188,13 @@ pdf_doc_get_mediabox (pdf_doc *p,
 }
 
 pdf_obj *
-pdf_doc_current_page_resources (void)
+pdf_doc_current_page_resources (pdf_doc *p)
 {
   pdf_obj  *resources;
-  pdf_doc  *p = &pdoc;
   pdf_page *currentpage;
+
+  if (!p)
+    return NULL;
 
   if (p->pending_forms) {
     if (p->pending_forms->form.resources) {
@@ -2196,12 +2215,15 @@ pdf_doc_current_page_resources (void)
 }
 
 pdf_obj *
-pdf_doc_get_dictionary (const char *category)
+pdf_doc_get_dictionary (pdf_doc *p, const char *category)
 {
-  pdf_doc *p    = &pdoc;
   pdf_obj *dict = NULL;
 
-  ASSERT(category);
+  if (!category)
+    return NULL;
+
+  if (!p)
+    p = &pdoc;
 
   if (!strcmp(category, "Names")) {
     if (!p->root.names)
@@ -2235,18 +2257,18 @@ pdf_doc_get_dictionary (const char *category)
 }
 
 int
-pdf_doc_current_page_number (void)
+pdf_doc_current_page_number (pdf_doc *p)
 {
-  pdf_doc *p = &pdoc;
-
-  return (int) (PAGECOUNT(p) + 1);
+  return (int) (p ? PAGECOUNT(p) + 1 : 0);
 }
 
 pdf_obj *
-pdf_doc_ref_page (unsigned page_no)
+pdf_doc_ref_page (pdf_doc *p, unsigned page_no)
 {
-  pdf_doc  *p = &pdoc;
   pdf_page *page;
+
+  if (!p)
+    return NULL;
 
   page = doc_get_page_entry(p, page_no);
   if (!page->page_obj) {
@@ -2258,23 +2280,27 @@ pdf_doc_ref_page (unsigned page_no)
 }
 
 pdf_obj *
-pdf_doc_get_reference (const char *category)
+pdf_doc_get_reference (pdf_doc *p, const char *category)
 {
   pdf_obj *ref = NULL;
   int      page_no;
 
-  ASSERT(category);
+  if (!category)
+    return NULL;
 
-  page_no = pdf_doc_current_page_number();
+  if (!p)
+    p = &pdoc;
+
+  page_no = pdf_doc_current_page_number(p);
   if (!strcmp(category, "@THISPAGE")) {
-    ref = pdf_doc_ref_page(page_no);
+    ref = pdf_doc_ref_page(p, page_no);
   } else if (!strcmp(category, "@PREVPAGE")) {
     if (page_no <= 1) {
       ERROR("Reference to previous page, but no pages have been completed yet.");
     }
-    ref = pdf_doc_ref_page(page_no - 1);
+    ref = pdf_doc_ref_page(p, page_no - 1);
   } else if (!strcmp(category, "@NEXTPAGE")) {
-    ref = pdf_doc_ref_page(page_no + 1);
+    ref = pdf_doc_ref_page(p, page_no + 1);
   }
 
   if (!ref) {
@@ -2419,7 +2445,7 @@ pdf_doc_finish_page (pdf_doc *p)
 static pdf_color bgcolor = { 1, NULL, { 1.0 } };
 
 void
-pdf_doc_set_bgcolor (const pdf_color *color)
+pdf_doc_set_bgcolor (pdf_doc *p, const pdf_color *color)
 {
   if (color)
     pdf_color_copycolor(&bgcolor, color);
@@ -2441,7 +2467,7 @@ doc_fill_page_background (pdf_doc *p)
     return;
   }
 
-  pdf_doc_get_mediabox(p, pdf_doc_current_page_number(), &r);
+  pdf_doc_get_mediabox(p, pdf_doc_current_page_number(p), &r);
 
   currentpage = LASTPAGE(p);
   ASSERT(currentpage);
@@ -2463,10 +2489,13 @@ doc_fill_page_background (pdf_doc *p)
 }
 
 void
-pdf_doc_begin_page (double scale, double x_origin, double y_origin)
+pdf_doc_begin_page (pdf_doc *p,
+                    double scale, double x_origin, double y_origin)
 {
-  pdf_doc     *p = &pdoc;
   pdf_tmatrix  M;
+
+  if (!p)
+    return;
 
   M.a = scale; M.b = 0.0;
   M.c = 0.0  ; M.d = scale;
@@ -2481,9 +2510,10 @@ pdf_doc_begin_page (double scale, double x_origin, double y_origin)
 }
 
 void
-pdf_doc_end_page (void)
+pdf_doc_end_page (pdf_doc *p)
 {
-  pdf_doc *p = &pdoc;
+  if (!p)
+    return;
 
   pdf_dev_eop();
   doc_fill_page_background(p);
@@ -2536,6 +2566,8 @@ pdf_open_document (const char *filename,
                      enable_objstm);
 
   pdf_doc_init_catalog(p);
+  /* FIXME: order */
+  pdf_set_encrypt_dict(pdf);
 
   p->opt.annot_grow = annot_grow_amount;
   p->opt.outline_open_depth = bookmark_open_depth;
@@ -2558,7 +2590,7 @@ pdf_open_document (const char *filename,
   pdf_doc_init_names    (p, check_gotos);
   pdf_doc_init_page_tree(p, media_width, media_height);
 
-  pdf_doc_set_bgcolor(NULL);
+  pdf_doc_set_bgcolor(p, NULL);
 
   /* Create a default name for thumbnail image files */
   if (manual_thumb_enabled) {
@@ -2668,14 +2700,16 @@ pdf_doc_make_xform (pdf_obj     *xform,
  * that the origin is not the lower left corner of the bbox.
  */
 int
-pdf_doc_begin_grabbing (const char *ident,
+pdf_doc_begin_grabbing (pdf_doc *p, const char *ident,
                         double ref_x, double ref_y, const pdf_rect *cropbox)
 {
   int         xobj_id = -1;
-  pdf_doc    *p = &pdoc;
   pdf_form   *form;
   struct form_list_node *fnode;
   xform_info  info;
+
+  if (!p)
+    return -1;
 
   pdf_dev_push_gstate();
 
@@ -2718,7 +2752,7 @@ pdf_doc_begin_grabbing (const char *ident,
   info.bbox.ury = cropbox->ury;
 
   /* Use reference since content itself isn't available yet. */
-  xobj_id = pdf_ximage_defineresource(ident,
+  xobj_id = pdf_ximage_defineresource(p, ident,
                                       PDF_XOBJECT_TYPE_FORM,
                                       &info, pdf_ref_obj(form->contents));
 
@@ -2735,12 +2769,14 @@ pdf_doc_begin_grabbing (const char *ident,
 }
 
 void
-pdf_doc_end_grabbing (pdf_obj *attrib)
+pdf_doc_end_grabbing (pdf_doc *p, pdf_obj *attrib)
 {
   pdf_form *form;
   pdf_obj  *procset;
-  pdf_doc  *p = &pdoc;
   struct form_list_node *fnode;
+
+  if (!p)
+    return;
 
   if (!p->pending_forms) {
     WARN("Tried to close a nonexistent form XOject.");
@@ -2799,7 +2835,7 @@ reset_box (void)
 }
 
 void
-pdf_doc_begin_annot (pdf_obj *dict)
+pdf_doc_begin_annot (pdf_doc *p, pdf_obj *dict)
 {
   breaking_state.annot_dict = dict;
   breaking_state.broken = 0;
@@ -2807,14 +2843,14 @@ pdf_doc_begin_annot (pdf_obj *dict)
 }
 
 void
-pdf_doc_end_annot (void)
+pdf_doc_end_annot (pdf_doc *p)
 {
-  pdf_doc_break_annot();
+  pdf_doc_break_annot(p);
   breaking_state.annot_dict = NULL;
 }
 
 void
-pdf_doc_break_annot (void)
+pdf_doc_break_annot (pdf_doc *p)
 {
   if (breaking_state.dirty) {
     pdf_obj  *annot_dict;
@@ -2822,7 +2858,9 @@ pdf_doc_break_annot (void)
     /* Copy dict */
     annot_dict = pdf_new_dict();
     pdf_merge_dict(annot_dict, breaking_state.annot_dict);
-    pdf_doc_add_annot(pdf_doc_current_page_number(), &(breaking_state.rect),
+    pdf_doc_add_annot(p,
+                      pdf_doc_current_page_number(p),
+                      &(breaking_state.rect),
                       annot_dict, !breaking_state.broken);
     pdf_release_obj(annot_dict);
 
@@ -2832,7 +2870,7 @@ pdf_doc_break_annot (void)
 }
 
 void
-pdf_doc_expand_box (const pdf_rect *rect)
+pdf_doc_expand_box (pdf_doc *p, const pdf_rect *rect)
 {
   breaking_state.rect.llx = MIN(breaking_state.rect.llx, rect->llx);
   breaking_state.rect.lly = MIN(breaking_state.rect.lly, rect->lly);
@@ -2840,38 +2878,3 @@ pdf_doc_expand_box (const pdf_rect *rect)
   breaking_state.rect.ury = MAX(breaking_state.rect.ury, rect->ury);
   breaking_state.dirty    = 1;
 }
-
-#if 0
-/* This should be number tree */
-void
-pdf_doc_set_pagelabel (int  pg_start,
-                       const char *type,
-                       const void *prefix, int prfx_len, int start)
-{
-  pdf_doc *p = &pdoc;
-  pdf_obj *label_dict;
-
-  if (!p->root.pagelabels)
-    p->root.pagelabels = pdf_new_array();
-
-  label_dict = pdf_new_dict();
-  if (!type || type[0] == '\0') /* Set back to default. */
-    pdf_add_dict(label_dict, pdf_new_name("S"),  pdf_new_name("D"));
-  else {
-    if (type)
-      pdf_add_dict(label_dict, pdf_new_name("S"), pdf_new_name(type));
-    if (prefix && prfx_len > 0)
-      pdf_add_dict(label_dict,
-                   pdf_new_name("P"),
-                   pdf_new_string(prefix, prfx_len));
-    if (start != 1)
-      pdf_add_dict(label_dict,
-                   pdf_new_name("St"), pdf_new_number(start));
-  }
-
-  pdf_add_array(p->root.pagelabels, pdf_new_number(pg_start));
-  pdf_add_array(p->root.pagelabels, label_dict);
-
-  return;
-}
-#endif

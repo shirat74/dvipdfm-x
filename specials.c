@@ -51,6 +51,8 @@
 
 #include "specials.h"
 
+static pdf_doc *_pdf = NULL; /* FIXME */
+
 static int verbose = 0;
 void
 spc_set_verbose (void)
@@ -82,7 +84,7 @@ spc_warn (struct spc_env *spe, const char *fmt, ...)
 int
 spc_begin_annot (struct spc_env *spe, pdf_obj *dict)
 {
-  pdf_doc_begin_annot(dict);
+  pdf_doc_begin_annot(spe->pdf, dict);
   dvi_tag_depth(); /* Tell dvi interpreter to handle line-break. */
   return  0;
 }
@@ -91,7 +93,7 @@ int
 spc_end_annot (struct spc_env *spe)
 {
   dvi_untag_depth();
-  pdf_doc_end_annot();
+  pdf_doc_end_annot(spe->pdf);
   return  0;
 }
 
@@ -184,32 +186,32 @@ spc_lookup_reference (const char *key)
     value = pdf_new_number(ROUND(cp.y, .01));
     break;
   case  K_OBJ__THISPAGE:
-    value = pdf_doc_this_page_ref();
+    value = pdf_doc_this_page_ref(_pdf);
     break;
   case  K_OBJ__PREVPAGE:
-    value = pdf_doc_prev_page_ref();
+    value = pdf_doc_prev_page_ref(_pdf);
     break;
   case  K_OBJ__NEXTPAGE:
-    value = pdf_doc_next_page_ref();
+    value = pdf_doc_next_page_ref(_pdf);
     break;
   case  K_OBJ__PAGES:
-    value = pdf_ref_obj(pdf_doc_page_tree());
+    value = pdf_ref_obj(pdf_doc_page_tree(_pdf));
     break;
   case  K_OBJ__NAMES:
-    value = pdf_ref_obj(pdf_doc_names());
+    value = pdf_ref_obj(pdf_doc_names(_pdf));
     break;
   case  K_OBJ__RESOURCES:
-    value = pdf_ref_obj(pdf_doc_current_page_resources());
+    value = pdf_ref_obj(pdf_doc_current_page_resources(_pdf));
     break;
   case  K_OBJ__CATALOG:
-    value = pdf_ref_obj(pdf_doc_catalog());
+    value = pdf_ref_obj(pdf_doc_catalog(_pdf));
     break;
   case  K_OBJ__DOCINFO:
-    value = pdf_ref_obj(pdf_doc_docinfo());
+    value = pdf_ref_obj(pdf_doc_docinfo(_pdf));
     break;
   default:
     if (ispageref(key))
-      value = pdf_doc_ref_page(atoi(key + 4));
+      value = pdf_doc_ref_page(_pdf, atoi(key + 4));
     else {
       value = pdf_names_lookup_reference(named_objects, key, strlen(key));
     }
@@ -248,22 +250,22 @@ spc_lookup_object (const char *key)
     value = pdf_new_number(ROUND(cp.y, .01));
     break;
   case  K_OBJ__THISPAGE:
-    value = pdf_doc_this_page();
+    value = pdf_doc_this_page(_pdf);
     break;
   case  K_OBJ__PAGES:
-    value = pdf_doc_page_tree();
+    value = pdf_doc_page_tree(_pdf);
     break;
   case  K_OBJ__NAMES:
-    value = pdf_doc_names();
+    value = pdf_doc_names(_pdf);
     break;
   case  K_OBJ__RESOURCES:
-    value = pdf_doc_current_page_resources();
+    value = pdf_doc_current_page_resources(_pdf);
     break;
   case  K_OBJ__CATALOG:
-    value = pdf_doc_catalog();
+    value = pdf_doc_catalog(_pdf);
     break;
   case  K_OBJ__DOCINFO:
-    value = pdf_doc_docinfo();
+    value = pdf_doc_docinfo(_pdf);
     break;
   default:
     value = pdf_names_lookup_object(named_objects, key, strlen(key));
@@ -320,16 +322,20 @@ init_special (struct spc_handler *special,
 	      struct spc_env *spe,
 	      struct spc_arg *args,
 	      const char *p, uint32_t size,
+              pdf_doc *pdf,
 	      double x_user, double y_user, double mag)
 {
 
   special->key  = NULL;
   special->exec = (spc_handler_fn_ptr) &spc_handler_unknown;
 
+  
+  _pdf = pdf; /* FIXME */
+  spe->pdf    = pdf;
   spe->x_user = x_user;
   spe->y_user = y_user;
   spe->mag    = mag;
-  spe->pg     = pdf_doc_current_page_number(); /* _FIXME_ */
+  spe->pg     = pdf_doc_current_page_number(_pdf); /* _FIXME_ */
 
   args->curptr = p;
   args->endptr = args->curptr + size;
@@ -553,6 +559,7 @@ print_error (const char *name, struct spc_env *spe, struct spc_arg *ap)
 
 int
 spc_exec_special (const char *buffer, int32_t size,
+                  pdf_doc *pdf,
 		  double x_user, double y_user, double mag)
 {
   int    error = -1;
@@ -565,7 +572,8 @@ spc_exec_special (const char *buffer, int32_t size,
     dump(buffer, buffer + size);
   }
 
-  init_special(&special, &spe, &args, buffer, size, x_user, y_user, mag);
+  init_special(&special, &spe, &args, buffer, size,
+               pdf,  x_user, y_user, mag);
 
   for (i = 0; known_specials[i].key != NULL; i++) {
     found = known_specials[i].check_func(buffer, size);

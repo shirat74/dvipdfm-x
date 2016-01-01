@@ -365,7 +365,7 @@ html_open_dest (struct spc_env *spe, const char *name, struct spc_html_ *sd)
   cp.x = spe->x_user; cp.y = spe->y_user;
   pdf_dev_transform(&cp, NULL);
 
-  page_ref = pdf_doc_this_page_ref();
+  page_ref = pdf_doc_this_page_ref(spe->pdf);
   ASSERT( page_ref ); /* Otherwise must be bug */
 
   array = pdf_new_array();
@@ -375,7 +375,8 @@ html_open_dest (struct spc_env *spe, const char *name, struct spc_html_ *sd)
   pdf_add_array(array, pdf_new_number(cp.y + 24.0));
   pdf_add_array(array, pdf_new_null());
 
-  error = pdf_doc_add_names("Dests",
+  error = pdf_doc_add_names(spe->pdf,
+                            "Dests",
 			    name, strlen(name),
 			    array);
 
@@ -547,11 +548,12 @@ create_xgstate (double a /* alpha */, int f_ais /* alpha is shape */)
 }
 
 static int
-check_resourcestatus (const char *category, const char *resname)
+check_resourcestatus (pdf_doc *pdf,
+                      const char *category, const char *resname)
 {
   pdf_obj  *dict1, *dict2;
 
-  dict1 = pdf_doc_current_page_resources();
+  dict1 = pdf_doc_current_page_resources(pdf);
   if (!dict1)
     return  0;
 
@@ -637,7 +639,7 @@ spc_html__img_empty (struct spc_env *spe, pdf_obj *attr)
     return  error;
   }
 
-  id = pdf_ximage_findresource(pdf_string_value(src), options);
+  id = pdf_ximage_findresource(spe->pdf, pdf_string_value(src), options);
   if (id < 0) {
     spc_warn(spe, "Could not find/load image: %s", pdf_string_value(src)); 
     error = -1;
@@ -658,7 +660,7 @@ spc_html__img_empty (struct spc_env *spe, pdf_obj *attr)
         if (a != 0) {
           res_name = NEW(strlen("_Tps_a100_") + 1, char);
           sprintf(res_name, "_Tps_a%03d_", a); /* Not Tps prefix but... */
-          if (!check_resourcestatus("ExtGState", res_name)) {
+          if (!check_resourcestatus(spe->pdf, "ExtGState", res_name)) {
             dict = create_xgstate(round_at(0.01 * a, 0.01), 0);
             pdf_doc_add_page_resource("ExtGState",
                                       res_name, pdf_ref_obj(dict));

@@ -71,6 +71,7 @@ typedef struct
 #define INFO_DO_HIDE       (1 << 4)
 extern void   transform_info_clear (transform_info *info);
 
+#include "pdfdoc.h"
 
 extern void   pdf_dev_set_verbose (void);
 
@@ -144,7 +145,7 @@ extern void   pdf_dev_set_rule   (spt_t xpos, spt_t ypos,
 				  spt_t width, spt_t height);
 
 /* Place XObject */
-extern int    pdf_dev_put_image  (int xobj_id,
+extern int    pdf_dev_put_image  (pdf_doc *pdf, int xobj_id,
 				  transform_info *p, double ref_x, double ref_y);
 
 /* The design_size and ptsize required by PK font support...

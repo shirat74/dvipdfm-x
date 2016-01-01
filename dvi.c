@@ -76,6 +76,8 @@
 #define UTF32toUTF16LS(x)  (0xdc00 + (  x                 & 0x3ff))
 
 /* Interal Variables */
+static pdf_doc       *pdf = NULL;
+
 static FILE          *dvi_file  = NULL;
 static char           linear = 0; /* set to 1 for strict linear processing of the input */
 
@@ -731,7 +733,7 @@ dvi_mark_depth (void)
    * See if this appears to be the end of a "logical unit"
    * that's been broken.  If so, flush the logical unit.
    */
-    pdf_doc_break_annot();
+    pdf_doc_break_annot(pdf);
   }
   marked_depth = dvi_stack_depth;
 }
@@ -787,7 +789,7 @@ dvi_do_special (const void *buffer, int32_t size)
   y_user = -dvi_state.v * dvi2pts;
   mag    =  dvi_tell_mag();
 
-  if (spc_exec_special(p, size, x_user, y_user, mag) < 0) {
+  if (spc_exec_special(p, size, pdf, x_user, y_user, mag) < 0) {
     if (verbose) {
       dump(p, p + size);
     }
@@ -1234,7 +1236,7 @@ dvi_set (int32_t ch)
 
       pdf_dev_set_rect  (&rect, dvi_state.h, -dvi_state.v,
                          width, height, depth);
-      pdf_doc_expand_box(&rect);
+      pdf_doc_expand_box(pdf, &rect);
     }
     break;
   case  VIRTUAL:
@@ -1308,7 +1310,7 @@ dvi_put (int32_t ch)
 
       pdf_dev_set_rect  (&rect, dvi_state.h, -dvi_state.v,
                          width, height, depth);
-      pdf_doc_expand_box(&rect);
+      pdf_doc_expand_box(pdf, &rect);
     }
     break;
   case  VIRTUAL:
@@ -1563,7 +1565,7 @@ do_bop (void)
   clear_state();
   processing_page = 1;
 
-  pdf_doc_begin_page(dvi_tell_mag(), dev_origin_x, dev_origin_y);
+  pdf_doc_begin_page(pdf, dvi_tell_mag(), dev_origin_x, dev_origin_y);
   spc_exec_at_begin_page();
 
   return;
@@ -1579,7 +1581,7 @@ do_eop (void)
   }
   spc_exec_at_end_page();
 
-  pdf_doc_end_page();
+  pdf_doc_end_page(pdf);
 
   return;
 }
@@ -1756,7 +1758,7 @@ do_glyphs (void)
         height = (double)font->size * ascent / (double)font->unitsPerEm;
         depth  = (double)font->size * -descent / (double)font->unitsPerEm;
         pdf_dev_set_rect(&rect, dvi_state.h + xloc[i], -dvi_state.v - yloc[i], glyph_width, height, depth);
-        pdf_doc_expand_box(&rect);
+        pdf_doc_expand_box(pdf, &rect);
       }
     }
 
@@ -1815,9 +1817,12 @@ check_postamble (void)
  * the dvi file is here.
  */
 void
-dvi_do_page (double page_paper_height, double hmargin, double vmargin)
+dvi_do_page (pdf_doc *p,
+             double page_paper_height, double hmargin, double vmargin)
 {
   unsigned char opcode;
+
+  pdf = p; /* FIXME */
 
   /* before this is called, we have scanned the page for papersize specials
      and the complete DVI data is now in dvi_page_buffer */

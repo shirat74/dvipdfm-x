@@ -543,15 +543,7 @@ pdf_out_init (const char *filename, const char *id_str,
       if (!p->sec_data)
         enable_encrypt = 0;
       else { /* Encryption */
-        pdf_obj *encrypt;
-
         pdf_sec_set_password(p->sec_data, opasswd, upasswd);
-        encrypt = pdf_sec_get_encrypt_dict(p->sec_data);
-        pdf_add_dict(p->trailer,
-                     pdf_new_name("Encrypt"),
-                     pdf_ref_obj(encrypt));
-        encrypt->flags |= OBJ_NO_ENCRYPT;
-        pdf_release_obj(encrypt);
       }
     }
     id_array = pdf_new_array();
@@ -564,6 +556,21 @@ pdf_out_init (const char *filename, const char *id_str,
   p->options.encrypt = enable_encrypt;
 
   return p;
+}
+
+
+/* FIXME: This routine must be called after catalog is initialized... */
+void
+pdf_set_encrypt_dict (PDF *p)
+{
+  pdf_obj *encrypt;
+
+  encrypt = pdf_sec_get_encrypt_dict(p->sec_data);
+  pdf_add_dict(p->trailer,
+               pdf_new_name("Encrypt"),
+               pdf_ref_obj(encrypt));
+  encrypt->flags |= OBJ_NO_ENCRYPT;
+  pdf_release_obj(encrypt);
 }
 
 static void

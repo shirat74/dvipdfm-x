@@ -69,9 +69,11 @@ extern pdf_obj *pdf_ximage_get_reference  (int xobj_id);
  * This is not intended to be used for specifying page number and others.
  * Only pdf:image special in spc_pdfm.c want optinal dict!
  */
-extern int      pdf_ximage_findresource   (const char  *ident,
+extern int      pdf_ximage_findresource   (pdf_doc *pdf,
+                                           const char  *ident,
                                            load_options options);
-extern int      pdf_ximage_defineresource (const char *ident, int subtype,
+extern int      pdf_ximage_defineresource (pdf_doc *pdf,
+                                           const char *ident, int subtype,
                                            void *cdata, pdf_obj *resource);
 
 /* Called by pngimage, jpegimage, epdf, mpost, etc. */

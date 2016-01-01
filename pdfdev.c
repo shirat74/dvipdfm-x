@@ -1828,7 +1828,8 @@ pdf_dev_set_param (int param_type, int value)
 
 
 int
-pdf_dev_put_image (int             id,
+pdf_dev_put_image (pdf_doc        *pdf,
+                   int             id,
                    transform_info *p,
                    double          ref_x,
                    double          ref_y)
@@ -1924,7 +1925,7 @@ pdf_dev_put_image (int             id,
 	rect.ury = corner[i].y;
     }
 
-    pdf_doc_expand_box(&rect);
+    pdf_doc_expand_box(pdf, &rect);
   }
 
   return 0;

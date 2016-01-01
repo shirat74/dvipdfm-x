@@ -40,12 +40,12 @@
 #include "dpxfile.h"
 #include "dpxutil.h"
 
-#include "dvi.h"
-
 #include "pdflimits.h"
 #include "pdfdoc.h"
 #include "pdfdev.h"
 #include "pdfparse.h"
+
+#include "dvi.h"
 
 #include "spc_tpic.h"
 #include "specials.h"
@@ -803,7 +803,7 @@ do_dvi_pages (pdf_doc *p)
           mediabox.ury = page_height;
           pdf_doc_set_mediabox(p, page_count+1, &mediabox);
         }
-        dvi_do_page(page_height, x_offset, y_offset);
+        dvi_do_page(p, page_height, x_offset, y_offset);
         page_count++;
         MESG("]");
       }
@@ -835,7 +835,7 @@ do_mps_pages (pdf_doc *p)
   /* _FIXME_ */
   fp = MFOPEN(dvi_filename, FOPEN_RBIN_MODE);
   if (fp) {
-    mps_do_page(p, fp);
+    mps_do_page(fp, p);
     MFCLOSE(fp);
   } else {
     int  i, page_no, step, page_count = 0;
@@ -853,7 +853,7 @@ do_mps_pages (pdf_doc *p)
         fp = MFOPEN(filename, FOPEN_RBIN_MODE);
         if (fp) {
           MESG("[%ld<%s>", page_no + 1, filename);
-          mps_do_page(p, fp);
+          mps_do_page(fp, p);
           page_count++;
           MESG("]");
           MFCLOSE(fp);

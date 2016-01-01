@@ -111,13 +111,13 @@ spc_handler_postscriptbox (struct spc_env *spe, struct spc_arg *ap)
   }
   MFCLOSE(fp);
 
-  form_id = pdf_ximage_findresource(filename, options);
+  form_id = pdf_ximage_findresource(spe->pdf, filename, options);
   if (form_id < 0) {
     spc_warn(spe, "Failed to load image file: %s", filename);
     return  -1;
   }
 
-  pdf_dev_put_image(form_id, &ti, spe->x_user, spe->y_user);
+  pdf_dev_put_image(spe->pdf, form_id, &ti, spe->x_user, spe->y_user);
 
   return  0;
 }

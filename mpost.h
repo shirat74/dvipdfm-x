@@ -23,20 +23,18 @@
 #ifndef _MPOST_H_
 #define _MPOST_H_
 
-#include  "mfileio.h"
-#include  "pdfdev.h"
-
 extern int  mps_scan_bbox    (const char **pp, const char *endptr, pdf_rect *bbox);
 
 /* returns xobj_id */
-extern int  mps_include_page (const char *ident, FILE *fp);
+extern int  mps_include_page (const char *ident, FILE *fp, pdf_doc *pdf);
 
 extern int  mps_exec_inline  (const char **buffer, const char *endptr,
+                              pdf_doc *pdf,
 			      double x_user, double y_user);
 extern int  mps_stack_depth  (void);
 
 extern void mps_eop_cleanup  (void);
 
-extern int  mps_do_page      (pdf_doc *p, FILE *fp);
+extern int  mps_do_page      (FILE *fp, pdf_doc *pdf);
 
 #endif /* _MPOST_H_ */
