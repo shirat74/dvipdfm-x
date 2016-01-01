@@ -336,6 +336,7 @@ init_special (struct spc_handler *special,
   spe->y_user = y_user;
   spe->mag    = mag;
   spe->pg     = pdf_doc_current_page_number(_pdf); /* _FIXME_ */
+  spe->info.is_drawable = 0;
 
   args->curptr = p;
   args->endptr = args->curptr + size;
@@ -560,7 +561,8 @@ print_error (const char *name, struct spc_env *spe, struct spc_arg *ap)
 int
 spc_exec_special (const char *buffer, int32_t size,
                   pdf_doc *pdf,
-		  double x_user, double y_user, double mag)
+		  double x_user, double y_user, double mag,
+                  int *is_drawable, pdf_rect *rect)
 {
   int    error = -1;
   int    i, found;
@@ -584,6 +586,15 @@ spc_exec_special (const char *buffer, int32_t size,
       }
       if (error) {
 	print_error(known_specials[i].key, &spe, &args);
+      } else {
+        if (is_drawable)
+          *is_drawable = spe.info.is_drawable;
+        if (rect) {
+          rect->llx = spe.info.rect.llx;
+          rect->lly = spe.info.rect.lly;
+          rect->urx = spe.info.rect.urx;
+          rect->ury = spe.info.rect.ury;
+        }
       }
       break;
     }

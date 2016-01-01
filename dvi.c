@@ -769,7 +769,11 @@ dvi_link_annot (int flag)
   link_annot = flag;
 }
 
-int
+/* 20160101: back to static func.
+ * made pdfdev.c independent from dvi.c again...
+ */
+ 
+static int
 dvi_is_tracking_boxes(void)
 {
   return (compute_boxes && link_annot && marked_depth >= tagged_depth);
@@ -778,6 +782,8 @@ dvi_is_tracking_boxes(void)
 void
 dvi_do_special (const void *buffer, int32_t size)
 {
+  pdf_rect  rect = {0, 0, 0, 0};
+  int       is_drawable = 0;
   double x_user, y_user, mag;
   const char *p;
 
@@ -789,7 +795,12 @@ dvi_do_special (const void *buffer, int32_t size)
   y_user = -dvi_state.v * dvi2pts;
   mag    =  dvi_tell_mag();
 
-  if (spc_exec_special(p, size, pdf, x_user, y_user, mag) < 0) {
+  if (spc_exec_special(p, size, pdf,
+                       x_user, y_user, mag,
+                       &is_drawable, &rect) < 0) {
+    if (dvi_is_tracking_boxes() && is_drawable) {
+      pdf_doc_expand_box(pdf, &rect);
+    }
     if (verbose) {
       dump(p, p + size);
     }
@@ -1687,9 +1698,12 @@ static void
 do_glyphs (void)
 {
   struct loaded_font *font;
-  spt_t  width, height, depth, *xloc, *yloc, glyph_width = 0;
-  unsigned char wbuf[2];
-  unsigned int i, glyph_id, slen = 0;
+  spt_t               width, height, depth;
+  spt_t              *xloc, *yloc;
+  spt_t               glyph_width = 0;
+  unsigned char       wbuf[2];
+  uint16_t            i, glyph_id;
+  size_t              slen = 0;
 
   if (current_font < 0)
     ERROR("No font selected!");
@@ -1716,12 +1730,40 @@ do_glyphs (void)
   }
 
   if (font->rgba_color != 0xffffffff) {
+#if 0
+    int       alpha;
+#endif
     pdf_color color;
     pdf_color_rgbcolor(&color,
       (double)((unsigned char)(font->rgba_color >> 24) & 0xff) / 255,
       (double)((unsigned char)(font->rgba_color >> 16) & 0xff) / 255,
       (double)((unsigned char)(font->rgba_color >>  8) & 0xff) / 255);
     pdf_color_push(&color, &color);
+#if 0
+    alpha = (font->rgba_color & 0xff);
+    if (alpha < 255) {
+      pdf_obj *dict;
+      int      len;
+
+      dict = pdf_new_dict();
+      pdf_add_dict(dict,
+                   pdf_new_name("Type"),
+                   pdf_new_name("ExtGState"));
+      pdf_add_dict(dict,
+                   pdf_new_name("ca"),
+                   pdf_new_number(a));
+      pdf_add_dict(dict,
+                   pdf_new_name("CA"),
+                   pdf_new_number(a));
+      dict = create_xgstate(ROUND(0.01 * alp, 0.01), f_ais);
+      pdf_doc_add_page_resource("ExtGState",
+                                resname, pdf_ref_obj(dict));
+      pdf_release_obj(dict);
+      len = sprintf(buf + len, " /%s gs", resname);
+
+      pdf_doc_add_page_content(buf, len);
+    }
+#endif
   }
 
   for (i = 0; i < slen; i++) {

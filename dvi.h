@@ -95,7 +95,4 @@ extern void  dvi_compute_boxes (int flag);
 
 extern void  dvi_do_special    (const void *buffer, int32_t size);
 
-/* allow other modules (pdfdev) to ask whether we're collecting box areas */
-extern int dvi_is_tracking_boxes(void);
-
 #endif /* _DVI_H_ */

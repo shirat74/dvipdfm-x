@@ -2601,7 +2601,7 @@ pdf_open_document (const char *filename,
         !strncmp(".pdf", filename + strlen(filename) - 4, 4)) {
       p->opt.basename = NEW(strlen(filename)-4+1, char);
       strncpy(p->opt.basename, filename, strlen(filename)-4);
-      thumb_basename[strlen(filename)-4] = 0;
+      p->opt.basename[strlen(filename)-4] = 0;
     } else {
       p->opt.basename = NEW(strlen(filename)+1, char);
       strcpy(p->opt.basename, filename);

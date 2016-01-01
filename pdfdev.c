@@ -1832,7 +1832,8 @@ pdf_dev_put_image (pdf_doc        *pdf,
                    int             id,
                    transform_info *p,
                    double          ref_x,
-                   double          ref_y)
+                   double          ref_y,
+                   pdf_rect       *rect) /* returned value */
 {
   char        *res_name;
   pdf_tmatrix  M, M1;
@@ -1887,45 +1888,44 @@ pdf_dev_put_image (pdf_doc        *pdf,
                             res_name,
                             pdf_ximage_get_reference(id));
 
-  if (dvi_is_tracking_boxes()) {
+  if (rect) {
+    pdf_rect    r1;
     pdf_tmatrix P;
-    int i;
-    pdf_rect rect;
-    pdf_coord corner[4];
+    int         i;
+    pdf_coord   corner[4];
 
-    pdf_dev_set_rect(&rect, 65536 * ref_x, 65536 * ref_y,
-	65536 * (r.urx - r.llx), 65536 * (r.ury - r.lly), 0);
+    pdf_dev_set_rect(&r1, 65536 * ref_x, 65536 * ref_y,
+                     65536 * (r.urx - r.llx),
+                     65536 * (r.ury - r.lly), 0);
 
-    corner[0].x = rect.llx; corner[0].y = rect.lly;
-    corner[1].x = rect.llx; corner[1].y = rect.ury;
-    corner[2].x = rect.urx; corner[2].y = rect.ury;
-    corner[3].x = rect.urx; corner[3].y = rect.lly;
+    corner[0].x = r1.llx; corner[0].y = r1.lly;
+    corner[1].x = r1.llx; corner[1].y = r1.ury;
+    corner[2].x = r1.urx; corner[2].y = r1.ury;
+    corner[3].x = r1.urx; corner[3].y = r1.lly;
 
     pdf_copymatrix(&P, &(p->matrix));
     for (i = 0; i < 4; ++i) {
-      corner[i].x -= rect.llx;
-      corner[i].y -= rect.lly;
+      corner[i].x -= r1.llx;
+      corner[i].y -= r1.lly;
       pdf_dev_transform(&(corner[i]), &P);
-      corner[i].x += rect.llx;
-      corner[i].y += rect.lly;
+      corner[i].x += r1.llx;
+      corner[i].y += r1.lly;
     }
 
-    rect.llx = corner[0].x;
-    rect.lly = corner[0].y;
-    rect.urx = corner[0].x;
-    rect.ury = corner[0].y;
+    rect->llx = corner[0].x;
+    rect->lly = corner[0].y;
+    rect->urx = corner[0].x;
+    rect->ury = corner[0].y;
     for (i = 0; i < 4; ++i) {
-      if (corner[i].x < rect.llx)
-	rect.llx = corner[i].x;
-      if (corner[i].x > rect.urx)
-	rect.urx = corner[i].x;
-      if (corner[i].y < rect.lly)
-	rect.lly = corner[i].y;
-      if (corner[i].y > rect.ury)
-	rect.ury = corner[i].y;
+      if (corner[i].x < rect->llx)
+	rect->llx = corner[i].x;
+      if (corner[i].x > rect->urx)
+	rect->urx = corner[i].x;
+      if (corner[i].y < rect->lly)
+	rect->lly = corner[i].y;
+      if (corner[i].y > rect->ury)
+	rect->ury = corner[i].y;
     }
-
-    pdf_doc_expand_box(pdf, &rect);
   }
 
   return 0;

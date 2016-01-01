@@ -1042,9 +1042,12 @@ spc_handler_pdfm_image (struct spc_env *spe, struct spc_arg *args)
     return  -1;
   }
 
-  if (!(ti.flags & INFO_DO_HIDE))
+  if (!(ti.flags & INFO_DO_HIDE)) {
     pdf_dev_put_image(spe->pdf,
-                      xobj_id, &ti, spe->x_user, spe->y_user);
+                      xobj_id, &ti, spe->x_user, spe->y_user,
+                      &spe->info.rect);
+    spe->info.is_drawable = 1;
+  }
 
   if (ident) {
     if (compat_mode &&
@@ -1687,7 +1690,10 @@ spc_handler_pdfm_uxobj (struct spc_env *spe, struct spc_arg *args)
     }
   }
 
-  pdf_dev_put_image(spe->pdf, xobj_id, &ti, spe->x_user, spe->y_user);
+  pdf_dev_put_image(spe->pdf, xobj_id,
+                    &ti, spe->x_user, spe->y_user, &spe->info.rect);
+  spe->info.is_drawable = 1;
+
   RELEASE(ident);
 
   return 0;

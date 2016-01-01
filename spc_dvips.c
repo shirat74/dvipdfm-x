@@ -172,7 +172,9 @@ spc_handler_ps_file (struct spc_env *spe, struct spc_arg *args)
   }
   RELEASE(filename);
 
-  pdf_dev_put_image(spe->pdf, form_id, &ti, spe->x_user, spe->y_user);
+  pdf_dev_put_image(spe->pdf, form_id,
+                    &ti, spe->x_user, spe->y_user, &spe->info.rect);
+  spe->info.is_drawable = 1;
 
   return  0;
 }
@@ -209,9 +211,11 @@ spc_handler_ps_plotfile (struct spc_env *spe, struct spc_arg *args)
     /* I don't know how to treat this... */
     pdf_dev_put_image(spe->pdf, form_id, &p,
 		      block_pending ? pending_x : spe->x_user,
-		      block_pending ? pending_y : spe->y_user);
+		      block_pending ? pending_y : spe->y_user,
+                      &spe->info.rect);
 #endif
-    pdf_dev_put_image(spe->pdf, form_id, &p, 0, 0);
+    pdf_dev_put_image(spe->pdf, form_id, &p, 0, 0, &spe->info.rect);
+    spe->info.is_drawable = 1;
   }
   RELEASE(filename);
 
@@ -718,7 +722,8 @@ spc_handler_ps_tricks_render (struct spc_env *spe, struct spc_arg *args)
       RELEASE(gs_out);
       return  -1;
     }
-    pdf_dev_put_image(spe->pdf, form_id, &p, 0, 0);
+    pdf_dev_put_image(spe->pdf, form_id, &p, 0, 0, &spe->info.rect);
+    spe->info.is_drawable = 1;
 
     dpx_delete_temp_file(gs_out, true);
     dpx_delete_temp_file(gs_in, true);

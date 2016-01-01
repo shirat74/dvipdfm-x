@@ -900,7 +900,8 @@ do_texfig_operator (int opcode, pdf_doc *pdf, double x_user, double y_user)
       ERROR("endTexFig without valid startTexFig!.");
 
     pdf_doc_end_grabbing(pdf, NULL);
-    pdf_dev_put_image(pdf, xobj_id, &fig_p, x_user, y_user);
+    pdf_dev_put_image(pdf, xobj_id,
+                      &fig_p, x_user, y_user, NULL); /* FIXME */
     in_tfig = 0;
     break;
   default:

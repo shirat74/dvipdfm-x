@@ -690,9 +690,14 @@ spc_html__img_empty (struct spc_env *spe, pdf_obj *attr)
       pdf_doc_add_page_resource("XObject",
                                 res_name,
                                 pdf_ximage_get_reference(id));
+      /* FIXME: */
+      /* spe->info.is_drawable = 1 */
+
     }
 #else
-    pdf_dev_put_image(id, &ti, spe->x_user, spe->y_user);
+    pdf_dev_put_image(id, &ti,
+                      spe->x_user, spe->y_user, &spe->info.rect);
+    spe->info.is_drawable = 1;
 #endif /* ENABLE_HTML_SVG_XXX */
   }
 
