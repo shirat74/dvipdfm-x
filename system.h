@@ -35,5 +35,4 @@
 #  pragma warning(disable : 4101 4018)
 #endif /* WIN32 */
 
-#include <getopt.h>
 #endif /* _SYSTEM_H_ */
