@@ -70,8 +70,6 @@ static struct {
 
 static int xtoi (char ch);
 
-static const char *save = NULL;
-
 void
 dump (const char *start, const char *end)
 {
@@ -85,14 +83,6 @@ dump (const char *start, const char *end)
     MESG("...");
   MESG("<--\n");
 }
-
-#define SAVE(s,e) do {\
-   save = (s);\
- } while (0)
-#define DUMP_RESTORE(s,e) do {\
-   dump(save, end);\
-   (s) = save;\
- } while (0)
 
 void
 skip_line (const char **start, const char *end)
@@ -653,7 +643,7 @@ parse_pdf_tainted_dict (const char **pp, const char *endptr)
   pdf_obj *result;
 
   parser_state.tainted = 1;
-  result  = parse_pdf_dict(pp, endptr, NULL);
+  result  = parse_pdf_dict(pp, endptr);
   parser_state.tainted = 0;
 
   return result;
@@ -662,12 +652,20 @@ parse_pdf_tainted_dict (const char **pp, const char *endptr)
 pdf_obj *
 parse_pdf_tainted_dict (const char **pp, const char *endptr)
 {
-  return parse_pdf_dict(pp, endptr, NULL);
+  return parse_pdf_dict(pp, endptr);
 }
 #endif /* !PDF_PARSE_STRICT */
 
-pdf_obj *
-parse_pdf_dict (const char **pp, const char *endptr, pdf_file *pf)
+static pdf_obj *
+parse_pdf_dict_ext (const char **pp, const char *endptr,
+                    pdf_obj* (*resolver) (const char **pp,
+                                          const char *endptr,
+                                          void *user_data),
+                    void *user_data1,
+                    pdf_obj* (*unknown_handler) (const char **pp,
+                                                 const char *endptr,
+                                                 void *user_data),
+                    void *user_data2)
 {
   pdf_obj *result = NULL;
   const char *p;
@@ -699,7 +697,9 @@ parse_pdf_dict (const char **pp, const char *endptr, pdf_file *pf)
 
     skip_white(&p, endptr);
 
-    value = parse_pdf_object(&p, endptr, pf);
+    value = parse_pdf_object_ext(&p, endptr,
+                                 resolver, user_data1,
+                                 unknown_handler, user_data2);
     if (!value) {
       pdf_release_obj(key); 
       pdf_release_obj(value);
@@ -724,7 +724,21 @@ parse_pdf_dict (const char **pp, const char *endptr, pdf_file *pf)
 }
 
 pdf_obj *
-parse_pdf_array (const char **pp, const char *endptr, pdf_file *pf)
+parse_pdf_dict (const char **pp, const char *endptr)
+{
+  return parse_pdf_dict_ext(pp, endptr, NULL, NULL, NULL, NULL);
+}
+
+static pdf_obj *
+parse_pdf_array_ext (const char **pp, const char *endptr,
+                     pdf_obj* (*resolver) (const char **pp,
+                                           const char *endptr,
+                                           void *user_data),
+                     void *user_data1,
+                     pdf_obj* (*unknown_handler) (const char **pp,
+                                                  const char *endptr,
+                                                  void *user_data),
+                     void *user_data2)
 {
   pdf_obj *result;
   const char *p;
@@ -745,7 +759,9 @@ parse_pdf_array (const char **pp, const char *endptr, pdf_file *pf)
   while (p < endptr && p[0] != ']') {
     pdf_obj *elem;
 
-    elem = parse_pdf_object(&p, endptr, pf);
+    elem = parse_pdf_object_ext(&p, endptr,
+                                resolver, user_data1,
+                                unknown_handler, user_data2);
     if (!elem) {
       pdf_release_obj(result); 
       WARN("Could not find a valid object in array object.");
@@ -765,6 +781,13 @@ parse_pdf_array (const char **pp, const char *endptr, pdf_file *pf)
   *pp = p + 1; /* skip ] */
   return result;
 }
+
+pdf_obj *
+parse_pdf_array (const char **pp, const char *endptr)
+{
+  return parse_pdf_array_ext(pp, endptr, NULL, NULL, NULL, NULL);
+}
+
 
 static pdf_obj *
 parse_pdf_stream (const char **pp, const char *endptr, pdf_obj *dict)
@@ -865,91 +888,46 @@ parse_pdf_stream (const char **pp, const char *endptr, pdf_obj *dict)
   return  result;
 }
 
-#ifndef PDF_PARSE_STRICT
-
-/* PLEASE REMOVE THIS */
-#include "specials.h"
-
-/* This is not PDF indirect reference. */
-static pdf_obj *
-parse_pdf_reference (const char **start, const char *end)
+static int 
+is_indirect (const char *p, const char *endptr)
 {
-  pdf_obj *result = NULL;
-  char    *name;
-
-  SAVE(*start, end);
-
-  skip_white(start, end);
-  name = parse_opt_ident(start, end);
-  if (name) {
-    result = spc_lookup_reference(name);
-    if (!result) {
-      WARN("Could not find the named reference (@%s).", name);
-      DUMP_RESTORE(*start, end);
-    }
-    RELEASE(name);
-  } else {
-    WARN("Could not find a reference name.");
-    DUMP_RESTORE(*start, end);
-    result = NULL;
+  skip_white(&p, endptr);
+  if (p + 5 > endptr || !isdigit((unsigned char)*p)) {
+    return 0;
+  }
+  while (isdigit((unsigned char)*p)) {
+    p++;
   }
 
-  return result;
-}
-#endif /* !PDF_PARSE_STRICT */
-
-static pdf_obj *
-try_pdf_reference (const char *start, const char *end, const char **endptr, pdf_file *pf)
-{
-  unsigned id = 0;
-  unsigned short gen = 0;
-
-  ASSERT(pf);
-
-  if (endptr)
-    *endptr = start;
-
-  skip_white(&start, end);
-  if (start > end - 5 || !isdigit((unsigned char)*start)) {
-    return NULL;
+  skip_white(&p, endptr);
+  if (p + 3 > endptr || !isdigit((unsigned char)*p)) {
+    return 0;
   }
-  while (!is_space(*start)) {
-    if (start >= end || !isdigit((unsigned char)*start)) {
-      return NULL;
-    }
-    id = id * 10 + (*start - '0');
-    start++;
+  while (isdigit((unsigned char)*p)) {
+    p++;
   }
 
-  skip_white(&start, end);
-  if (start >= end || !isdigit((unsigned char)*start))
-    return NULL;
-  while (!is_space(*start)) {
-    if (start >= end || !isdigit((unsigned char)*start))
-      return NULL;
-    gen = gen * 10 + (*start - '0');
-    start++;
-  }
-
-  skip_white(&start, end);
-  if (start >= end  || *start != 'R')
-    return NULL;
-  start++;
-  if (!PDF_TOKEN_END(start, end))
-    return NULL;
+  skip_white(&p, endptr);
+  if (p >= endptr  || *p != 'R')
+    return 0;
+  if (!PDF_TOKEN_END(p, endptr))
+    return 0;
     
-  if (endptr)
-    *endptr = start;
-
-  return pdf_new_indirect(pf, id, gen);
+  return 1;
 }
 
 pdf_obj *
-parse_pdf_object (const char **pp, const char *endptr, pdf_file *pf)
-/* If pf is NULL, then indirect references are not allowed */
+parse_pdf_object_ext (const char **pp, const char *endptr,
+                      pdf_obj* (*resolver) (const char **pp,
+                                            const char *endptr,
+                                            void *user_data),
+                      void *user_data1,
+                      pdf_obj* (*unknown_handler) (const char **pp,
+                                                   const char *endptr,
+                                                   void *user_data),
+                      void *user_data2)
 {
   pdf_obj *result = NULL;
-  const char *nextptr;
 
   skip_white(pp, endptr);
   if (*pp >= endptr) {
@@ -966,7 +944,9 @@ parse_pdf_object (const char **pp, const char *endptr, pdf_file *pf)
     } else {
       pdf_obj *dict;
 
-      result = parse_pdf_dict(pp, endptr, pf);
+      result = parse_pdf_dict_ext(pp, endptr,
+                                  resolver, user_data1,
+                                  unknown_handler, user_data2);
       skip_white(pp, endptr);
       if ( result &&
           *pp <= endptr - 15 &&
@@ -982,7 +962,9 @@ parse_pdf_object (const char **pp, const char *endptr, pdf_file *pf)
     result = parse_pdf_string(pp, endptr);
     break;
   case '[':
-    result = parse_pdf_array(pp, endptr, pf);
+    result = parse_pdf_array_ext(pp, endptr,
+                                 resolver, user_data1,
+                                 unknown_handler, user_data2);
     break;
   case '/':
     result = parse_pdf_name(pp, endptr);
@@ -998,30 +980,38 @@ parse_pdf_object (const char **pp, const char *endptr, pdf_file *pf)
     break;
   case '0': case '1': case '2': case '3': case '4':
   case '5': case '6': case '7': case '8': case '9':
-
-    /*
-     * If pf != NULL, then we are parsing a PDF file,
-     * and indirect references are allowed.
-     */
-    if (pf && (result = try_pdf_reference(*pp, endptr, &nextptr, pf))) {
-      *pp = nextptr;
+    if (!is_indirect(*pp, endptr)) {
+      if (resolver)
+        result = resolver(pp, endptr, user_data1); 
+      else {
+        WARN("Cannot resolve indirect reference...");
+        result = NULL;
+      }
     } else {
       result = parse_pdf_number(pp, endptr);
     }
     break;
 
-  case '@':
-
-#ifndef PDF_PARSE_STRICT
-    result = parse_pdf_reference(pp, endptr);
-#endif /* !PDF_PARSE_STRICT */
-    break;
-
   default:
-    WARN("Unknown PDF object type.");
-    result = NULL;
+
+    if (unknown_handler)
+      result = unknown_handler(pp, endptr, user_data2); 
+    else {
+      WARN("Unknown PDF object type.");
+      result = NULL;
+    }
+    break;
   }
 
+  if (!result)
+    WARN("Parsing PDF object failed.");
+
   return result;
+}
+
+pdf_obj *
+parse_pdf_object (const char **pp, const char *endptr)
+{
+  return parse_pdf_object_ext(pp, endptr, NULL, NULL, NULL, NULL);
 }
 

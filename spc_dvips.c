@@ -315,12 +315,12 @@ spc_handler_ps_tricks_pdef (struct spc_env *spe, struct spc_arg *args)
 {
   FILE* fp;
   pdf_tmatrix M, T = { 1, 0, 0, 1, 0, 0 };
-  pdf_coord pt;
+  double x, y;
 
   pdf_dev_currentmatrix(&M);
-  pdf_dev_get_fixed_point(&pt);
-  T.e = pt.x;
-  T.f = pt.y;
+  spc_get_fixed_point(&x, &y);
+  T.e = x;
+  T.f = y;
   pdf_concatmatrix(&M, &T);
 
   if (!page_defs)
@@ -331,7 +331,8 @@ spc_handler_ps_tricks_pdef (struct spc_env *spe, struct spc_arg *args)
   }
 
   fp = fopen(page_defs, "ab");
-  fprintf(fp, "gsave initmatrix [%f %f %f %f %f %f] concat %f %f moveto\n", M.a, M.b, M.c, M.d, M.e, M.f, spe->x_user - pt.x, spe->y_user - pt.y);
+  fprintf(fp, "gsave initmatrix [%f %f %f %f %f %f] concat %f %f moveto\n",
+          M.a, M.b, M.c, M.d, M.e, M.f, spe->x_user - x, spe->y_user - y);
   fwrite(args->curptr, 1, args->endptr - args->curptr, fp);
   fprintf(fp, "\ngrestore\n");
   fclose(fp);

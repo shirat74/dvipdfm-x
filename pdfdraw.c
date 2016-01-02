@@ -875,8 +875,6 @@ pdf_dev__flushpath (pdf_path  *pa,
   return 0;
 }
 
-#define XETEX 1
-
 /* Graphics State */
 typedef struct pdf_gstate_
 {
@@ -905,11 +903,7 @@ typedef struct pdf_gstate_
   /* internal */
   pdf_path  path;
   int       flags;
-#ifdef XETEX
-  /* PLEASE DON'T ADD ARBITRARY EXTENTION HERE */
-  /* bookkeeping the origin of the last transform applied */
-  pdf_coord pt_fixee;
-#endif
+
 } pdf_gstate;
 
 
@@ -1023,10 +1017,6 @@ init_a_gstate (pdf_gstate *gs)
   /* Internal variables */
   gs->flags = 0;
   init_a_path(&gs->path);
-#ifdef XETEX
-  gs->pt_fixee.x = 0;
-  gs->pt_fixee.y = 0;
-#endif
 
   return;
 }
@@ -1073,10 +1063,6 @@ copy_a_gstate (pdf_gstate *gs1, pdf_gstate *gs2)
 
   pdf_color_copycolor(&gs1->fillcolor  , &gs2->fillcolor);
   pdf_color_copycolor(&gs1->strokecolor, &gs2->strokecolor);
-#ifdef XETEX
-  gs1->pt_fixee.x = gs2->pt_fixee.x;
-  gs1->pt_fixee.y = gs2->pt_fixee.y;
-#endif /* XETEX */
 
   return;
 }
@@ -1845,27 +1831,3 @@ pdf_dev_rectclip (double x, double y,
   
   return  pdf_dev__rectshape(&r, NULL, 'W');
 }
-
-#ifdef XETEX
-/* This shouldn't be placed here.
- * It's not PDF graphics state parameter.
- * Please remove this.
- */
-void
-pdf_dev_set_fixed_point (double x, double y)
-{
-  m_stack    *gss = &gs_stack;
-  pdf_gstate *gs  = m_stack_top(gss);
-  gs->pt_fixee.x = x;
-  gs->pt_fixee.y = y;
-}
-
-void
-pdf_dev_get_fixed_point (pdf_coord *p)
-{
-  m_stack    *gss = &gs_stack;
-  pdf_gstate *gs  = m_stack_top(gss);
-  p->x = gs->pt_fixee.x;
-  p->y = gs->pt_fixee.y;
-}
-#endif /* XETEX */

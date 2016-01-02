@@ -123,6 +123,32 @@ findresource (struct spc_pdf_ *sd, const char *ident)
   return (r ? r->res_id : -1);
 }
 
+/* This is not PDF indirect reference. */
+static pdf_obj *parse_reference (const char **start, const char *end, void *udata);
+
+static pdf_obj *
+parse_reference (const char **start, const char *end, void *udata)
+{
+  pdf_obj *result = NULL;
+  char    *name;
+
+  if (!start || !*start)
+    return NULL;
+  if (*start[0] != '@')
+    return NULL;
+
+  *start += 1;
+  skip_white(start, end);
+  name = parse_opt_ident(start, end);
+  if (name) {
+    result = spc_lookup_reference(udata, name);
+    if (!result)
+      WARN("Could not find the named reference (@%s).", name);
+    RELEASE(name);
+  }
+
+  return result;
+}
 
 static int
 spc_handler_pdfm__init (void *dp)
@@ -291,7 +317,7 @@ spc_handler_pdfm_put (struct spc_env *spe, struct spc_arg *ap)
     spc_warn(spe, "Missing object identifier.");
     return  -1;
   }
-  obj1 = spc_lookup_object(ident);
+  obj1 = spc_lookup_object(spe, ident);
   if (!obj1) {
     spc_warn(spe, "Specified object not exist: %s", ident);
     RELEASE(ident);
@@ -299,7 +325,9 @@ spc_handler_pdfm_put (struct spc_env *spe, struct spc_arg *ap)
   }
   skip_white(&ap->curptr, ap->endptr);
 
-  obj2 = parse_pdf_object(&ap->curptr, ap->endptr, NULL);
+  obj2 = parse_pdf_object_ext(&ap->curptr, ap->endptr,
+                              NULL, NULL, /* No indirect object */
+                              parse_reference, spe);
   if (!obj2) {
     spc_warn(spe, "Missing (an) object(s) to put into \"%s\"!", ident);
     RELEASE(ident);
@@ -345,7 +373,9 @@ spc_handler_pdfm_put (struct spc_env *spe, struct spc_arg *ap)
     /* dvipdfm */
     pdf_add_array(obj1, pdf_link_obj(obj2));
     while (ap->curptr < ap->endptr) {
-      pdf_obj *obj3 = parse_pdf_object(&ap->curptr, ap->endptr, NULL);
+      pdf_obj *obj3 = parse_pdf_object_ext(&ap->curptr, ap->endptr,
+                                           NULL, NULL, /* No indirect object */
+                                           parse_reference, spe);
       if (!obj3)
 	break;
       pdf_add_array(obj1, obj3);
@@ -530,19 +560,21 @@ modstrings (pdf_obj *kp, pdf_obj *vp, void *dp)
 }
 
 static pdf_obj *
-parse_pdf_dict_with_tounicode (const char **pp, const char *endptr, struct tounicode *cd)
+parse_pdf_dict_with_tounicode (const char **pp, const char *endptr,
+                               struct spc_env *spe, struct tounicode *cd)
 {
   pdf_obj  *dict;
 
   /* disable this test for XDV files, as we do UTF8 reencoding with no cmap */
   if (!is_xdv && cd->cmap_id < 0)
-    return  parse_pdf_dict(pp, endptr, NULL);
+    return  parse_pdf_dict(pp, endptr);
 
   /* :( */
   if (cd && cd->unescape_backslash) 
     dict = parse_pdf_tainted_dict(pp, endptr);
   else {
-    dict = parse_pdf_dict(pp, endptr, NULL);
+    dict = parse_pdf_object_ext(pp, endptr,
+                                NULL, NULL, parse_reference, spe);
   }
   if (dict)
     pdf_foreach_dict(dict, modstrings, cd);
@@ -581,7 +613,8 @@ spc_handler_pdfm_annot (struct spc_env *spe, struct spc_arg *args)
     return  -1;
   }
 
-  annot_dict = parse_pdf_dict_with_tounicode(&args->curptr, args->endptr, &sd->cd);
+  annot_dict = parse_pdf_dict_with_tounicode(&args->curptr, args->endptr,
+                                             spe, &sd->cd);
   if (!annot_dict) {
     spc_warn(spe, "Could not find dictionary object.");
     if (ident)
@@ -640,7 +673,8 @@ spc_handler_pdfm_bann (struct spc_env *spe, struct spc_arg *args)
 
   skip_white(&args->curptr, args->endptr);
 
-  sd->annot_dict = parse_pdf_dict_with_tounicode(&args->curptr, args->endptr, &sd->cd);
+  sd->annot_dict = parse_pdf_dict_with_tounicode(&args->curptr, args->endptr,
+                                                 spe, &sd->cd);
   if (!sd->annot_dict) {
     spc_warn(spe, "Ignoring annotation with invalid dictionary.");
     return  -1;
@@ -808,7 +842,9 @@ spc_handler_pdfm_outline (struct spc_env *spe, struct spc_arg *args)
   }
   skip_white(&args->curptr, args->endptr);
 
-  tmp = parse_pdf_object(&args->curptr, args->endptr, NULL);
+  tmp = parse_pdf_object_ext(&args->curptr, args->endptr,
+                             NULL, NULL,
+                             parse_reference, spe);
   if (!tmp) {
     spc_warn(spe, "Missing number for outline item depth.");
     return  -1;
@@ -835,7 +871,8 @@ spc_handler_pdfm_outline (struct spc_env *spe, struct spc_arg *args)
 
   level  +=  1 - sd->lowest_level;
 
-  item_dict = parse_pdf_dict_with_tounicode(&args->curptr, args->endptr, &sd->cd);
+  item_dict = parse_pdf_dict_with_tounicode(&args->curptr, args->endptr,
+                                            spe, &sd->cd);
   if (!item_dict) {
     spc_warn(spe, "Ignoring invalid dictionary.");
     return  -1;
@@ -869,7 +906,8 @@ spc_handler_pdfm_article (struct spc_env *spe, struct spc_arg *args)
     return -1;
   }
 
-  info_dict = parse_pdf_dict_with_tounicode(&args->curptr, args->endptr, &sd->cd);
+  info_dict = parse_pdf_dict_with_tounicode(&args->curptr, args->endptr,
+                                            spe, &sd->cd);
   if (!info_dict) {
     spc_warn(spe, "Ignoring article with invalid info dictionary.");
     RELEASE(ident);
@@ -940,7 +978,8 @@ spc_handler_pdfm_bead (struct spc_env *spe, struct spc_arg *args)
   if (args->curptr[0] != '<') {
     article_info = pdf_new_dict();
   } else {
-    article_info = parse_pdf_dict_with_tounicode(&args->curptr, args->endptr, &sd->cd);
+    article_info = parse_pdf_dict_with_tounicode(&args->curptr, args->endptr,
+                                                 spe, &sd->cd);
     if (!article_info) {
       spc_warn(spe, "Error in reading dictionary.");
       RELEASE(article_name);
@@ -949,7 +988,7 @@ spc_handler_pdfm_bead (struct spc_env *spe, struct spc_arg *args)
   }
 
   /* Does this article exist yet */
-  article = spc_lookup_object(article_name);
+  article = spc_lookup_object(spe, article_name);
   if (article) {
     pdf_merge_dict (article, article_info);
     pdf_release_obj(article_info);
@@ -1000,7 +1039,7 @@ spc_handler_pdfm_image (struct spc_env *spe, struct spc_arg *args)
   }
 
   skip_white(&args->curptr, args->endptr);
-  fspec = parse_pdf_object(&args->curptr, args->endptr, NULL);
+  fspec = parse_pdf_object(&args->curptr, args->endptr);
   if (!fspec) {
     spc_warn(spe, "Missing filename string for pdf:image.");
     if (ident)
@@ -1016,7 +1055,9 @@ spc_handler_pdfm_image (struct spc_env *spe, struct spc_arg *args)
 
   skip_white(&args->curptr, args->endptr);
   if (args->curptr < args->endptr) {
-    options.dict = parse_pdf_object(&args->curptr, args->endptr, NULL);
+    options.dict = parse_pdf_object_ext(&args->curptr, args->endptr,
+                                        NULL, NULL,
+                                        parse_reference, spe);
     if (!attr || !PDF_OBJ_DICTTYPE(attr)) {
       spc_warn(spe, "Ignore invalid attribute dictionary.");
       if (attr) pdf_release_obj(attr);
@@ -1070,7 +1111,7 @@ spc_handler_pdfm_dest (struct spc_env *spe, struct spc_arg *args)
 
   skip_white(&args->curptr, args->endptr);
 
-  name = parse_pdf_object(&args->curptr, args->endptr, NULL);
+  name = parse_pdf_object(&args->curptr, args->endptr);
   if (!name) {
     spc_warn(spe, "PDF string expected for destination name but not found.");
     return  -1;
@@ -1083,7 +1124,9 @@ spc_handler_pdfm_dest (struct spc_env *spe, struct spc_arg *args)
   if (is_xdv && maybe_reencode_utf8(name) < 0)
     WARN("Failed to convert input string to UTF16...");
 
-  array = parse_pdf_object(&args->curptr, args->endptr, NULL);
+  array = parse_pdf_object_ext(&args->curptr, args->endptr,
+                               NULL, NULL,
+                               parse_reference, spe);
   if (!array) {
     spc_warn(spe, "No destination specified for pdf:dest.");
     pdf_release_obj(name);
@@ -1110,7 +1153,7 @@ spc_handler_pdfm_names (struct spc_env *spe, struct spc_arg *args)
   pdf_obj *category, *key, *value, *tmp;
   int      i, size;
 
-  category = parse_pdf_object(&args->curptr, args->endptr, NULL);
+  category = parse_pdf_object(&args->curptr, args->endptr);
   if (!category) {
     spc_warn(spe, "PDF name expected but not found.");
     return  -1;
@@ -1120,7 +1163,9 @@ spc_handler_pdfm_names (struct spc_env *spe, struct spc_arg *args)
     return  -1;
   }
 
-  tmp = parse_pdf_object(&args->curptr, args->endptr, NULL);
+  tmp = parse_pdf_object_ext(&args->curptr, args->endptr,
+                             NULL, NULL,
+                             parse_reference, spe);
   if (!tmp) {
     spc_warn(spe, "PDF object expected but not found.");
     pdf_release_obj(category);
@@ -1156,7 +1201,9 @@ spc_handler_pdfm_names (struct spc_env *spe, struct spc_arg *args)
     pdf_release_obj(tmp);
   } else if (PDF_OBJ_STRINGTYPE(tmp)) {
     key   = tmp;
-    value = parse_pdf_object(&args->curptr, args->endptr, NULL);
+    value = parse_pdf_object_ext(&args->curptr, args->endptr,
+                                 NULL, NULL,
+                                 parse_reference, spe);
     if (!value) {
       pdf_release_obj(category);
       pdf_release_obj(key);
@@ -1191,7 +1238,8 @@ spc_handler_pdfm_docinfo (struct spc_env *spe, struct spc_arg *args)
   struct spc_pdf_ *sd = &_pdf_stat;
   pdf_obj *docinfo, *dict;
 
-  dict = parse_pdf_dict_with_tounicode(&args->curptr, args->endptr, &sd->cd);
+  dict = parse_pdf_dict_with_tounicode(&args->curptr, args->endptr,
+                                       spe, &sd->cd);
   if (!dict) {
     spc_warn(spe, "Dictionary object expected but not found.");
     return  -1;
@@ -1211,7 +1259,8 @@ spc_handler_pdfm_docview (struct spc_env *spe, struct spc_arg *args)
   pdf_obj   *catalog,  *dict;
   pdf_obj   *pref_old, *pref_add;
 
-  dict = parse_pdf_dict_with_tounicode(&args->curptr, args->endptr, &sd->cd);
+  dict = parse_pdf_dict_with_tounicode(&args->curptr, args->endptr,
+                                       spe, &sd->cd);
   if (!dict) {
     spc_warn(spe, "Dictionary object expected but not found.");
     return  -1;
@@ -1261,7 +1310,9 @@ spc_handler_pdfm_object (struct spc_env *spe, struct spc_arg *args)
     return  -1;
   }
 
-  object = parse_pdf_object(&args->curptr, args->endptr, NULL);
+  object = parse_pdf_object_ext(&args->curptr, args->endptr,
+                                NULL, NULL,
+                                parse_reference, spe);
   if (!object) {
     spc_warn(spe, "Could not find an object definition for \"%s\".", ident);
     RELEASE(ident);
@@ -1411,7 +1462,7 @@ spc_handler_pdfm_stream_with_type (struct spc_env *spe, struct spc_arg *args, in
 
   skip_white(&args->curptr, args->endptr);
 
-  tmp = parse_pdf_object(&args->curptr, args->endptr, NULL);
+  tmp = parse_pdf_object(&args->curptr, args->endptr);
   if (!tmp) {
     spc_warn(spe, "Missing input string for pdf:(f)stream.");
     RELEASE(ident);
@@ -1479,8 +1530,10 @@ spc_handler_pdfm_stream_with_type (struct spc_env *spe, struct spc_arg *args, in
 
     stream_dict = pdf_stream_dict(fstream);
 
-    tmp = parse_pdf_dict(&args->curptr, args->endptr, NULL);
-    if (!tmp) {
+    tmp = parse_pdf_object_ext(&args->curptr, args->endptr,
+                               NULL, NULL,
+                               parse_reference, spe);
+    if (!tmp || !PDF_OBJ_DICTTYPE(tmp)) {
       spc_warn(spe, "Parsing dictionary failed.");
       pdf_release_obj(fstream);
       RELEASE(ident);
@@ -1618,7 +1671,9 @@ spc_handler_pdfm_eform (struct spc_env *spe, struct spc_arg *args)
   skip_white(&args->curptr, args->endptr);
 
   if (args->curptr < args->endptr) {
-    attrib = parse_pdf_dict(&args->curptr, args->endptr, NULL);
+    attrib = parse_pdf_object_ext(&args->curptr, args->endptr,
+                                  NULL, NULL,
+                                  parse_reference, spe);
     if (attrib && !PDF_OBJ_DICTTYPE(attrib)) {
       pdf_release_obj(attrib);
       attrib = NULL;

@@ -23,10 +23,10 @@
 #ifndef _SPC_UTIL_H_
 #define _SPC_UTIL_H_
 
+#include "specials.h"
+
 #include "pdfcolor.h"
 #include "pdfdev.h"
-
-#include "specials.h"
 
 /* syntax 1: ((rgb|cmyk|hsb|gray) colorvalues)|colorname
  * syntax 0: pdf_number|pdf_array

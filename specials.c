@@ -51,8 +51,6 @@
 
 #include "specials.h"
 
-static pdf_doc *_pdf = NULL; /* FIXME */
-
 static int verbose = 0;
 void
 spc_set_verbose (void)
@@ -111,7 +109,66 @@ spc_suspend_annot (struct spc_env *spe)
   return  0;
 }
 
+/* Migrated from pdfdraw.c.
+ *
+ * pt_fixee is obviously not a PDF graphics state parameter.
+ *
+ * Someone added pt_fixee into pdf_gstate in pdfdraw.c.
+ * However, pdf_gstate is intended to be representation
+ * of PDF graphics state parameters and it not a place
+ * to sotre artitary values. 
+ */
 
+static pdf_coord *pt_fixee = NULL;
+static int st_top  = 0;
+static int st_size = 0;
+
+void
+spc_set_fixed_point (double x, double y)
+{
+  ASSERT(pt_fixee && st_top > 0);
+
+  pt_fixee[st_top-1].x = x;
+  pt_fixee[st_top-1].y = y;
+}
+
+void
+spc_get_fixed_point (double *x, double *y)
+{
+  ASSERT(pt_fixee && st_top > 0);
+  ASSERT(x && y);
+
+  *x = pt_fixee[st_top-1].x;
+  *y = pt_fixee[st_top-1].y;
+}
+
+void
+spc_put_fixed_point (double x, double y)
+{
+  if (st_top == st_size) {
+    pt_fixee = RENEW(pt_fixee, st_size + 16, pdf_coord);
+    st_size += 16;
+  }
+  
+  pt_fixee[st_top].x = x;
+  pt_fixee[st_top].y = y;
+  st_top++;
+}
+
+void
+spc_dup_fixed_point (void)
+{
+  double x, y;
+
+  spc_get_fixed_point(&x, &y);
+  spc_put_fixed_point(x, y);
+}
+
+void
+spc_pop_fixed_point (void)
+{
+  st_top--;
+}
 
 static struct ht_table *named_objects = NULL;
 
@@ -161,7 +218,7 @@ ispageref (const char *key)
  * The following routine returns copies, not the original object.
  */
 pdf_obj *
-spc_lookup_reference (const char *key)
+spc_lookup_reference (struct spc_env *spe, const char *key)
 {
   pdf_obj    *value = NULL;
   pdf_coord   cp;
@@ -169,7 +226,7 @@ spc_lookup_reference (const char *key)
 
   ASSERT(named_objects);
 
-  if (!key)
+  if (!key || !spe || !spe->pdf)
     return  NULL;
 
   for (k = 0; _rkeys[k] && strcmp(key, _rkeys[k]); k++);
@@ -186,32 +243,32 @@ spc_lookup_reference (const char *key)
     value = pdf_new_number(ROUND(cp.y, .01));
     break;
   case  K_OBJ__THISPAGE:
-    value = pdf_doc_this_page_ref(_pdf);
+    value = pdf_doc_this_page_ref(spe->pdf);
     break;
   case  K_OBJ__PREVPAGE:
-    value = pdf_doc_prev_page_ref(_pdf);
+    value = pdf_doc_prev_page_ref(spe->pdf);
     break;
   case  K_OBJ__NEXTPAGE:
-    value = pdf_doc_next_page_ref(_pdf);
+    value = pdf_doc_next_page_ref(spe->pdf);
     break;
   case  K_OBJ__PAGES:
-    value = pdf_ref_obj(pdf_doc_page_tree(_pdf));
+    value = pdf_ref_obj(pdf_doc_page_tree(spe->pdf));
     break;
   case  K_OBJ__NAMES:
-    value = pdf_ref_obj(pdf_doc_names(_pdf));
+    value = pdf_ref_obj(pdf_doc_names(spe->pdf));
     break;
   case  K_OBJ__RESOURCES:
-    value = pdf_ref_obj(pdf_doc_current_page_resources(_pdf));
+    value = pdf_ref_obj(pdf_doc_current_page_resources(spe->pdf));
     break;
   case  K_OBJ__CATALOG:
-    value = pdf_ref_obj(pdf_doc_catalog(_pdf));
+    value = pdf_ref_obj(pdf_doc_catalog(spe->pdf));
     break;
   case  K_OBJ__DOCINFO:
-    value = pdf_ref_obj(pdf_doc_docinfo(_pdf));
+    value = pdf_ref_obj(pdf_doc_docinfo(spe->pdf));
     break;
   default:
     if (ispageref(key))
-      value = pdf_doc_ref_page(_pdf, atoi(key + 4));
+      value = pdf_doc_ref_page(spe->pdf, atoi(key + 4));
     else {
       value = pdf_names_lookup_reference(named_objects, key, strlen(key));
     }
@@ -226,7 +283,7 @@ spc_lookup_reference (const char *key)
 }
 
 pdf_obj *
-spc_lookup_object (const char *key)
+spc_lookup_object (struct spc_env *spe, const char *key)
 {
   pdf_obj    *value = NULL;
   pdf_coord   cp;
@@ -234,7 +291,7 @@ spc_lookup_object (const char *key)
 
   ASSERT(named_objects);
 
-  if (!key)
+  if (!key || !spe || !spe->pdf)
     return  NULL;
 
   for (k = 0; _rkeys[k] && strcmp(key, _rkeys[k]); k++);
@@ -250,22 +307,22 @@ spc_lookup_object (const char *key)
     value = pdf_new_number(ROUND(cp.y, .01));
     break;
   case  K_OBJ__THISPAGE:
-    value = pdf_doc_this_page(_pdf);
+    value = pdf_doc_this_page(spe->pdf);
     break;
   case  K_OBJ__PAGES:
-    value = pdf_doc_page_tree(_pdf);
+    value = pdf_doc_page_tree(spe->pdf);
     break;
   case  K_OBJ__NAMES:
-    value = pdf_doc_names(_pdf);
+    value = pdf_doc_names(spe->pdf);
     break;
   case  K_OBJ__RESOURCES:
-    value = pdf_doc_current_page_resources(_pdf);
+    value = pdf_doc_current_page_resources(spe->pdf);
     break;
   case  K_OBJ__CATALOG:
-    value = pdf_doc_catalog(_pdf);
+    value = pdf_doc_catalog(spe->pdf);
     break;
   case  K_OBJ__DOCINFO:
-    value = pdf_doc_docinfo(_pdf);
+    value = pdf_doc_docinfo(spe->pdf);
     break;
   default:
     value = pdf_names_lookup_object(named_objects, key, strlen(key));
@@ -329,13 +386,11 @@ init_special (struct spc_handler *special,
   special->key  = NULL;
   special->exec = (spc_handler_fn_ptr) &spc_handler_unknown;
 
-  
-  _pdf = pdf; /* FIXME */
   spe->pdf    = pdf;
   spe->x_user = x_user;
   spe->y_user = y_user;
   spe->mag    = mag;
-  spe->pg     = pdf_doc_current_page_number(_pdf); /* _FIXME_ */
+  spe->pg     = pdf_doc_current_page_number(pdf);
   spe->info.is_drawable = 0;
 
   args->curptr = p;

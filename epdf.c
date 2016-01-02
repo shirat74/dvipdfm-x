@@ -549,6 +549,42 @@ pdf_include_page (pdf_ximage        *ximage,
   return -1;
 }
 
+/* for parse_pdf_object_ext */
+static pdf_obj *
+parse_pdf_indirect (const char **pp, const char *endptr, void *user_data)
+{
+  pdf_file *pf;
+  uint32_t  id  = 0;
+  uint16_t  gen = 0;
+  char     *vp;
+
+  if (!user_data || !pp || !*pp || !endptr)
+    return NULL;
+
+  pf = (pdf_file *) user_data;
+
+  skip_white(pp, endptr);
+  vp = parse_unsigned(pp, endptr);
+  if (!vp)
+    return NULL;
+  id  = strtoul(vp, NULL, 10);
+  RELEASE(vp);
+
+  skip_white(pp, endptr);
+  vp = parse_unsigned(pp, endptr);
+  if (!vp)
+    return NULL;
+  gen = strtoul(vp, NULL, 10);
+  RELEASE(vp);
+
+  skip_white(pp, endptr);
+  if (*pp >= endptr || *pp[0] != 'R')
+    return NULL;
+  (*pp)++;
+
+  return pdf_new_indirect(pf, id, gen);
+}
+
 typedef enum {
   OP_SETCOLOR		= 1,
   OP_CLOSEandCLIP	= 2,
@@ -675,7 +711,8 @@ pdf_copy_clip (FILE *image_file, int pageNo, double x_user, double y_user)
       clip_path = temp;
     } else if (*clip_path == '[') {
       /* Ignore, but put a dummy value on the stack (in case of d operator) */
-      parse_pdf_array(&clip_path, end_path, pf);
+      parse_pdf_object_ext(&clip_path, end_path,
+                           parse_pdf_indirect, pf, NULL, NULL);
       stack[++top] = 0;
     } else if (*clip_path == '/') {
       if  (strncmp("/DeviceGray",	clip_path, 11) == 0

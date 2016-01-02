@@ -44,10 +44,19 @@ extern pdf_obj *parse_pdf_boolean (const char **pp, const char *endptr);
 extern pdf_obj *parse_pdf_number  (const char **pp, const char *endptr);
 extern pdf_obj *parse_pdf_null    (const char **pp, const char *endptr);
 extern pdf_obj *parse_pdf_string  (const char **pp, const char *endptr);
-extern pdf_obj *parse_pdf_dict    (const char **pp, const char *endptr, pdf_file *pf);
-extern pdf_obj *parse_pdf_array   (const char **pp, const char *endptr, pdf_file *pf);
-extern pdf_obj *parse_pdf_object  (const char **pp, const char *endptr, pdf_file *pf);
+extern pdf_obj *parse_pdf_dict    (const char **pp, const char *endptr);
+extern pdf_obj *parse_pdf_array   (const char **pp, const char *endptr);
+extern pdf_obj *parse_pdf_object  (const char **pp, const char *endptr);
 
 extern pdf_obj *parse_pdf_tainted_dict (const char **pp, const char *endptr);
+extern pdf_obj *parse_pdf_object_ext (const char **pp, const char *endptr,
+                              pdf_obj* (*resolver) (const char **pp,
+                                                    const char *endptr,
+                                                    void *user_data),
+                              void *user_data1,
+                              pdf_obj* (*unknown_handler) (const char **pp,
+                                                           const char *endptr,
+                                                           void *user_data),
+                              void *user_data2);
 
 #endif /* _PDFPARSE_H_ */

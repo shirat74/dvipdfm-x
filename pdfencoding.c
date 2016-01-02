@@ -325,7 +325,7 @@ load_encoding_file (const char *filename)
     enc_name = parse_pdf_name(&p, endptr);
 
   skip_white(&p, endptr);
-  encoding_array = parse_pdf_array(&p, endptr, NULL);
+  encoding_array = parse_pdf_array(&p, endptr);
   RELEASE(wbuf);
   if (!encoding_array) {
     if (enc_name)

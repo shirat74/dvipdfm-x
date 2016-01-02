@@ -1445,12 +1445,12 @@ mp_parse_body (const char **start, const char *end,
        * This shouldn't use parse_pdf_array().
        */
     } else if (**start == '[' &&
-	       (obj = parse_pdf_array(start, end, NULL))) {
+	       (obj = parse_pdf_array(start, end))) {
       PUSH(obj);
       /* This cannot handle ASCII85 string. */
     } else if (*start < end - 1 &&
 	       (**start == '<' && *(*start+1) == '<') &&
-	       (obj = parse_pdf_dict(start, end, NULL))) {
+	       (obj = parse_pdf_dict(start, end))) {
       PUSH(obj);
     } else if ((**start == '(' || **start == '<') &&
 	       (obj = parse_pdf_string (start, end))) {

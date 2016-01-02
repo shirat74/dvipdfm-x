@@ -3146,6 +3146,42 @@ find_xref (FILE *pdf_input_file)
   return xref_pos;
 }
 
+/* for parse_pdf_object_ext */
+static pdf_obj *
+parse_pdf_indirect (const char **pp, const char *endptr, void *user_data)
+{
+  pdf_file *pf;
+  uint32_t  id  = 0;
+  uint16_t  gen = 0;
+  char     *vp;
+
+  if (!user_data || !pp || !*pp || !endptr)
+    return NULL;
+
+  pf = (pdf_file *) user_data;
+
+  skip_white(pp, endptr);
+  vp = parse_unsigned(pp, endptr);
+  if (!vp)
+    return NULL;
+  id  = strtoul(vp, NULL, 10);
+  RELEASE(vp);
+
+  skip_white(pp, endptr);
+  vp = parse_unsigned(pp, endptr);
+  if (!vp)
+    return NULL;
+  gen = strtoul(vp, NULL, 10);
+  RELEASE(vp);
+
+  skip_white(pp, endptr);
+  if (*pp >= endptr || *pp[0] != 'R')
+    return NULL;
+  (*pp)++;
+
+  return pdf_new_indirect(pf, id, gen);
+}
+
 /*
  * This routine must be called with the file pointer located
  * at the start of the trailer.
@@ -3167,7 +3203,16 @@ parse_trailer (pdf_file *pf)
   } else {
     const char *ptr = work_buffer + strlen("trailer");
     skip_white(&ptr, work_buffer + WORK_BUFFER_SIZE);
-    result = parse_pdf_dict(&ptr, work_buffer + WORK_BUFFER_SIZE, pf);
+    result = parse_pdf_object_ext(&ptr,
+                                  work_buffer + WORK_BUFFER_SIZE,
+                                  parse_pdf_indirect, pf,
+                                  NULL, NULL); /* No extension */
+    if (result && !PDF_OBJ_DICTTYPE(result)) {
+      WARN("\"trailer\" keyword not followed by dictionary?");
+      WARN("buffer:\n->%s<-\n", work_buffer);
+      pdf_release_obj(result);
+      result = NULL;
+    }
   }
 
   return result;
@@ -3284,7 +3329,9 @@ pdf_read_object (unsigned int obj_num, unsigned short obj_gen,
   }
   ptr += strlen("obj");
 
-  result = parse_pdf_object(&ptr, endptr, pf);
+  result = parse_pdf_object_ext(&ptr, endptr,
+                                parse_pdf_indirect, pf,
+                                NULL, NULL);
 
   skip_white(&ptr, endptr);
   if (memcmp(ptr, "endobj", strlen("endobj"))) {
@@ -3431,7 +3478,9 @@ pdf_get_object (pdf_file *pf, unsigned int obj_num, unsigned short obj_gen)
     ptr    = (const char *) pdf_stream_dataptr(objstm)
                + first + data[2*index+1];
     endptr = ptr + (index == n-1 ? length : first+data[2*index+3]);
-    result = parse_pdf_object(&ptr, endptr, pf);
+    result = parse_pdf_object_ext(&ptr, endptr,
+                                  parse_pdf_indirect, pf,
+                                  NULL, NULL);
     if (!result)
       goto error;
   }

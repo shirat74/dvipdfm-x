@@ -60,13 +60,19 @@ extern void    spc_warn (struct spc_env *spe, const char *fmt, ...);
 #include "pdfobj.h"
 /* PDF parser shouldn't depend on this...
  */
-extern pdf_obj *spc_lookup_reference (const char *ident);
-extern pdf_obj *spc_lookup_object    (const char *ident);
+extern pdf_obj *spc_lookup_reference (struct spc_env *spe, const char *ident);
+extern pdf_obj *spc_lookup_object    (struct spc_env *spe, const char *ident);
 
 extern int      spc_begin_annot   (struct spc_env *spe, pdf_obj *annot_dict);
 extern int      spc_end_annot     (struct spc_env *spe);
 extern int      spc_resume_annot  (struct spc_env *spe);
 extern int      spc_suspend_annot (struct spc_env *spe);
+
+extern void     spc_set_fixed_point (double  x, double  y);
+extern void     spc_get_fixed_point (double *x, double *y);
+extern void     spc_put_fixed_point (double  x, double  y);
+extern void     spc_dup_fixed_point (void);
+extern void     spc_pop_fixed_point (void);
 
 extern void     spc_push_object   (const char *key, pdf_obj *value);
 extern void     spc_flush_object  (const char *key);

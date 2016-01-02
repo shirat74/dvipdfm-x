@@ -60,10 +60,12 @@
 
 
 int
-spc_handler_xtx_do_transform (double x_user, double y_user, double a, double b, double c, double d, double e, double f)
+spc_handler_xtx_do_transform (double x_user, double y_user,
+                              double a, double b, double c, double d,
+                              double e, double f)
 {
-  pdf_tmatrix     M = { 0, 0, 0, 0, 0, 0 };
-  pdf_coord       pt;
+  pdf_tmatrix M = { 0, 0, 0, 0, 0, 0 };
+  double      x, y;
 
   /* Create transformation matrix */
   M.a = a;
@@ -74,8 +76,8 @@ spc_handler_xtx_do_transform (double x_user, double y_user, double a, double b, 
   M.f = ((1.0 - M.d) * y_user - M.b * x_user) + f;
 
   pdf_dev_concat(&M);
-  pdf_dev_get_fixed_point(&pt);
-  pdf_dev_set_fixed_point(x_user - pt.x, y_user - pt.y);
+  spc_get_fixed_point(&x, &y);
+  spc_set_fixed_point(x_user - x, y_user - y);
 
   return  0;
 }
@@ -147,6 +149,7 @@ int
 spc_handler_xtx_gsave (struct spc_env *spe, struct spc_arg *args)
 {
   pdf_dev_gsave();
+  spc_dup_fixed_point();
 
   return  0;
 }
@@ -155,6 +158,7 @@ int
 spc_handler_xtx_grestore (struct spc_env *spe, struct spc_arg *args)
 {
   pdf_dev_grestore();
+  spc_pop_fixed_point();
 
   /*
    * Unfortunately, the following line is necessary in case
