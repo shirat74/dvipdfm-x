@@ -814,7 +814,7 @@ pdf_copy_clip (FILE *image_file, int pageNo, double x_user, double y_user)
             pdf_dev_lineto(p1.x, p1.y);
             pdf_dev_lineto(p2.x, p2.y);
             pdf_dev_lineto(p3.x, p3.y);
-            pdf_dev_closepath();
+            pdf_dev_lineto(p0.x, p0.y);
 	  }
 	  break;
 	case OP_CURVETO:
