@@ -785,16 +785,20 @@ spc_handler_pdfm_btrans (struct spc_env *spe, struct spc_arg *args)
 {
   pdf_tmatrix     M;
   transform_info  ti;
+  double          x, y, x0, y0;
 
   transform_info_clear(&ti);
   if (spc_util_read_dimtrns(spe, &ti, args, 0) < 0) {
     return -1;
   }
 
+  /* I don't know if it is correct. */
+  spc_get_coord(&x0, &y0);
+  x = spe->x_user - x0; y = spe->y_user - y0;
   /* Create transformation matrix */
   pdf_copymatrix(&M, &(ti.matrix));
-  M.e += ((1.0 - M.a) * spe->x_user - M.c * spe->y_user);
-  M.f += ((1.0 - M.d) * spe->y_user - M.b * spe->x_user);
+  M.e += ((1.0 - M.a) * x - M.c * y);
+  M.f += ((1.0 - M.d) * y - M.b * x);
 
   pdf_dev_gsave();
   pdf_dev_concat(&M);
@@ -1408,6 +1412,9 @@ spc_handler_pdfm_literal (struct spc_env *spe, struct spc_arg *args)
   return 0;
 }
 
+/* This code is broken.
+ * It does not work as expected when it is used along with btrans.
+ */
 static int
 spc_handler_pdfm_bcontent (struct spc_env *spe, struct spc_arg *args)
 {

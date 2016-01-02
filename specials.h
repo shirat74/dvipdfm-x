@@ -57,6 +57,7 @@ extern void    spc_set_verbose (void);
 #include <stdarg.h>
 extern void    spc_warn (struct spc_env *spe, const char *fmt, ...);
 
+#include "dvi.h"
 #include "pdfobj.h"
 /* PDF parser shouldn't depend on this...
  */

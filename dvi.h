@@ -32,6 +32,7 @@
 extern double paper_width, paper_height;
 extern int    landscape_mode;
 
+extern int    dvi_verbose;
 extern double get_origin (int x);
 
 extern void  dvi_set_verbose (void);

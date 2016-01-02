@@ -1780,7 +1780,9 @@ pdf_dev_set_param (int param_type, int value)
   return;
 }
 
-
+/* pdf_dev_put_image() now returns a rect as optional value.
+ * 
+ */
 int
 pdf_dev_put_image (pdf_doc        *pdf,
                    int             id,
@@ -1813,69 +1815,29 @@ pdf_dev_put_image (pdf_doc        *pdf,
 
   /* Clip */
   if (p->flags & INFO_DO_CLIP) {
-#if  0
-    pdf_dev_newpath();
-    pdf_dev_moveto(r.llx, r.lly);
-    pdf_dev_lineto(r.urx, r.lly);
-    pdf_dev_lineto(r.urx, r.ury);
-    pdf_dev_lineto(r.llx, r.ury);
-    pdf_dev_closepath();
-    pdf_dev_clip();
-    pdf_dev_newpath();
-#else
     pdf_dev_rectclip(r.llx, r.lly, r.urx - r.llx, r.ury - r.lly);
-#endif
   }
 
   res_name = pdf_ximage_get_resname(id);
   len = sprintf(work_buffer, " /%s Do", res_name);
   pdf_doc_add_page_content(work_buffer, len);  /* op: Do */
 
+  if (rect) {
+    pdf_rect  r1;
+
+    /* Sorry for ugly code. */
+    pdf_dev_set_rect(&r1,
+                     bpt2spt(r.llx), bpt2spt(r.lly),
+                     bpt2spt(r.urx - r.llx), bpt2spt(r.ury - r.lly), 0);
+    rect->llx = r1.llx; rect->lly = r1.lly;
+    rect->urx = r1.urx; rect->ury = r1.ury;
+  }
+
   pdf_dev_grestore();
 
   pdf_doc_add_page_resource("XObject",
                             res_name,
                             pdf_ximage_get_reference(id));
-
-  if (rect) {
-    pdf_rect    r1;
-    pdf_tmatrix P;
-    int         i;
-    pdf_coord   corner[4];
-
-    pdf_dev_set_rect(&r1, 65536 * ref_x, 65536 * ref_y,
-                     65536 * (r.urx - r.llx),
-                     65536 * (r.ury - r.lly), 0);
-
-    corner[0].x = r1.llx; corner[0].y = r1.lly;
-    corner[1].x = r1.llx; corner[1].y = r1.ury;
-    corner[2].x = r1.urx; corner[2].y = r1.ury;
-    corner[3].x = r1.urx; corner[3].y = r1.lly;
-
-    pdf_copymatrix(&P, &(p->matrix));
-    for (i = 0; i < 4; ++i) {
-      corner[i].x -= r1.llx;
-      corner[i].y -= r1.lly;
-      pdf_dev_transform(&(corner[i]), &P);
-      corner[i].x += r1.llx;
-      corner[i].y += r1.lly;
-    }
-
-    rect->llx = corner[0].x;
-    rect->lly = corner[0].y;
-    rect->urx = corner[0].x;
-    rect->ury = corner[0].y;
-    for (i = 0; i < 4; ++i) {
-      if (corner[i].x < rect->llx)
-	rect->llx = corner[i].x;
-      if (corner[i].x > rect->urx)
-	rect->urx = corner[i].x;
-      if (corner[i].y < rect->lly)
-	rect->lly = corner[i].y;
-      if (corner[i].y > rect->ury)
-	rect->ury = corner[i].y;
-    }
-  }
 
   return 0;
 }

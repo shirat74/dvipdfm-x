@@ -61,6 +61,8 @@
 
 #include "dpxfile.h"
 #include "pdfximage.h"
+
+/* Accessing font's internal structures... */
 #include "tt_aux.h"
 #include "tt_table.h"
 #include "t1_load.h"
@@ -76,23 +78,26 @@
 #define UTF32toUTF16LS(x)  (0xdc00 + (  x                 & 0x3ff))
 
 /* Interal Variables */
-static pdf_doc       *pdf = NULL;
 
-static FILE          *dvi_file  = NULL;
-static char           linear = 0; /* set to 1 for strict linear processing of the input */
+/* Output */
+static pdf_doc  *pdf = NULL;
 
-static int32_t *page_loc  = NULL;
-static unsigned int num_pages = 0;
+/* Input file */
+static FILE     *dvi_file  = NULL;
+static char      linear    = 0; /* set to 1 for strict linear processing */
+static int32_t  *page_loc  = NULL;
+static uint32_t  num_pages = 0;
 
-static uint32_t dvi_file_size = 0;
+static size_t    dvi_file_size = 0;
 
 static struct dvi_header
 {
   uint32_t unit_num;
   uint32_t unit_den;
   uint32_t mag;
-  uint32_t media_width, media_height;
-  unsigned int stackdepth;
+  uint32_t media_width;
+  uint32_t media_height;
+  uint16_t stackdepth;
   char  comment[257];
 } dvi_info = {
   25400000 , /* num */
@@ -110,6 +115,7 @@ double get_origin (int x)
   return x ? dev_origin_x : dev_origin_y;
 }
 
+/* XeTeX extension */
 #define LTYPESETTING    0 /* typesetting from left to right */
 #define RTYPESETTING    1 /* typesetting from right to left */
 #define SKIMMING        2 /* skimming through reflected segment measuring its width */
@@ -117,16 +123,18 @@ double get_origin (int x)
 
 struct dvi_lr
 {
-  int state, font;
-  unsigned int buf_index;
+  int      state;
+  int      font;
+  size_t   buf_index;
 };
 
-static struct dvi_lr lr_state;                            /* state at start of current skimming  */
-static int           lr_mode;                             /* current direction or skimming depth */
-static uint32_t      lr_width;                            /* total width of reflected segment    */
+static struct dvi_lr lr_state;        /* state at start of current skimming  */
+static int           lr_mode;         /* current direction or skimming depth */
+static uint32_t      lr_width;        /* total width of reflected segment    */
 static uint32_t      lr_width_stack[DVI_STACK_DEPTH_MAX];
 static unsigned      lr_width_stack_depth = 0;
 
+/* Font defs */
 #define PHYSICAL 1
 #define VIRTUAL  2
 #define SUBFONT  3
@@ -136,54 +144,60 @@ static unsigned      lr_width_stack_depth = 0;
 
 static struct loaded_font
 {
-  int    type;     /* Type is physical or virtual */
-  int    font_id;  /* id returned by dev (for PHYSICAL fonts)
-                    * or by vf module for (VIRTUAL fonts)
-                    */
-  int   subfont_id; /* id returned by subfont_locate_font() */
-  int   tfm_id;
-  spt_t size;
-  int   source;     /* Source is either DVI or VF */
+  int       type;      /* Type is physical or virtual */
+  int       font_id;   /* id returned by dev (for PHYSICAL fonts)
+                        * or by vf module for (VIRTUAL fonts)
+                        */
+  int      subfont_id; /* id returned by subfont_locate_font() */
+  int      tfm_id;
+  spt_t    size;
+  int      source;     /* Source is either DVI or VF */
   uint32_t rgba_color;
+
+  /* FIXME */
   struct tt_longMetrics *hvmt;
-  int   ascent;
-  int   descent;
-  unsigned unitsPerEm;
-  cff_font *cffont;
-  int cff_is_standard_encoding;
-  unsigned numGlyphs;
-  int   layout_dir;
-  float extend;
-  float slant;
-  float embolden;
+  int                   ascent;
+  int                   descent;
+  unsigned              unitsPerEm;
+  cff_font             *cffont; /* Ugh */
+  int                   cff_is_standard_encoding;
+  unsigned              numGlyphs;
+
+  int          layout_dir;
+  float        extend;
+  float        slant;
+  float        embolden;
 } *loaded_fonts = NULL;
 static int num_loaded_fonts = 0, max_loaded_fonts = 0;
 
 static void
-need_more_fonts (unsigned n)
+need_more_fonts (int n)
 {
   if (num_loaded_fonts + n > max_loaded_fonts) {
     max_loaded_fonts += TEX_FONTS_ALLOC_SIZE;
-    loaded_fonts = RENEW (loaded_fonts, max_loaded_fonts, struct loaded_font);
+    loaded_fonts = RENEW(loaded_fonts, max_loaded_fonts, struct loaded_font);
   }
 }
 
-static struct font_def
+struct font_def
 {
-  int32_t tex_id;
-  spt_t  point_size;
-  spt_t  design_size;
-  char  *font_name;
-  int    font_id;   /* index of _loaded_ font in loaded_fonts array */
-  int    used;
-  int    native; /* boolean */
-  uint32_t rgba_color;   /* only used for native fonts in XeTeX */
+  int32_t  tex_id;
+  spt_t    point_size;
+  spt_t    design_size;
+  char    *font_name;
+  int      font_id;     /* index of _loaded_ font in loaded_fonts array */
+  int      used;
+  int      native;      /* boolean */
+  uint32_t rgba_color;  /* only used for native fonts in XeTeX */
   uint32_t face_index;
-  int    layout_dir; /* 1 = vertical, 0 = horizontal */
-  int    extend;
-  int    slant;
-  int    embolden;
-} *def_fonts = NULL;
+  int      layout_dir;  /* 1 = vertical, 0 = horizontal */
+  int      extend;
+  int      slant;
+  int      embolden;
+};
+
+static struct font_def *def_fonts = NULL;
+static int num_def_fonts = 0, max_def_fonts = 0;
 
 #define XDV_FLAG_VERTICAL       0x0100
 #define XDV_FLAG_COLORED        0x0200
@@ -192,17 +206,22 @@ static struct font_def
 #define XDV_FLAG_SLANT          0x2000
 #define XDV_FLAG_EMBOLDEN       0x4000
 
-static int num_def_fonts = 0, max_def_fonts = 0;
+/* State parameters */
 static int compute_boxes = 0, link_annot    = 1;
-static int verbose       = 0;
 
-#define DVI_PAGE_BUF_CHUNK              0x10000U        /* 64K should be plenty for most pages */
+int dvi_verbose = 0;
+#define verbose dvi_verbose
+
+
+/* Input buffer */
+#define DVI_PAGE_BUF_CHUNK  0x10000U  /* 64K should be plenty for most pages */
 
 static unsigned char* dvi_page_buffer;
 static unsigned int   dvi_page_buf_size;
 static unsigned int   dvi_page_buf_index;
 
-/* functions to read numbers from the dvi file and store them in dvi_page_buffer */
+/* functions to read numbers from the dvi file and store them in dvi_page_buffer
+ */
 static int get_and_buffer_unsigned_byte (FILE *file)
 {
   int ch;
@@ -241,7 +260,7 @@ static int get_buffered_unsigned_byte (void)
   return dvi_page_buffer[dvi_page_buf_index++];
 }
 
-static unsigned int get_buffered_unsigned_pair (void)
+static int get_buffered_unsigned_pair (void)
 {
   unsigned int pair = dvi_page_buffer[dvi_page_buf_index++];
   pair = (pair << 8) | dvi_page_buffer[dvi_page_buf_index++];
@@ -289,12 +308,12 @@ static int32_t get_buffered_unsigned_num(unsigned char num)
   return quad;
 }
 
-#define skip_bufferd_bytes(n) dvi_page_buf_index += n
+#define skip_bufferd_bytes(n) dvi_page_buf_index += (n)
 
 void
 dvi_set_verbose (void)
 {
-  verbose++;
+  dvi_verbose++;
   subfont_set_verbose();
   tfm_set_verbose();
   vf_set_verbose ();
@@ -319,8 +338,10 @@ static int pre_id_byte, post_id_byte, is_ptex = 0, has_ptex = 0;
 
 static void
 check_id_bytes (void) {
-  if (pre_id_byte != post_id_byte && (pre_id_byte != DVI_ID || post_id_byte != DVIV_ID))
-    ERROR ("Inconsistent DVI id_bytes %d (pre) and %d (post)", pre_id_byte, post_id_byte);
+  if ( pre_id_byte != post_id_byte &&
+      (pre_id_byte != DVI_ID || post_id_byte != DVIV_ID))
+    ERROR ("Inconsistent DVI id_bytes %d (pre) and %d (post)",
+           pre_id_byte, post_id_byte);
 }
 
 static void
@@ -339,12 +360,12 @@ need_pTeX (int c) {
 static int32_t
 find_post (void)
 {
-  off_t dvi_size;
+  off_t    dvi_size;
   int32_t  current;
-  int   ch;
+  int      ch;
 
   /* First find end of file */
-  dvi_size = xfile_size (dvi_file, "DVI");
+  dvi_size = xfile_size(dvi_file, "DVI");
   if (dvi_size > 0x7fffffff)
     ERROR("DVI file size exceeds 31-bit");
   dvi_file_size = dvi_size;
@@ -357,26 +378,27 @@ find_post (void)
            current > 0);
 
   /* file_position now points to last non padding character or
-   * beginning of file */
-  if (dvi_file_size - current < 4 || current == 0 ||
+   * beginning of file
+   */
+  if (dvi_file_size  < current + 4 || current == 0 ||
       !(ch == DVI_ID || ch == DVIV_ID || ch == XDV_ID)) {
     MESG("DVI ID = %d\n", ch);
     ERROR(invalid_signature);
   }
 
   post_id_byte = ch;
-  is_xdv = ch == XDV_ID;
-  is_ptex = ch == DVIV_ID;
+  is_xdv  = (ch == XDV_ID );
+  is_ptex = (ch == DVIV_ID);
 
   /* Make sure post_post is really there */
   current = current - 5;
-  xseek_absolute (dvi_file, current, "DVI");
+  xseek_absolute(dvi_file, current, "DVI");
   if ((ch = fgetc(dvi_file)) != POST_POST) {
     MESG("Found %d where post_post opcode should be\n", ch);
     ERROR(invalid_signature);
   }
   current = get_signed_quad(dvi_file);
-  xseek_absolute (dvi_file, current, "DVI");
+  xseek_absolute(dvi_file, current, "DVI");
   if ((ch = fgetc(dvi_file)) != POST) {
     MESG("Found %d where post_post opcode should be\n", ch);
     ERROR(invalid_signature);
@@ -386,7 +408,7 @@ find_post (void)
   /* An Ascii pTeX DVI file has id_byte DVI_ID in the preamble but DVIV_ID in
    * the postamble.
    */
-  xseek_absolute (dvi_file, 0, "DVI");
+  xseek_absolute(dvi_file, 0, "DVI");
   if ((ch = get_unsigned_byte(dvi_file)) != PRE) {
     MESG("Found %d where PRE was expected\n", ch);
     ERROR(invalid_signature);
@@ -537,7 +559,9 @@ get_preamble_dvi_info (void)
     ERROR(invalid_signature);
   }
 
-  /* An Ascii pTeX DVI file has id_byte DVI_ID in the preamble but DVIV_ID in the postamble. */
+  /* An Ascii pTeX DVI file has id_byte DVI_ID in the preamble but DVIV_ID in
+   * the postamble.
+   */
   ch = get_unsigned_byte(dvi_file);
   if (!(ch == DVI_ID || ch == XDV_ID)) {
     MESG("DVI ID = %d\n", ch);
@@ -835,9 +859,15 @@ dvi_is_tracking_boxes(void)
 void
 dvi_do_special (const void *buffer, int32_t size)
 {
-  pdf_rect  rect = {0, 0, 0, 0};
-  int       is_drawable = 0;
-  double x_user, y_user, mag;
+  int        error = 0;
+  /* rect and is_drawable returned by spc_exec_special().
+   * They can be used to determine if special contains a graphics object
+   * to be drawn on the page, and if so, its position and size.
+   * This is necessary for annotations to work correctly.
+   */
+  pdf_rect    rect = {0, 0, 0, 0};
+  int         is_drawable = 0;
+  double      x_user, y_user, mag;
   const char *p;
 
   graphics_mode();
@@ -848,13 +878,17 @@ dvi_do_special (const void *buffer, int32_t size)
   y_user = -dvi_state.v * dvi2pts;
   mag    =  dvi_tell_mag();
 
-  if (spc_exec_special(p, size, pdf,
-                       x_user, y_user, mag,
-                       &is_drawable, &rect) < 0) {
+  error = spc_exec_special(p, size, pdf,
+                           x_user, y_user, mag,
+                           &is_drawable, &rect);
+  if (error) {
     if (verbose) {
       dump(p, p + size);
     }
   } else {
+    /* Not expand_box() here. See the corresponding part of spc_*.c
+     * where pdf_dev_put_image() is used to place images.
+     */
     if (dvi_is_tracking_boxes() && is_drawable) {
       pdf_doc_expand_box(pdf, &rect);
     }
