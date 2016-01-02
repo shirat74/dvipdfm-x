@@ -419,7 +419,7 @@ pdf_obj_set_verbose(void)
 #define COPYRIGHT \
 "Copyright 2002-2015 by Jin-Hwan Cho, Matthias Franz, and Shunsaku Hirata"
 
-static void 
+static void
 compute_id (unsigned char *id, const char *str1, const char *str2)
 {
   char         date_string[16], producer[128];
@@ -748,8 +748,7 @@ pdf_error_cleanup (void)
 void
 pdf_set_root (PDF *p, pdf_obj *object)
 {
-  if (!p)
-    return;
+  ASSERT(p && object);
 
   if (pdf_lookup_dict(p->trailer, "Root"))
     ERROR("Root object already set!");
@@ -766,8 +765,7 @@ pdf_set_root (PDF *p, pdf_obj *object)
 void
 pdf_set_info (PDF *p, pdf_obj *object)
 {
-  if (!p)
-    return;
+  ASSERT(p && object);
 
   if (pdf_lookup_dict(p->trailer, "Info"))
     ERROR("Info object already set!");
@@ -940,6 +938,7 @@ pdf_obj *
 pdf_ref_obj (pdf_obj *object)
 {
   PDF *p = &_pdf;
+
   if (INVALIDOBJ(object))
     ERROR("pdf_ref_obj(): passed invalid object.");
 

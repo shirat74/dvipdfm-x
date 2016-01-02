@@ -2,19 +2,19 @@
 
     Copyright (C) 2002-2015 by Jin-Hwan Cho and Shunsaku Hirata,
     the dvipdfmx project team.
-    
+
     Copyright (C) 1998, 1999 by Mark A. Wicks <mwicks@kettering.edu>
 
     This program is free software; you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
     the Free Software Foundation; either version 2 of the License, or
     (at your option) any later version.
-    
+
     This program is distributed in the hope that it will be useful,
     but WITHOUT ANY WARRANTY; without even the implied warranty of
     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
     GNU General Public License for more details.
-    
+
     You should have received a copy of the GNU General Public License
     along with this program; if not, write to the Free Software
     Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA.
@@ -338,7 +338,7 @@ static char format_buffer[FORMAT_BUF_SIZE];
  * and font's WMode separately.
  *
  * 000/101 WMODE_HH/VV  h(v) font, h(v) direction.
- * 001    WMODE_HV    -90 deg. rotated  
+ * 001    WMODE_HV    -90 deg. rotated
  * 100    WMODE_VH    +90 deg. rotated
  * 011    WMODE_HD    +90 deg. rotated
  * 111    WMODE_VD    180 deg. rotated
@@ -830,7 +830,7 @@ string_mode (spt_t xpos, spt_t ypos, double slant, double extend, int rotate)
  * VF code was added.  The VF spec says to instantiate the
  * first font contained in the VF file before drawing a virtual
  * character.  However, that font may not be used for
- * many characters (e.g. small caps fonts).  For this reason, 
+ * many characters (e.g. small caps fonts).  For this reason,
  * dev_select_font() should not force a "physical" font selection.
  * This routine prevents a PDF Tf font selection until there's
  * really a character in that font.
@@ -881,7 +881,7 @@ dev_set_font (int font_id)
     real_font->used_chars = pdf_get_font_usedchars(real_font->font_id);
   }
 
-  if (!real_font->used_on_this_page) { 
+  if (!real_font->used_on_this_page) {
     pdf_doc_add_page_resource("Font",
                               real_font->short_name,
                               pdf_link_obj(real_font->resource));
@@ -1004,7 +1004,7 @@ handle_multibyte_string (struct dev_font *font,
         sbuf1[len  ] = font->ucs_group;
         if ((p[i] & 0xf8) == 0xd8) {
           int c;
-          /* Check for valid surrogate pair.  */ 
+          /* Check for valid surrogate pair.  */
           if ((p[i] & 0xfc) != 0xd8 || i + 2 >= length || (p[i+2] & 0xfc) != 0xdc) {
             WARN("Invalid surrogate p[%d]=%02X...", i, p[i]);
             return -1;
@@ -1068,37 +1068,6 @@ handle_multibyte_string (struct dev_font *font,
   *str_ptr = p;
   *str_len = length;
   return 0;
-}
-
-
-static pdf_coord *dev_coords = NULL;
-static int num_dev_coords = 0;
-static int max_dev_coords = 0;
-
-void pdf_dev_get_coord(double *xpos, double *ypos)
-{
-  if (num_dev_coords > 0) {
-    *xpos = dev_coords[num_dev_coords-1].x;
-    *ypos = dev_coords[num_dev_coords-1].y;
-  } else {
-    *xpos = *ypos = 0.0;
-  }
-}
-
-void pdf_dev_push_coord(double xpos, double ypos)
-{
-  if (num_dev_coords >= max_dev_coords) {
-    max_dev_coords += 4;
-    dev_coords = RENEW(dev_coords, max_dev_coords, pdf_coord);
-  }
-  dev_coords[num_dev_coords].x = xpos;
-  dev_coords[num_dev_coords].y = ypos;
-  num_dev_coords++;
-}
-
-void pdf_dev_pop_coord(void)
-{
-  if (num_dev_coords > 0) num_dev_coords--;
 }
 
 /*
@@ -1170,11 +1139,6 @@ pdf_dev_set_string (spt_t xpos, spt_t ypos,
     }
   }
 
-  if (num_dev_coords > 0) {
-    xpos -= bpt2spt(dev_coords[num_dev_coords-1].x);
-    ypos -= bpt2spt(dev_coords[num_dev_coords-1].y);
-  }
-
   /*
    * Kern is in units of character units, i.e., 1000 = 1 em.
    *
@@ -1235,7 +1199,7 @@ pdf_dev_set_string (spt_t xpos, spt_t ypos,
      * Same issues as earlier. Use floating point for simplicity.
      * This routine needs to be fast, so we don't call sprintf() or strcpy().
      */
-    text_state.offset -= 
+    text_state.offset -=
       (spt_t) (kern * font->extend * (font->sptsize / 1000.0));
     format_buffer[len++] = text_state.is_mb ? '>' : ')';
     if (font->wmode)
@@ -1297,8 +1261,6 @@ pdf_init_device (double dvi2pts, int precision, int black_and_white)
 
   num_dev_fonts  = max_dev_fonts = 0;
   dev_fonts      = NULL;
-  num_dev_coords = max_dev_coords = 0;
-  dev_coords     = NULL;
 }
 
 void
@@ -1318,7 +1280,6 @@ pdf_close_device (void)
     }
     RELEASE(dev_fonts);
   }
-  if (dev_coords) RELEASE(dev_coords);
   pdf_dev_clear_gstates();
 }
 
@@ -1420,15 +1381,15 @@ print_fontmap (const char *font_name, fontmap_rec *mrec)
     MESG("[extend:%g]", mrec->opt.extend);
   if (mrec->opt.slant  != 0.0)
     MESG("[slant:%g]",  mrec->opt.slant);
-  if (mrec->opt.bold   != 0.0) 
+  if (mrec->opt.bold   != 0.0)
     MESG("[bold:%g]",   mrec->opt.bold);
   if (mrec->opt.flags & FONTMAP_OPT_NOEMBED)
     MESG("[noemb]");
   if (mrec->opt.mapc >= 0)
     MESG("[map:<%02x>]", mrec->opt.mapc);
-  if (mrec->opt.charcoll)  
+  if (mrec->opt.charcoll)
     MESG("[csi:%s]",     mrec->opt.charcoll);
-  if (mrec->opt.index) 
+  if (mrec->opt.index)
     MESG("[index:%d]",   mrec->opt.index);
 
   switch (mrec->opt.style) {
@@ -1448,7 +1409,7 @@ print_fontmap (const char *font_name, fontmap_rec *mrec)
 
 /* _FIXME_
  * Font is identified with font_name and point_size as in DVI here.
- * However, except for PDF_FONTTYPE_BITMAP, we can share the 
+ * However, except for PDF_FONTTYPE_BITMAP, we can share the
  * short_name, resource and used_chars between multiple instances
  * of the same font at different sizes.
  */
@@ -1533,7 +1494,7 @@ pdf_dev_locate_font (const char *font_name, spt_t ptsize)
   font->wmode      = pdf_get_font_wmode   (font->font_id);
   font->enc_id     = pdf_get_font_encoding(font->font_id);
 
-  font->resource   = NULL; /* Don't ref obj until font is actually used. */  
+  font->resource   = NULL; /* Don't ref obj until font is actually used. */
   font->used_chars = NULL;
 
   font->extend     = 1.0;
@@ -1610,11 +1571,6 @@ pdf_dev_set_rule (spt_t xpos, spt_t ypos, spt_t width, spt_t height)
 {
   int    len = 0;
   double width_in_bp;
-
-  if (num_dev_coords > 0) {
-    xpos -= bpt2spt(dev_coords[num_dev_coords-1].x);
-    ypos -= bpt2spt(dev_coords[num_dev_coords-1].y);
-  }
 
   graphics_mode();
 
@@ -1837,11 +1793,6 @@ pdf_dev_put_image (pdf_doc        *pdf,
   pdf_tmatrix  M, M1;
   pdf_rect     r;
   int          len = 0;
-
-  if (num_dev_coords > 0) {
-    ref_x -= dev_coords[num_dev_coords-1].x;
-    ref_y -= dev_coords[num_dev_coords-1].y;
-  }
 
   pdf_copymatrix(&M, &(p->matrix));
   M.e += ref_x; M.f += ref_y;

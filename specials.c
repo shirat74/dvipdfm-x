@@ -2,19 +2,19 @@
 
     Copyright (C) 2002-2015 by Jin-Hwan Cho and Shunsaku Hirata,
     the dvipdfmx project team.
-    
+
     Copyright (C) 1998, 1999 by Mark A. Wicks <mwicks@kettering.edu>
 
     This program is free software; you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
     the Free Software Foundation; either version 2 of the License, or
     (at your option) any later version.
-    
+
     This program is distributed in the hope that it will be useful,
     but WITHOUT ANY WARRANTY; without even the implied warranty of
     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
     GNU General Public License for more details.
-    
+
     You should have received a copy of the GNU General Public License
     along with this program; if not, write to the Free Software
     Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA.
@@ -109,19 +109,61 @@ spc_suspend_annot (struct spc_env *spe)
   return  0;
 }
 
+/* Migrated form pdf_dev.c
+ * No need to palce this into pdfdev.c at all.
+ */
+static pdf_coord *coords = NULL;
+static int        num_coords = 0;
+static int        max_coords = 0;
+
+void
+spc_get_coord (double *x, double *y)
+{
+  ASSERT(x && y );
+
+  if (num_coords > 0) {
+    *x = coords[num_coords-1].x;
+    *y = coords[num_coords-1].y;
+  } else {
+    *x = *y = 0.0;
+  }
+}
+
+void
+spc_push_coord (double x, double y)
+{
+  if (num_coords >= max_coords) {
+    max_coords += 4;
+    coords = RENEW(coords, max_coords, pdf_coord);
+  }
+  coords[num_coords].x = x;
+  coords[num_coords].y = y;
+  num_coords++;
+}
+
+void
+spc_pop_coord (void)
+{
+  if (num_coords > 0)
+    num_coords--;
+}
+
 /* Migrated from pdfdraw.c.
  *
  * pt_fixee is obviously not a PDF graphics state parameter.
  *
  * Someone added pt_fixee into pdf_gstate in pdfdraw.c.
- * However, pdf_gstate is intended to be representation
- * of PDF graphics state parameters and it not a place
- * to sotre artitary values. 
+ * However, pdf_gstate is intended to be a representation of PDF graphics
+ * state parameters and thus it is not appropriate to store artitary values
+ * there.
+ *
+ * And xdvipdfmx does its own extension independent of dvipdfmx freely...
+ * I can't handle this chaotic situation.
  */
 
 static pdf_coord *pt_fixee = NULL;
-static int st_top  = 0;
-static int st_size = 0;
+static int        st_top   = 0;
+static int        st_size  = 0;
 
 void
 spc_set_fixed_point (double x, double y)
@@ -149,7 +191,7 @@ spc_put_fixed_point (double x, double y)
     pt_fixee = RENEW(pt_fixee, st_size + 16, pdf_coord);
     st_size += 16;
   }
-  
+
   pt_fixee[st_top].x = x;
   pt_fixee[st_top].y = y;
   st_top++;
@@ -586,7 +628,7 @@ print_error (const char *name, struct spc_env *spe, struct spc_arg *ap)
     else
       break;
   }
-  ebuf[i] = '\0'; 
+  ebuf[i] = '\0';
   if (ap->curptr < ap->endptr) {
     while (i-- > 60)
       ebuf[i] = '.';
@@ -602,7 +644,7 @@ print_error (const char *name, struct spc_env *spe, struct spc_arg *ap)
       else
         break;
     }
-    ebuf[i] = '\0'; 
+    ebuf[i] = '\0';
     if (ap->curptr < ap->endptr) {
       while (i-- > 60)
         ebuf[i] = '.';
@@ -616,7 +658,7 @@ print_error (const char *name, struct spc_env *spe, struct spc_arg *ap)
 int
 spc_exec_special (const char *buffer, int32_t size,
                   pdf_doc *pdf,
-		  double x_user, double y_user, double mag,
+                  double x_user, double y_user, double mag,
                   int *is_drawable, pdf_rect *rect)
 {
   int    error = -1;
@@ -637,10 +679,10 @@ spc_exec_special (const char *buffer, int32_t size,
     if (found) {
       error = known_specials[i].setup_func(&special, &spe, &args);
       if (!error) {
-	error = special.exec(&spe, &args);
+        error = special.exec(&spe, &args);
       }
       if (error) {
-	print_error(known_specials[i].key, &spe, &args);
+        print_error(known_specials[i].key, &spe, &args);
       } else {
         if (is_drawable)
           *is_drawable = spe.info.is_drawable;
@@ -653,10 +695,9 @@ spc_exec_special (const char *buffer, int32_t size,
       }
       break;
     }
-  } 
+  }
 
   check_garbage(&args);
 
   return error;
 }
-

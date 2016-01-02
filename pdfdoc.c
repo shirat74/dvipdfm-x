@@ -276,6 +276,8 @@ pdf_doc_close_catalog (pdf_doc *p)
 {
   pdf_obj *tmp;
 
+  ASSERT(p);
+
   if (p->root.viewerpref) {
     tmp = pdf_lookup_dict(p->root.dict, "ViewerPreferences");
     if (!tmp) {
@@ -1806,13 +1808,14 @@ pdf_doc_add_annot (pdf_doc *p,
   pdf_page *page;
   pdf_obj  *rect_array;
   double    annot_grow = p->opt.annot_grow;
-  double    xpos, ypos;
-  pdf_rect  annbox;
 
-  if (!p)
+  if (!p || !rect)
     return;
 
   page = doc_get_page_entry(p, page_no);
+  if (!page)
+    return;
+
   if (!page->annots)
     page->annots = pdf_new_array();
 
@@ -1820,30 +1823,31 @@ pdf_doc_add_annot (pdf_doc *p,
     pdf_rect  mediabox;
 
     pdf_doc_get_mediabox(p, page_no, &mediabox);
-    pdf_dev_get_coord(&xpos, &ypos);
-    annbox.llx = rect->llx - xpos; annbox.lly = rect->lly - ypos;
-    annbox.urx = rect->urx - xpos; annbox.ury = rect->ury - ypos;
 
-    if (annbox.llx < mediabox.llx || annbox.urx > mediabox.urx ||
-        annbox.lly < mediabox.lly || annbox.ury > mediabox.ury) {
+    if (rect->llx < mediabox.llx || rect->urx > mediabox.urx ||
+        rect->lly < mediabox.lly || rect->ury > mediabox.ury) {
       WARN("Annotation out of page boundary.");
       WARN("Current page's MediaBox: [%g %g %g %g]",
            mediabox.llx, mediabox.lly, mediabox.urx, mediabox.ury);
       WARN("Annotation: [%g %g %g %g]",
-           annbox.llx, annbox.lly, annbox.urx, annbox.ury);
+           rect->llx, rect->lly, rect->urx, rect->ury);
       WARN("Maybe incorrect paper size specified.");
     }
-    if (annbox.llx > annbox.urx || annbox.lly > annbox.ury) {
+    if (rect->llx > rect->urx || rect->lly > rect->ury) {
       WARN("Rectangle with negative width/height: [%g %g %g %g]",
-           annbox.llx, annbox.lly, annbox.urx, annbox.ury);
+           rect->llx, rect->lly, rect->urx, rect->ury);
     }
   }
 
   rect_array = pdf_new_array();
-  pdf_add_array(rect_array, pdf_new_number(ROUND(annbox.llx - annot_grow, 0.001)));
-  pdf_add_array(rect_array, pdf_new_number(ROUND(annbox.lly - annot_grow, 0.001)));
-  pdf_add_array(rect_array, pdf_new_number(ROUND(annbox.urx + annot_grow, 0.001)));
-  pdf_add_array(rect_array, pdf_new_number(ROUND(annbox.ury + annot_grow, 0.001)));
+  pdf_add_array(rect_array,
+                pdf_new_number(ROUND(rect->llx - annot_grow, 0.001)));
+  pdf_add_array(rect_array,
+                pdf_new_number(ROUND(rect->lly - annot_grow, 0.001)));
+  pdf_add_array(rect_array,
+                pdf_new_number(ROUND(rect->urx + annot_grow, 0.001)));
+  pdf_add_array(rect_array,
+                pdf_new_number(ROUND(rect->ury + annot_grow, 0.001)));
   pdf_add_dict (annot_dict, pdf_new_name("Rect"), rect_array);
 
   pdf_add_array(page->annots, pdf_ref_obj(annot_dict));
@@ -2561,16 +2565,16 @@ pdf_open_document (const char *filename,
                    int         check_gotos)
 {
   pdf_doc *p = &pdoc;
-  PDF     *pdf;
 
-  pdf = pdf_out_init(filename, id_str, ver_major, ver_minor,
-                     enable_encrypt,
-                     keybits, permission, opasswd, upasswd,
-                     enable_objstm);
+  p->pdf = pdf_out_init(filename, id_str, ver_major, ver_minor,
+                        enable_encrypt,
+                        keybits, permission, opasswd, upasswd,
+                        enable_objstm);
 
   pdf_doc_init_catalog(p);
   /* FIXME: order */
-  pdf_set_encrypt_dict(pdf);
+  if (enable_encrypt)
+    pdf_set_encrypt_dict(p->pdf);
 
   p->opt.annot_grow = annot_grow_amount;
   p->opt.outline_open_depth = bookmark_open_depth;
@@ -2611,7 +2615,6 @@ pdf_open_document (const char *filename,
   }
 
   p->pending_forms = NULL;
-  p->pdf = pdf;
 
   return p;
 }

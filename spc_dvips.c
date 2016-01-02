@@ -2,19 +2,19 @@
 
     Copyright (C) 2002-2015 by Jin-Hwan Cho and Shunsaku Hirata,
     the dvipdfmx project team.
-    
+
     Copyright (C) 1998, 1999 by Mark A. Wicks <mwicks@kettering.edu>
 
     This program is free software; you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
     the Free Software Foundation; either version 2 of the License, or
     (at your option) any later version.
-    
+
     This program is distributed in the hope that it will be useful,
     but WITHOUT ANY WARRANTY; without even the implied warranty of
     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
     GNU General Public License for more details.
-    
+
     You should have received a copy of the GNU General Public License
     along with this program; if not, write to the Free Software
     Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA.
@@ -172,9 +172,16 @@ spc_handler_ps_file (struct spc_env *spe, struct spc_arg *args)
   }
   RELEASE(filename);
 
-  pdf_dev_put_image(spe->pdf, form_id,
-                    &ti, spe->x_user, spe->y_user, &spe->info.rect);
-  spe->info.is_drawable = 1;
+  {
+    /* All those things makes things unclear...
+     * I want to get rid of them but it's too late.
+     */
+    double x, y;
+    spc_get_coord(&x, &y);
+    pdf_dev_put_image(spe->pdf, form_id,
+                      &ti, spe->x_user - x, spe->y_user - y, &spe->info.rect);
+    spe->info.is_drawable = 1;
+  }
 
   return  0;
 }
@@ -972,7 +979,7 @@ spc_dvips_check_special (const char *buf, int len)
   return  0;
 }
 
-int 
+int
 spc_dvips_setup_handler (struct spc_handler *handle,
 			 struct spc_env *spe, struct spc_arg *args)
 {

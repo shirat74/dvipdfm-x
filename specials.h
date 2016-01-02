@@ -2,24 +2,24 @@
 
     Copyright (C) 2007-2015 by Jin-Hwan Cho and Shunsaku Hirata,
     the dvipdfmx project team.
-    
+
     Copyright (C) 1998, 1999 by Mark A. Wicks <mwicks@kettering.edu>
 
     This program is free software; you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
     the Free Software Foundation; either version 2 of the License, or
     (at your option) any later version.
-    
+
     This program is distributed in the hope that it will be useful,
     but WITHOUT ANY WARRANTY; without even the implied warranty of
     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
     GNU General Public License for more details.
-    
+
     You should have received a copy of the GNU General Public License
     along with this program; if not, write to the Free Software
     Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA.
 */
-	
+
 #ifndef _SPECIALS_H_
 #define _SPECIALS_H_
 
@@ -68,6 +68,10 @@ extern int      spc_end_annot     (struct spc_env *spe);
 extern int      spc_resume_annot  (struct spc_env *spe);
 extern int      spc_suspend_annot (struct spc_env *spe);
 
+/* Ugh */
+extern void     spc_get_coord  (double *x, double *y);
+extern void     spc_push_coord (double  x, double  y);
+extern void     spc_pop_coord  (void);
 extern void     spc_set_fixed_point (double  x, double  y);
 extern void     spc_get_fixed_point (double *x, double *y);
 extern void     spc_put_fixed_point (double  x, double  y);

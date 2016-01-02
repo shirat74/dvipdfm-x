@@ -2,19 +2,19 @@
 
     Copyright (C) 2002-2015 by Jin-Hwan Cho and Shunsaku Hirata,
     the dvipdfmx project team.
-    
+
     Copyright (C) 1998, 1999 by Mark A. Wicks <mwicks@kettering.edu>
 
     This program is free software; you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
     the Free Software Foundation; either version 2 of the License, or
     (at your option) any later version.
-    
+
     This program is distributed in the hope that it will be useful,
     but WITHOUT ANY WARRANTY; without even the implied warranty of
     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
     GNU General Public License for more details.
-    
+
     You should have received a copy of the GNU General Public License
     along with this program; if not, write to the Free Software
     Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA.
@@ -701,7 +701,7 @@ parse_pdf_dict_ext (const char **pp, const char *endptr,
                                  resolver, user_data1,
                                  unknown_handler, user_data2);
     if (!value) {
-      pdf_release_obj(key); 
+      pdf_release_obj(key);
       pdf_release_obj(value);
       pdf_release_obj(result);
       WARN("Could not find a value in dictionary object.");
@@ -763,7 +763,7 @@ parse_pdf_array_ext (const char **pp, const char *endptr,
                                 resolver, user_data1,
                                 unknown_handler, user_data2);
     if (!elem) {
-      pdf_release_obj(result); 
+      pdf_release_obj(result);
       WARN("Could not find a valid object in array object.");
       return NULL;
     }
@@ -824,7 +824,7 @@ parse_pdf_stream (const char **pp, const char *endptr, pdf_obj *dict)
     pdf_obj *tmp, *tmp2;
 
     tmp = pdf_lookup_dict(dict, "Length");
- 
+
     if (tmp != NULL) {
       tmp2 = pdf_deref_obj(tmp);
       if (pdf_obj_typeof(tmp2) != PDF_NUMBER)
@@ -839,7 +839,7 @@ parse_pdf_stream (const char **pp, const char *endptr, pdf_obj *dict)
     }
   }
 
-  
+
   if (stream_length < 0 ||
       p + stream_length > endptr)
     return NULL;
@@ -869,7 +869,7 @@ parse_pdf_stream (const char **pp, const char *endptr, pdf_obj *dict)
   {
     /* It is recommended that there be an end-of-line marker
      * after the data and before endstream; this marker is not included
-     * in the stream length. 
+     * in the stream length.
      * [PDF Reference, 6th ed., version 1.7, pp. 61] */
     if (p < endptr && p[0] == '\r')
       p++;
@@ -888,7 +888,7 @@ parse_pdf_stream (const char **pp, const char *endptr, pdf_obj *dict)
   return  result;
 }
 
-static int 
+static int
 is_indirect (const char *p, const char *endptr)
 {
   skip_white(&p, endptr);
@@ -912,7 +912,7 @@ is_indirect (const char *p, const char *endptr)
     return 0;
   if (!PDF_TOKEN_END(p, endptr))
     return 0;
-    
+
   return 1;
 }
 
@@ -937,7 +937,7 @@ parse_pdf_object_ext (const char **pp, const char *endptr,
 
   switch (**pp) {
 
-  case '<': 
+  case '<':
 
     if (*(*pp + 1) != '<') {
       result = parse_pdf_hex_string(pp, endptr);
@@ -980,9 +980,9 @@ parse_pdf_object_ext (const char **pp, const char *endptr,
     break;
   case '0': case '1': case '2': case '3': case '4':
   case '5': case '6': case '7': case '8': case '9':
-    if (!is_indirect(*pp, endptr)) {
+    if (is_indirect(*pp, endptr)) {
       if (resolver)
-        result = resolver(pp, endptr, user_data1); 
+        result = resolver(pp, endptr, user_data1);
       else {
         WARN("Cannot resolve indirect reference...");
         result = NULL;
@@ -995,7 +995,7 @@ parse_pdf_object_ext (const char **pp, const char *endptr,
   default:
 
     if (unknown_handler)
-      result = unknown_handler(pp, endptr, user_data2); 
+      result = unknown_handler(pp, endptr, user_data2);
     else {
       WARN("Unknown PDF object type.");
       result = NULL;
@@ -1014,4 +1014,3 @@ parse_pdf_object (const char **pp, const char *endptr)
 {
   return parse_pdf_object_ext(pp, endptr, NULL, NULL, NULL, NULL);
 }
-

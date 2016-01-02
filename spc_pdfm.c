@@ -2,19 +2,19 @@
 
     Copyright (C) 2007-2015 by Jin-Hwan Cho and Shunsaku Hirata,
     the dvipdfmx project team.
-    
+
     Copyright (C) 1998, 1999 by Mark A. Wicks <mwicks@kettering.edu>
 
     This program is free software; you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
     the Free Software Foundation; either version 2 of the License, or
     (at your option) any later version.
-    
+
     This program is distributed in the hope that it will be useful,
     but WITHOUT ANY WARRANTY; without even the implied warranty of
     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
     GNU General Public License for more details.
-    
+
     You should have received a copy of the GNU General Public License
     along with this program; if not, write to the Free Software
     Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA.
@@ -301,7 +301,7 @@ safeputresdict (pdf_obj *kp, pdf_obj *vp, void *dp)
 /* Think what happens if you do
  *
  *  pdf:put @resources << /Font << >> >>
- * 
+ *
  */
 static int
 spc_handler_pdfm_put (struct spc_env *spe, struct spc_arg *ap)
@@ -570,7 +570,7 @@ parse_pdf_dict_with_tounicode (const char **pp, const char *endptr,
     return  parse_pdf_dict(pp, endptr);
 
   /* :( */
-  if (cd && cd->unescape_backslash) 
+  if (cd && cd->unescape_backslash)
     dict = parse_pdf_tainted_dict(pp, endptr);
   else {
     dict = parse_pdf_object_ext(pp, endptr,
@@ -641,7 +641,13 @@ spc_handler_pdfm_annot (struct spc_env *spe, struct spc_arg *args)
     rect.urx = cp.x + spe->mag * ti.width;
     rect.ury = cp.y + spe->mag * ti.height;
   }
-
+  /* I can't understand this... */
+  {
+    double x, y;
+    spc_get_coord(&x, &y);
+    rect.llx -= x; rect.lly -= y;
+    rect.urx -= x; rect.ury -= y;
+  }
   /* Order is important... */
   if (ident)
     spc_push_object(ident, pdf_link_obj(annot_dict));
@@ -1084,8 +1090,11 @@ spc_handler_pdfm_image (struct spc_env *spe, struct spc_arg *args)
   }
 
   if (!(ti.flags & INFO_DO_HIDE)) {
+    double x, y;
+    spc_get_coord(&x, &y);
     pdf_dev_put_image(spe->pdf,
-                      xobj_id, &ti, spe->x_user, spe->y_user,
+                      xobj_id, &ti,
+                      spe->x_user - x, spe->y_user - y,
                       &spe->info.rect);
     spe->info.is_drawable = 1;
   }
@@ -1325,6 +1334,9 @@ spc_handler_pdfm_object (struct spc_env *spe, struct spc_arg *args)
   return 0;
 }
 
+/* There are no guarantee that abused commands always work as expected.
+ * For examples, \special{pdf:content Q ... q} may not work as expected.
+ */
 static int
 spc_handler_pdfm_content (struct spc_env *spe, struct spc_arg *args)
 {
@@ -1362,9 +1374,10 @@ spc_handler_pdfm_literal (struct spc_env *spe, struct spc_arg *args)
   skip_white(&args->curptr, args->endptr);
   while (args->curptr < args->endptr) {
     if (args->curptr + 7 <= args->endptr &&
-	!strncmp(args->curptr, "reverse", 7)) {
+        !strncmp(args->curptr, "reverse", 7)) {
       args->curptr += 7;
-      WARN("The special \"pdf:literal reverse ...\" is no longer supported.\nIgnore the \"reverse\" option.");
+      WARN("The special \"pdf:literal reverse ...\" is no longer"
+           " supported.\nIgnore the \"reverse\" option.");
     } else if (args->curptr + 6 <= args->endptr &&
 	       !strncmp(args->curptr, "direct", 6)) {
       direct      = 1;
@@ -1398,21 +1411,39 @@ spc_handler_pdfm_literal (struct spc_env *spe, struct spc_arg *args)
 static int
 spc_handler_pdfm_bcontent (struct spc_env *spe, struct spc_arg *args)
 {
-  pdf_tmatrix M;
-  double xpos, ypos;
+  pdf_tmatrix      M;
+  double           xpos, ypos;
 
   pdf_dev_gsave();
-  pdf_dev_get_coord(&xpos, &ypos);
+  /* IMPORTANT NOTE
+   *
+   * I'm not very sure what is the purpose of get_coord() and push_coord().
+   *
+   * Anyway, bcontent and econtent seems making some assumption on internal
+   * of dvipdfmx which can never be considered reasonable.
+   * This will be easily broken when we change the implementation of dvipdfmx
+   * text handling, even when it is done in a completely proper manner.
+   * This code is not guaranteed to work correctly at all.
+   *
+   * Apparently, this will generate invalid code (unbalanced q/Q) when it
+   * happens that page break occures within bcontent-econtent block...
+   */
+  spc_get_coord(&xpos, &ypos);
   pdf_setmatrix(&M, 1.0, 0.0, 0.0, 1.0, spe->x_user - xpos, spe->y_user - ypos);
   pdf_dev_concat(&M);
-  pdf_dev_push_coord(spe->x_user, spe->y_user);
+  spc_push_coord(spe->x_user, spe->y_user);
+  dvi_set_compensation(spe->x_user, spe->y_user);
+
   return 0;
 }
 
 static int
 spc_handler_pdfm_econtent (struct spc_env *spe, struct spc_arg *args)
 {
-  pdf_dev_pop_coord();
+  double x, y;
+  spc_pop_coord();
+  spc_get_coord(&x, &y);
+  dvi_set_compensation(x, y);
   pdf_dev_grestore();
   pdf_dev_reset_color(0);
 
@@ -1745,9 +1776,13 @@ spc_handler_pdfm_uxobj (struct spc_env *spe, struct spc_arg *args)
     }
   }
 
-  pdf_dev_put_image(spe->pdf, xobj_id,
-                    &ti, spe->x_user, spe->y_user, &spe->info.rect);
-  spe->info.is_drawable = 1;
+  {
+    double x, y;
+    spc_get_coord(&x, &y);
+    pdf_dev_put_image(spe->pdf, xobj_id,
+                      &ti, spe->x_user - x, spe->y_user - y, &spe->info.rect);
+    spe->info.is_drawable = 1;
+  }
 
   RELEASE(ident);
 
@@ -1957,7 +1992,7 @@ static struct spc_handler pdfm_handlers[] = {
   {"bead",       spc_handler_pdfm_bead},
   {"thread",     spc_handler_pdfm_bead},
 
-  {"destination", spc_handler_pdfm_dest}, 
+  {"destination", spc_handler_pdfm_dest},
   {"dest",        spc_handler_pdfm_dest},
 
 

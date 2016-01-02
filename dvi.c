@@ -383,7 +383,9 @@ find_post (void)
   }
 
   /* Finally check the ID byte in the preamble */
-  /* An Ascii pTeX DVI file has id_byte DVI_ID in the preamble but DVIV_ID in the postamble. */
+  /* An Ascii pTeX DVI file has id_byte DVI_ID in the preamble but DVIV_ID in
+   * the postamble.
+   */
   xseek_absolute (dvi_file, 0, "DVI");
   if ((ch = get_unsigned_byte(dvi_file)) != PRE) {
     MESG("Found %d where PRE was expected\n", ch);
@@ -428,6 +430,57 @@ get_page_info (int32_t post_location)
 
 /* Following are computed "constants" used for unit conversion */
 static double dvi2pts = 1.52018, total_mag = 1.0;
+
+/* All those things related to "compensation" is intruduced due to
+ * bcontent/econtent specials. They are originally implemented with
+ * modification to very important part of pdfdev functions such as
+ * pdf_dev_set_string(), and it made things very unclear.
+ *
+ * It is not good idea to modify the core part of PDF output routines
+ * just for implementing DVI "special" command. They do not make sense
+ * and just look odd when PDF output routines are separated from dvipdfmx.
+ */
+static struct spt_coord {
+  spt_t x, y;
+} compensation = { 0, 0 };
+
+void dvi_set_compensation (double x, double y)
+{
+  compensation.x = (spt_t) round(x / dvi2pts);
+  compensation.y = (spt_t) round(y / dvi2pts);
+}
+
+static void
+set_string (spt_t       xpos,
+            spt_t       ypos,
+            const void *instr_ptr,
+            int         instr_len,
+            spt_t       width,
+            int         font_id,
+            int         ctype)
+{
+  xpos -= compensation.x;
+  ypos -= compensation.y;
+  pdf_dev_set_string(xpos, ypos, instr_ptr, instr_len, width, font_id, ctype);
+}
+
+static void
+set_rule (spt_t xpos, spt_t ypos,  spt_t width, spt_t height)
+{
+  xpos -= compensation.x;
+  ypos -= compensation.y;
+  pdf_dev_set_rule(xpos, ypos, width, height);
+}
+
+static void
+expand_box (pdf_doc *p, pdf_rect *r)
+{
+  ASSERT(p && r);
+  r->llx -= compensation.x * dvi2pts; r->lly -= compensation.y * dvi2pts;
+  r->urx -= compensation.x * dvi2pts; r->ury -= compensation.y * dvi2pts;
+  pdf_doc_expand_box(p, r);
+}
+
 
 double
 dvi_tell_mag (void)
@@ -772,7 +825,7 @@ dvi_link_annot (int flag)
 /* 20160101: back to static func.
  * made pdfdev.c independent from dvi.c again...
  */
- 
+
 static int
 dvi_is_tracking_boxes(void)
 {
@@ -798,11 +851,12 @@ dvi_do_special (const void *buffer, int32_t size)
   if (spc_exec_special(p, size, pdf,
                        x_user, y_user, mag,
                        &is_drawable, &rect) < 0) {
-    if (dvi_is_tracking_boxes() && is_drawable) {
-      pdf_doc_expand_box(pdf, &rect);
-    }
     if (verbose) {
       dump(p, p + size);
+    }
+  } else {
+    if (dvi_is_tracking_boxes() && is_drawable) {
+      pdf_doc_expand_box(pdf, &rect);
     }
   }
 
@@ -996,7 +1050,8 @@ is_notdef_notzero (char *path)
 
 static int
 dvi_locate_native_font (const char *filename, uint32_t index,
-                        spt_t ptsize, int layout_dir, int extend, int slant, int embolden)
+                        spt_t ptsize, int layout_dir,
+                        int extend, int slant, int embolden)
 {
   int           cur_id = -1;
   fontmap_rec  *mrec;
@@ -1219,23 +1274,19 @@ dvi_set (int32_t ch)
       wbuf[1] =  UTF32toUTF16HS(ch)       & 0xff;
       wbuf[2] = (UTF32toUTF16LS(ch) >> 8) & 0xff;
       wbuf[3] =  UTF32toUTF16LS(ch)       & 0xff;
-      pdf_dev_set_string(dvi_state.h, -dvi_state.v, wbuf, 4,
-                         width, font->font_id, 2);
+      set_string(dvi_state.h, -dvi_state.v, wbuf, 4, width, font->font_id, 2);
     } else if (ch > 255) { /* _FIXME_ */
       wbuf[0] = (ch >> 8) & 0xff;
       wbuf[1] =  ch & 0xff;
-      pdf_dev_set_string(dvi_state.h, -dvi_state.v, wbuf, 2,
-                         width, font->font_id, 2);
+      set_string(dvi_state.h, -dvi_state.v, wbuf, 2, width, font->font_id, 2);
     } else if (font->subfont_id >= 0) {
       unsigned short uch = lookup_sfd_record(font->subfont_id, (unsigned char) ch);
       wbuf[0] = (uch >> 8) & 0xff;
       wbuf[1] =  uch & 0xff;
-      pdf_dev_set_string(dvi_state.h, -dvi_state.v, wbuf, 2,
-                         width, font->font_id, 2);
+      set_string(dvi_state.h, -dvi_state.v, wbuf, 2, width, font->font_id, 2);
     } else {
       wbuf[0] = (unsigned char) ch;
-      pdf_dev_set_string(dvi_state.h, -dvi_state.v, wbuf, 1,
-                         width, font->font_id, 1);
+      set_string(dvi_state.h, -dvi_state.v, wbuf, 1, width, font->font_id, 1);
     }
     if (dvi_is_tracking_boxes()) {
       pdf_rect rect;
@@ -1247,7 +1298,7 @@ dvi_set (int32_t ch)
 
       pdf_dev_set_rect  (&rect, dvi_state.h, -dvi_state.v,
                          width, height, depth);
-      pdf_doc_expand_box(pdf, &rect);
+      expand_box(pdf, &rect);
     }
     break;
   case  VIRTUAL:
@@ -1291,25 +1342,21 @@ dvi_put (int32_t ch)
       wbuf[1] =  UTF32toUTF16HS(ch)       & 0xff;
       wbuf[2] = (UTF32toUTF16LS(ch) >> 8) & 0xff;
       wbuf[3] =  UTF32toUTF16LS(ch)       & 0xff;
-      pdf_dev_set_string(dvi_state.h, -dvi_state.v, wbuf, 4,
-                         width, font->font_id, 2);
+      set_string(dvi_state.h, -dvi_state.v, wbuf, 4, width, font->font_id, 2);
     } else if (ch > 255) { /* _FIXME_ */
       wbuf[0] = (ch >> 8) & 0xff;
       wbuf[1] =  ch & 0xff;
-      pdf_dev_set_string(dvi_state.h, -dvi_state.v, wbuf, 2,
-                         width, font->font_id, 2);
+      set_string(dvi_state.h, -dvi_state.v, wbuf, 2, width, font->font_id, 2);
     } else if (font->subfont_id >= 0) {
       unsigned int uch;
 
       uch = lookup_sfd_record(font->subfont_id, (unsigned char) ch);
       wbuf[0] = (uch >> 8) & 0xff;
       wbuf[1] =  uch & 0xff;
-      pdf_dev_set_string(dvi_state.h, -dvi_state.v, wbuf, 2,
-                         width, font->font_id, 2);
+      set_string(dvi_state.h, -dvi_state.v, wbuf, 2, width, font->font_id, 2);
     } else {
       wbuf[0] = (unsigned char) ch;
-      pdf_dev_set_string(dvi_state.h, -dvi_state.v, wbuf, 1,
-                         width, font->font_id, 1);
+      set_string(dvi_state.h, -dvi_state.v, wbuf, 1, width, font->font_id, 1);
     }
     if (dvi_is_tracking_boxes()) {
       pdf_rect rect;
@@ -1321,7 +1368,7 @@ dvi_put (int32_t ch)
 
       pdf_dev_set_rect  (&rect, dvi_state.h, -dvi_state.v,
                          width, height, depth);
-      pdf_doc_expand_box(pdf, &rect);
+      expand_box(pdf, &rect);
     }
     break;
   case  VIRTUAL:
@@ -1346,10 +1393,10 @@ dvi_rule (int32_t width, int32_t height)
 
     switch (dvi_state.d) {
     case 0:
-      pdf_dev_set_rule(dvi_state.h, -dvi_state.v,  width, height);
+      set_rule(dvi_state.h, -dvi_state.v,  width, height);
       break;
     case 1:
-      pdf_dev_set_rule(dvi_state.h, -dvi_state.v - width, height, width);
+      set_rule(dvi_state.h, -dvi_state.v - width, height, width);
       break;
     case 3:
       pdf_dev_set_rule(dvi_state.h - height, -dvi_state.v , height, width);
@@ -1799,15 +1846,16 @@ do_glyphs (void)
         pdf_rect rect;
         height = (double)font->size * ascent / (double)font->unitsPerEm;
         depth  = (double)font->size * -descent / (double)font->unitsPerEm;
-        pdf_dev_set_rect(&rect, dvi_state.h + xloc[i], -dvi_state.v - yloc[i], glyph_width, height, depth);
-        pdf_doc_expand_box(pdf, &rect);
+        pdf_dev_set_rect(&rect, dvi_state.h + xloc[i], -dvi_state.v - yloc[i],
+                         glyph_width, height, depth);
+        expand_box(pdf, &rect);
       }
     }
 
     wbuf[0] = glyph_id >> 8;
     wbuf[1] = glyph_id & 0xff;
-    pdf_dev_set_string(dvi_state.h + xloc[i], -dvi_state.v - yloc[i], wbuf, 2,
-                       glyph_width, font->font_id, -1);
+    set_string(dvi_state.h + xloc[i], -dvi_state.v - yloc[i], wbuf, 2,
+               glyph_width, font->font_id, -1);
   }
 
   if (font->rgba_color != 0xffffffff) {
