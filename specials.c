@@ -311,12 +311,12 @@ spc_lookup_reference (struct spc_env *spe, const char *key)
   /* xpos and ypos must be position in device space here. */
   case  K_OBJ__XPOS:
     cp.x = dvi_dev_xpos(); cp.y = 0.0;
-    pdf_dev_transform(&cp, NULL);
+    pdf_dev_transform(spe->pdf, &cp, NULL);
     value = pdf_new_number(ROUND(cp.x, .01));
     break;
   case  K_OBJ__YPOS:
     cp.x = 0.0; cp.y = dvi_dev_ypos();
-    pdf_dev_transform(&cp, NULL);
+    pdf_dev_transform(spe->pdf, &cp, NULL);
     value = pdf_new_number(ROUND(cp.y, .01));
     break;
   case  K_OBJ__THISPAGE:
@@ -375,12 +375,12 @@ spc_lookup_object (struct spc_env *spe, const char *key)
   switch (k) {
   case  K_OBJ__XPOS:
     cp.x = dvi_dev_xpos(); cp.y = 0.0;
-    pdf_dev_transform(&cp, NULL);
+    pdf_dev_transform(spe->pdf, &cp, NULL);
     value = pdf_new_number(ROUND(cp.x, .01));
     break;
   case  K_OBJ__YPOS:
     cp.x = 0.0; cp.y = dvi_dev_ypos();
-    pdf_dev_transform(&cp, NULL);
+    pdf_dev_transform(spe->pdf, &cp, NULL);
     value = pdf_new_number(ROUND(cp.y, .01));
     break;
   case  K_OBJ__THISPAGE:
@@ -654,7 +654,7 @@ print_error (const char *name, struct spc_env *spe, struct spc_arg *ap)
   pdf_coord c;
 
   c.x = spe->x_user; c.y = spe->y_user;
-  pdf_dev_transform(&c, NULL);
+  pdf_dev_transform(spe->pdf, &c, NULL);
 
   if (ap->command && name) {
     WARN("Interpreting special command %s (%s) failed.", ap->command, name);

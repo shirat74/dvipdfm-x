@@ -2,19 +2,19 @@
 
     Copyright (C) 2002-2015 by Jin-Hwan Cho and Shunsaku Hirata,
     the dvipdfmx project team.
-    
+
     Copyright (C) 1998, 1999 by Mark A. Wicks <mwicks@kettering.edu>
 
     This program is free software; you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
     the Free Software Foundation; either version 2 of the License, or
     (at your option) any later version.
-    
+
     This program is distributed in the hope that it will be useful,
     but WITHOUT ANY WARRANTY; without even the implied warranty of
     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
     GNU General Public License for more details.
-    
+
     You should have received a copy of the GNU General Public License
     along with this program; if not, write to the Free Software
     Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA.
@@ -49,11 +49,11 @@ static pdf_doc *_pdf = NULL; /* FIXME */
  * device (in this case PDF stream) coordinates.
  */
 
-#define MI2DEV (0.072/pdf_dev_scale())
+#define MI2DEV(p) (0.072/pdf_dev_scale((p)))
 
 /*
  * Value for 'sh' command 'g' is interpreted as
- * 
+ *
  *   gray color value 1-g for "solid"
  *   opacity value g for "opacity"
  *   shape value g for "shape"
@@ -98,7 +98,7 @@ static struct spc_tpic_ _tpic_state;
  * since we always draw isolated graphics.
  */
 static void
-tpic__clear (struct spc_tpic_ *tp) 
+tpic__clear (struct spc_tpic_ *tp)
 {
   if (tp->points) {
     RELEASE(tp->points);
@@ -155,20 +155,20 @@ set_linestyle (double pn, double da)
 {
   double  dp[2]; /* dash pattern */
 
-  pdf_dev_setlinejoin(1);
-  pdf_dev_setmiterlimit(1.4);
-  pdf_dev_setlinewidth(pn);
+  pdf_dev_setlinejoin(_pdf, 1);
+  pdf_dev_setmiterlimit(_pdf, 1.4);
+  pdf_dev_setlinewidth(_pdf, pn);
   if (da > 0.0) {
     dp[0] =  da * 72.0;
-    pdf_dev_setdash(1, dp, 0);
-    pdf_dev_setlinecap(0);
+    pdf_dev_setdash(_pdf, 1, dp, 0);
+    pdf_dev_setlinecap(_pdf, 0);
   } else if (da < 0.0) {
     dp[0] =  pn;
     dp[1] = -da * 72.0;
-    pdf_dev_setdash(2, dp, 0);
-    pdf_dev_setlinecap(1);
+    pdf_dev_setdash(_pdf, 2, dp, 0);
+    pdf_dev_setlinecap(_pdf, 1);
   } else {
-    pdf_dev_setlinecap(0);
+    pdf_dev_setlinecap(_pdf, 0);
   }
 
   return  0;
@@ -187,13 +187,13 @@ set_fillstyle (double g, double a, int f_ais)
     sprintf(resname, "_Tps_a%03d_", alp);
     if (!check_resourcestatus("ExtGState", resname)) {
       dict = create_xgstate(ROUND(0.01 * alp, 0.01), f_ais);
-      pdf_doc_add_page_resource("ExtGState",
+      pdf_doc_add_page_resource(_pdf, "ExtGState",
                                 resname, pdf_ref_obj(dict));
       pdf_release_obj(dict);
     }
     len += sprintf(buf + len, " /%s gs", resname);
 
-    pdf_doc_add_page_content(buf, len);  /* op: gs */
+    pdf_doc_add_page_content(_pdf, buf, len);  /* op: gs */
   }
 
   {
@@ -201,7 +201,7 @@ set_fillstyle (double g, double a, int f_ais)
 
     pdf_color_get_current (&sc, &fc); /* get stroking and fill colors */
     pdf_color_brighten_color(&new_fc, fc, g);
-    pdf_dev_set_nonstrokingcolor(&new_fc);
+    pdf_dev_set_nonstrokingcolor(_pdf, &new_fc);
   }
 
   return  0;
@@ -217,7 +217,7 @@ set_styles (struct spc_tpic_ *tp,
   pdf_tmatrix M;
 
   pdf_setmatrix (&M, 1.0, 0.0, 0.0, -1.0, c->x, c->y);
-  pdf_dev_concat(&M);
+  pdf_dev_concat(_pdf, &M);
 
   if (f_vp)
     set_linestyle(pn, da);
@@ -245,9 +245,9 @@ showpath (int f_vp, int f_fs) /* visible_path, fill_shape */
 {
   if (f_vp) {
     if (f_fs)
-      pdf_dev_flushpath('b', PDF_FILL_RULE_NONZERO);
+      pdf_dev_flushpath(_pdf, 'b', PDF_FILL_RULE_NONZERO);
     else {
-      pdf_dev_flushpath('S', PDF_FILL_RULE_NONZERO);
+      pdf_dev_flushpath(_pdf, 'S', PDF_FILL_RULE_NONZERO);
     }
   } else {
     /*
@@ -255,9 +255,9 @@ showpath (int f_vp, int f_fs) /* visible_path, fill_shape */
      * path (a path without path-painting operator applied)?
      */
     if (f_fs)
-      pdf_dev_flushpath('f', PDF_FILL_RULE_NONZERO);
+      pdf_dev_flushpath(_pdf, 'f', PDF_FILL_RULE_NONZERO);
     else {
-      pdf_dev_newpath();
+      pdf_dev_newpath(_pdf);
     }
   }
 }
@@ -282,17 +282,17 @@ tpic__polyline (struct spc_tpic_ *tp,
   f_vp  = (pn > 0.0) ? f_vp : 0;
 
   if (f_vp || f_fs) {
-    pdf_dev_gsave();
+    pdf_dev_gsave(_pdf);
 
     set_styles(tp, c, f_fs, f_vp, pn, da);
 
-    pdf_dev_moveto(tp->points[0].x, tp->points[0].y);
+    pdf_dev_moveto(_pdf, tp->points[0].x, tp->points[0].y);
     for (i = 0; i < tp->num_points; i++)
-      pdf_dev_lineto(tp->points[i].x, tp->points[i].y);
+      pdf_dev_lineto(_pdf, tp->points[i].x, tp->points[i].y);
 
     showpath(f_vp, f_fs);
 
-    pdf_dev_grestore();
+    pdf_dev_grestore(_pdf);
   }
 
   tpic__clear(tp);
@@ -303,7 +303,7 @@ tpic__polyline (struct spc_tpic_ *tp,
 /*
  * Accroding to
  * "Tpic: Pic for TEX", Tim Morgan, Original by Brian Kernighan, p.20:
- * 
+ *
  *  A spline is a smooth curve guided by a set of straight lines just
  *  like the line above. It begins at the same place, ends at the same
  *  place, and in between is tangent to the mid-point of each guiding
@@ -335,15 +335,15 @@ tpic__spline (struct spc_tpic_ *tp,
   f_vp  = (pn > 0.0) ? f_vp : 0;
 
   if (f_vp || f_fs) {
-    pdf_dev_gsave();
+    pdf_dev_gsave(_pdf);
 
     set_styles(tp, c, f_fs, f_vp, pn, da);
 
-    pdf_dev_moveto(tp->points[0].x, tp->points[0].y);
+    pdf_dev_moveto(_pdf, tp->points[0].x, tp->points[0].y);
 
     v[0] = 0.5 * (tp->points[0].x + tp->points[1].x);
     v[1] = 0.5 * (tp->points[0].y + tp->points[1].y);
-    pdf_dev_lineto(v[0], v[1]);
+    pdf_dev_lineto(_pdf, v[0], v[1]);
     for (i = 1; i < tp->num_points - 1; i++) {
       /* B-spline control points */
       v[0] = 0.5 * (tp->points[i-1].x + tp->points[i].x);
@@ -352,13 +352,13 @@ tpic__spline (struct spc_tpic_ *tp,
       v[3] = tp->points[i].y;
       v[4] = 0.5 * (tp->points[i].x + tp->points[i+1].x);
       v[5] = 0.5 * (tp->points[i].y + tp->points[i+1].y);
-      pdf_dev_bspline(v[0], v[1], v[2], v[3], v[4], v[5]);
+      pdf_dev_bspline(_pdf, v[0], v[1], v[2], v[3], v[4], v[5]);
     }
-    pdf_dev_lineto(tp->points[i].x, tp->points[i].y);
+    pdf_dev_lineto(_pdf, tp->points[i].x, tp->points[i].y);
 
     showpath(f_vp, f_fs);
 
-    pdf_dev_grestore();
+    pdf_dev_grestore(_pdf);
   }
   tpic__clear(tp);
 
@@ -379,7 +379,7 @@ tpic__arc (struct spc_tpic_ *tp,
   f_vp  = (pn > 0.0) ? f_vp : 0;
 
   if (f_vp || f_fs) {
-    pdf_dev_gsave();
+    pdf_dev_gsave(_pdf);
 
     set_styles(tp, c, f_fs, f_vp, pn, da);
 
@@ -392,12 +392,12 @@ tpic__arc (struct spc_tpic_ *tp,
      * excess line. I'm not sure if it is proper TPIC implementation but this
      * seems to be DVIPS compatible behavior.
      */
-    pdf_dev_newpath();
-    pdf_dev_arcx(v[0], v[1], v[2], v[3], v[4], v[5], +1, 0.0);
+    pdf_dev_newpath(_pdf);
+    pdf_dev_arcx(_pdf, v[0], v[1], v[2], v[3], v[4], v[5], +1, 0.0);
 
     showpath(f_vp, f_fs);
 
-    pdf_dev_grestore();
+    pdf_dev_grestore(_pdf);
   }
   tpic__clear(tp);
 
@@ -430,7 +430,7 @@ spc_handler_tpic_pn (struct spc_env *spe,
     spc_warn(spe, "Invalid pen size specified?");
     return -1;
   }
-  tp->pen_size = atof(q) * MI2DEV;
+  tp->pen_size = atof(q) * MI2DEV(_pdf);
   RELEASE(q);
 
   return  0;
@@ -468,8 +468,8 @@ spc_handler_tpic_pa (struct spc_env *spe,
     tp->max_points += 256;
     tp->points = RENEW(tp->points, tp->max_points, pdf_coord);
   }
-  tp->points[tp->num_points].x = v[0] * MI2DEV;
-  tp->points[tp->num_points].y = v[1] * MI2DEV;
+  tp->points[tp->num_points].x = v[0] * MI2DEV(_pdf);
+  tp->points[tp->num_points].y = v[1] * MI2DEV(_pdf);
   tp->num_points += 1;
 
   return  0;
@@ -629,8 +629,8 @@ spc_handler_tpic_ar (struct spc_env *spe,
     return  -1;
   }
 
-  v[0] *= MI2DEV; v[1] *= MI2DEV;
-  v[2] *= MI2DEV; v[3] *= MI2DEV;
+  v[0] *= MI2DEV(_pdf); v[1] *= MI2DEV(_pdf);
+  v[2] *= MI2DEV(_pdf); v[3] *= MI2DEV(_pdf);
   v[4] *= 180.0 / M_PI;
   v[5] *= 180.0 / M_PI;
 
@@ -669,8 +669,8 @@ spc_handler_tpic_ia (struct spc_env *spe,
     return  -1;
   }
 
-  v[0] *= MI2DEV; v[1] *= MI2DEV;
-  v[2] *= MI2DEV; v[3] *= MI2DEV;
+  v[0] *= MI2DEV(_pdf); v[1] *= MI2DEV(_pdf);
+  v[2] *= MI2DEV(_pdf); v[3] *= MI2DEV(_pdf);
   v[4] *= 180.0 / M_PI;
   v[5] *= 180.0 / M_PI;
 
@@ -701,7 +701,7 @@ spc_handler_tpic_sh (struct spc_env *spe,
     else {
       WARN("Invalid fill color specified: %g\n", g);
       return -1;
-    }      
+    }
   }
 
   return  0;
@@ -756,7 +756,7 @@ spc_handler_tpic__init (struct spc_env *spe, void *dp)
 
 #if  0
   tp->mode.fill  = TPIC_MODE__FILL_SOLID;
-#endif 
+#endif
   tp->pen_size   = 1.0;
   tp->fill_shape = 0;
   tp->fill_color = 0.0;
@@ -1079,4 +1079,3 @@ spc_tpic_setup_handler (struct spc_handler *sph,
 
   return  error;
 }
-

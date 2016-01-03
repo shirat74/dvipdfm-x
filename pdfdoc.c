@@ -158,7 +158,8 @@ struct name_dict
 
 typedef struct pdf_doc
 {
-  PDF  *pdf; /* Object representing PDF file */
+  PDF     *pdf; /* Object representing PDF file */
+  pdf_dev *dev;
 
   struct {
     pdf_obj *dict;
@@ -210,6 +211,12 @@ typedef struct pdf_doc
 } pdf_doc;
 
 static pdf_doc pdoc; /* FIXME */
+
+pdf_dev *
+pdf_doc_get_device (pdf_doc *p)
+{
+   return (p ? p->dev : NULL);
+}
 
 void
 pdf_doc_enable_manual_thumbnails (pdf_doc *p)
@@ -602,12 +609,13 @@ pdf_doc_get_page_resources (pdf_doc *p, const char *category)
 }
 
 void
-pdf_doc_add_page_resource (const char *category,
+pdf_doc_add_page_resource (pdf_doc *p, const char *category,
                            const char *resource_name, pdf_obj *resource_ref)
 {
-  pdf_doc *p = &pdoc;
   pdf_obj *resources;
   pdf_obj *duplicate;
+
+  ASSERT(p);
 
   if (!PDF_OBJ_INDIRECTTYPE(resource_ref)) {
     WARN("Passed non indirect reference...");
@@ -2469,7 +2477,7 @@ doc_fill_page_background (pdf_doc *p)
   int        cm;
   pdf_obj   *saved_content;
 
-  cm = pdf_dev_get_param(PDF_DEV_PARAM_COLORMODE);
+  cm = pdf_dev_get_param(p, PDF_DEV_PARAM_COLORMODE);
   if (!cm || pdf_color_is_white(&bgcolor)) {
     return;
   }
@@ -2485,10 +2493,10 @@ doc_fill_page_background (pdf_doc *p)
   saved_content = currentpage->contents;
   currentpage->contents = currentpage->background;
 
-  pdf_dev_gsave();
-  pdf_dev_set_nonstrokingcolor(&bgcolor);
-  pdf_dev_rectfill(r.llx, r.lly, r.urx - r.llx, r.ury - r.lly);
-  pdf_dev_grestore();
+  pdf_dev_gsave(p);
+  pdf_dev_set_nonstrokingcolor(p, &bgcolor);
+  pdf_dev_rectfill(p, r.llx, r.lly, r.urx - r.llx, r.ury - r.lly);
+  pdf_dev_grestore(p);
 
   currentpage->contents = saved_content;
 
@@ -2511,7 +2519,7 @@ pdf_doc_begin_page (pdf_doc *p,
 
   /* pdf_doc_new_page() allocates page content stream. */
   pdf_doc_new_page(p);
-  pdf_dev_bop(&M);
+  pdf_dev_bop(p, &M);
 
   return;
 }
@@ -2522,7 +2530,7 @@ pdf_doc_end_page (pdf_doc *p)
   if (!p)
     return;
 
-  pdf_dev_eop();
+  pdf_dev_eop(p);
   doc_fill_page_background(p);
 
   pdf_doc_finish_page(p);
@@ -2531,10 +2539,11 @@ pdf_doc_end_page (pdf_doc *p)
 }
 
 void
-pdf_doc_add_page_content (const char *buffer, unsigned length)
+pdf_doc_add_page_content (pdf_doc *p, const char *buffer, unsigned length)
 {
-  pdf_doc  *p = &pdoc;
   pdf_page *currentpage;
+
+  ASSERT(p);
 
   if (p->pending_forms) {
     pdf_add_stream(p->pending_forms->form.contents, buffer, length);
@@ -2580,7 +2589,7 @@ pdf_open_document (const char *filename,
   p->opt.outline_open_depth = bookmark_open_depth;
 
   pdf_init_resources();
-  pdf_init_colors();
+  pdf_init_colors(p);
   pdf_init_fonts();
   /* Thumbnail want this to be initialized... */
   pdf_init_images();
@@ -2719,12 +2728,12 @@ pdf_doc_begin_grabbing (pdf_doc *p, const char *ident,
   if (!p)
     return -1;
 
-  pdf_dev_push_gstate();
+  pdf_dev_push_gstate(p);
 
   fnode = NEW(1, struct form_list_node);
 
   fnode->prev    = p->pending_forms;
-  fnode->q_depth = pdf_dev_current_depth();
+  fnode->q_depth = pdf_dev_current_depth(p);
   form           = &fnode->form;
 
   /*
@@ -2770,8 +2779,8 @@ pdf_doc_begin_grabbing (pdf_doc *p, const char *ident,
    * Make sure the object is self-contained by adding the
    * current font and color to the object stream.
    */
-  pdf_dev_reset_fonts(1);
-  pdf_dev_reset_color(1);  /* force color operators to be added to stream */
+  pdf_dev_reset_fonts(p, 1);
+  pdf_dev_reset_color(p, 1);  /* force color operators to be added to stream */
 
   return xobj_id;
 }
@@ -2794,7 +2803,7 @@ pdf_doc_end_grabbing (pdf_doc *p, pdf_obj *attrib)
   fnode = p->pending_forms;
   form  = &fnode->form;
 
-  pdf_dev_grestore_to(fnode->q_depth);
+  pdf_dev_grestore_to(p, fnode->q_depth);
 
   /*
    * ProcSet is obsolete in PDF-1.4 but recommended for compatibility.
@@ -2816,10 +2825,10 @@ pdf_doc_end_grabbing (pdf_doc *p, pdf_obj *attrib)
 
   p->pending_forms = fnode->prev;
 
-  pdf_dev_pop_gstate();
+  pdf_dev_pop_gstate(p);
 
-  pdf_dev_reset_fonts(1);
-  pdf_dev_reset_color(0);
+  pdf_dev_reset_fonts(p, 1);
+  pdf_dev_reset_color(p, 0);
 
   RELEASE(fnode);
 

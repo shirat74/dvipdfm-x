@@ -483,7 +483,8 @@ set_string (spt_t       xpos,
 {
   xpos -= compensation.x;
   ypos -= compensation.y;
-  pdf_dev_set_string(xpos, ypos, instr_ptr, instr_len, width, font_id, ctype);
+  pdf_dev_set_string(pdf,
+                    xpos, ypos, instr_ptr, instr_len, width, font_id, ctype);
 }
 
 static void
@@ -491,7 +492,7 @@ set_rule (spt_t xpos, spt_t ypos,  spt_t width, spt_t height)
 {
   xpos -= compensation.x;
   ypos -= compensation.y;
-  pdf_dev_set_rule(xpos, ypos, width, height);
+  pdf_dev_set_rule(pdf, xpos, ypos, width, height);
 }
 
 static void
@@ -870,7 +871,7 @@ dvi_do_special (const void *buffer, int32_t size)
   double      x_user, y_user, mag;
   const char *p;
 
-  graphics_mode();
+  pdf_dev_graphics_mode(pdf);
 
   p = (const char *) buffer;
 
@@ -1012,7 +1013,7 @@ dvi_locate_font (const char *tfm_name, spt_t ptsize)
   }
 
   /* We need ptsize for PK font creation. */
-  font_id = pdf_dev_locate_font(name, ptsize);
+  font_id = pdf_dev_locate_font(pdf, name, ptsize);
   if (font_id < 0) {
     WARN("Could not locate a virtual/physical font for TFM \"%s\".", tfm_name);
     if (mrec && mrec->map_name) { /* has map_name */
@@ -1127,7 +1128,7 @@ dvi_locate_native_font (const char *filename, uint32_t index,
 
   memset(&loaded_fonts[cur_id], 0, sizeof (struct loaded_font));
 
-  loaded_fonts[cur_id].font_id = pdf_dev_locate_font(fontmap_key, ptsize);
+  loaded_fonts[cur_id].font_id = pdf_dev_locate_font(pdf, fontmap_key, ptsize);
   loaded_fonts[cur_id].size    = ptsize;
   loaded_fonts[cur_id].type    = NATIVE;
   free(fontmap_key);
@@ -1330,8 +1331,8 @@ dvi_set (int32_t ch)
       height = sqxfw(font->size, height);
       depth  = sqxfw(font->size, depth);
 
-      pdf_dev_set_rect  (&rect, dvi_state.h, -dvi_state.v,
-                         width, height, depth);
+      pdf_dev_set_rect(pdf, &rect,
+                       dvi_state.h, -dvi_state.v, width, height, depth);
       expand_box(pdf, &rect);
     }
     break;
@@ -1400,8 +1401,8 @@ dvi_put (int32_t ch)
       height = sqxfw(font->size, height);
       depth  = sqxfw(font->size, depth);
 
-      pdf_dev_set_rect  (&rect, dvi_state.h, -dvi_state.v,
-                         width, height, depth);
+      pdf_dev_set_rect(pdf, &rect,
+                       dvi_state.h, -dvi_state.v, width, height, depth);
       expand_box(pdf, &rect);
     }
     break;
@@ -1418,7 +1419,6 @@ dvi_put (int32_t ch)
   return;
 }
 
-
 void
 dvi_rule (int32_t width, int32_t height)
 {
@@ -1433,7 +1433,7 @@ dvi_rule (int32_t width, int32_t height)
       set_rule(dvi_state.h, -dvi_state.v - width, height, width);
       break;
     case 3:
-      pdf_dev_set_rule(dvi_state.h - height, -dvi_state.v , height, width);
+      pdf_dev_set_rule(pdf, dvi_state.h - height, -dvi_state.v , height, width);
       break;
     }
   }
@@ -1445,11 +1445,11 @@ dvi_dir (unsigned char dir)
   if (verbose)
     fprintf(stderr, "  > dvi_dir %d\n", dir);
   dvi_state.d = dir;
-  pdf_dev_set_dirmode(dvi_state.d); /* 0: horizontal, 1,3: vertical */
+  pdf_dev_set_dirmode(pdf, dvi_state.d); /* 0: horizontal, 1,3: vertical */
 }
 
 static void
-do_setrule (void)
+do_set_rule (void)
 {
   int32_t width, height;
 
@@ -1508,7 +1508,7 @@ dvi_pop (void)
 
   dvi_state = dvi_stack[--dvi_stack_depth];
   do_moveto(dvi_state.h, dvi_state.v);
-  pdf_dev_set_dirmode(dvi_state.d); /* 0: horizontal, 1,3: vertical */
+  pdf_dev_set_dirmode(pdf, dvi_state.d); /* 0: horizontal, 1,3: vertical */
 }
 
 
@@ -1682,7 +1682,7 @@ static void
 do_dir (void)
 {
   dvi_state.d = get_buffered_unsigned_byte();
-  pdf_dev_set_dirmode(dvi_state.d); /* 0: horizontal, 1,3: vertical */
+  pdf_dev_set_dirmode(pdf, dvi_state.d); /* 0: horizontal, 1,3: vertical */
 }
 
 static void
@@ -1880,7 +1880,8 @@ do_glyphs (void)
         pdf_rect rect;
         height = (double)font->size * ascent / (double)font->unitsPerEm;
         depth  = (double)font->size * -descent / (double)font->unitsPerEm;
-        pdf_dev_set_rect(&rect, dvi_state.h + xloc[i], -dvi_state.v - yloc[i],
+        pdf_dev_set_rect(pdf, &rect,
+                         dvi_state.h + xloc[i], -dvi_state.v - yloc[i],
                          glyph_width, height, depth);
         expand_box(pdf, &rect);
       }
@@ -1981,7 +1982,7 @@ dvi_do_page (pdf_doc *p,
       break;
 
     case SET_RULE:
-      do_setrule();
+      do_set_rule();
       break;
 
     case PUT1: case PUT2: case PUT3:
