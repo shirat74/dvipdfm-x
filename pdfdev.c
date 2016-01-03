@@ -1280,7 +1280,8 @@ pdf_close_device (void)
     }
     RELEASE(dev_fonts);
   }
-  pdf_dev_clear_gstates();
+  pdf_dev_clear_gstates(); /* Manually clean gs_stack */
+  dpx_stack_delete(&gs_stack, NULL);
 }
 
 /*
@@ -1781,7 +1782,7 @@ pdf_dev_set_param (int param_type, int value)
 }
 
 /* pdf_dev_put_image() now returns a rect as optional value.
- * 
+ *
  */
 int
 pdf_dev_put_image (pdf_doc        *pdf,

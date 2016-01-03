@@ -3163,7 +3163,7 @@ parse_pdf_indirect (const char **pp, const char *endptr, void *user_data)
   vp = parse_unsigned(pp, endptr);
   if (!vp)
     return NULL;
-  id  = strtoul(vp, NULL, 10);
+  id = strtoul(vp, NULL, 10);
   RELEASE(vp);
 
   skip_white(pp, endptr);

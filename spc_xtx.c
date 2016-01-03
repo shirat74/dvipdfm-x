@@ -8,7 +8,7 @@
 
     This file based on spc_pdfm.c, part of the dvipdfmx project:
 
-    Copyright (C) 2002 by Jin-Hwan Cho and Shunsaku Hirata.    
+    Copyright (C) 2002 by Jin-Hwan Cho and Shunsaku Hirata.
 
     Copyright (C) 1998, 1999 by Mark A. Wicks <mwicks@kettering.edu>
 
@@ -16,12 +16,12 @@
     it under the terms of the GNU General Public License as published by
     the Free Software Foundation; either version 2 of the License, or
     (at your option) any later version.
-    
+
     This program is distributed in the hope that it will be useful,
     but WITHOUT ANY WARRANTY; without even the implied warranty of
     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
     GNU General Public License for more details.
-    
+
     You should have received a copy of the GNU General Public License
     along with this program; if not, write to the Free Software
     Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA.
@@ -116,7 +116,8 @@ spc_handler_xtx_bscale (struct spc_env *spe, struct spc_arg *args)
   scaleFactors[scaleFactorCount].y = 1 / values[1];
   args->curptr = args->endptr;
 
-  return  spc_handler_xtx_do_transform (spe->x_user, spe->y_user, values[0], 0, 0, values[1], 0, 0);
+  return  spc_handler_xtx_do_transform (spe->x_user, spe->y_user, values[0],
+                                        0, 0, values[1], 0, 0);
 }
 
 static int
@@ -140,9 +141,9 @@ spc_handler_xtx_rotate (struct spc_env *spe, struct spc_arg *args)
   args->curptr = args->endptr;
 
   return  spc_handler_xtx_do_transform (spe->x_user, spe->y_user,
-      cos(value * M_PI / 180), sin(value * M_PI / 180),
-      -sin(value * M_PI / 180), cos(value * M_PI / 180),
-      0, 0);
+                              cos(value * M_PI / 180), sin(value * M_PI / 180),
+                              -sin(value * M_PI / 180), cos(value * M_PI / 180),
+                              0, 0);
 }
 
 int
@@ -453,4 +454,3 @@ spc_xtx_setup_handler (struct spc_handler *sph,
 
   return  error;
 }
-

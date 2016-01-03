@@ -86,11 +86,11 @@ ht_clear_table (struct ht_table *ht)
     hent = ht->table[i];
     while (hent) {
       if (hent->value && ht->hval_free_fn) {
-	ht->hval_free_fn(hent->value);
+        ht->hval_free_fn(hent->value);
       }
       hent->value  = NULL;
       if (hent->key) {
-	RELEASE(hent->key);
+        RELEASE(hent->key);
       }
       hent->key = NULL;
       next = hent->next;
@@ -229,7 +229,7 @@ ht_insert_table (struct ht_table *ht,
 
 void
 ht_append_table (struct ht_table *ht,
-		 const void *key, int keylen, void *value) 
+		 const void *key, int keylen, void *value)
 {
   struct ht_entry *hent, *last;
   unsigned int hkey;
@@ -333,6 +333,115 @@ ht_iter_next (struct ht_iter *iter)
   return (hent ? 0 : -1);
 }
 
+
+typedef struct stack_elem
+{
+  void              *data;
+  struct stack_elem *prev;
+} stack_elem;
+
+struct dpx_stack
+{
+  int         size;
+  stack_elem *top;
+  stack_elem *bottom;
+};
+
+dpx_stack *
+dpx_stack_new (void)
+{
+  dpx_stack *stack;
+
+  stack = NEW(1, dpx_stack);
+
+  stack->size   = 0;
+  stack->top    = NULL;
+  stack->bottom = NULL;
+
+  return stack;
+}
+
+void
+dpx_stack_delete (dpx_stack **stack, void (free_fn) (void *data))
+{
+  void *p;
+
+  ASSERT(stack && *stack);
+  while (p = dpx_stack_pop(*stack)) {
+    if (free_fn)
+      free_fn(p);
+  }
+
+  RELEASE(*stack);
+
+  *stack = NULL;
+}
+
+void
+dpx_stack_push (dpx_stack *stack, void *data)
+{
+  stack_elem  *elem;
+
+  ASSERT(stack);
+
+  elem = NEW(1, stack_elem);
+  elem->prev = stack->top;
+  elem->data = data;
+
+  stack->top = elem;
+  if (stack->size == 0)
+    stack->bottom = elem;
+
+  stack->size++;
+
+  return;
+}
+
+void *
+dpx_stack_pop (dpx_stack *stack)
+{
+  stack_elem *elem;
+  void       *data;
+
+  ASSERT(stack);
+
+  if (stack->size == 0)
+    return NULL;
+
+  data = stack->top->data;
+  elem = stack->top;
+  stack->top = elem->prev;
+  if (stack->size == 1)
+    stack->bottom = NULL;
+  RELEASE(elem);
+
+  stack->size--;
+
+  return data;
+}
+
+void *
+dpx_stack_top (dpx_stack *stack)
+{
+  void  *data;
+
+  ASSERT(stack);
+
+  if (stack->size == 0)
+    return NULL;
+
+  data = stack->top->data;
+
+  return data;
+}
+
+int
+dpx_stack_depth (dpx_stack *stack)
+{
+  ASSERT(stack);
+
+  return stack->size;
+}
 
 static int
 read_c_escchar (char *r, const char **pp, const char *endptr)

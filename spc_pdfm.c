@@ -1412,9 +1412,7 @@ spc_handler_pdfm_literal (struct spc_env *spe, struct spc_arg *args)
   return 0;
 }
 
-/* This code is broken.
- * It does not work as expected when it is used along with btrans.
- */
+/* It does not work as expected when it is used along with btrans. */
 static int
 spc_handler_pdfm_bcontent (struct spc_env *spe, struct spc_arg *args)
 {
@@ -1426,8 +1424,8 @@ spc_handler_pdfm_bcontent (struct spc_env *spe, struct spc_arg *args)
    *
    * I'm not very sure what is the purpose of get_coord() and push_coord().
    *
-   * Anyway, bcontent and econtent seems making some assumption on internal
-   * of dvipdfmx which can never be considered reasonable.
+   * However, bcontent and econtent seems making some assumption on internal
+   * of dvipdfmx which  may not be considered reasonable.
    * This will be easily broken when we change the implementation of dvipdfmx
    * text handling, even when it is done in a completely proper manner.
    * This code is not guaranteed to work correctly at all.
@@ -1482,7 +1480,8 @@ spc_handler_pdfm_do_nothing (struct spc_env *spe, struct spc_arg *args)
 #define FILE_STREAM   1
 
 static int
-spc_handler_pdfm_stream_with_type (struct spc_env *spe, struct spc_arg *args, int type)
+spc_handler_pdfm_stream_with_type (struct spc_env *spe, struct spc_arg *args,
+                                   int type)
 {
   pdf_obj *fstream;
   int      nb_read;

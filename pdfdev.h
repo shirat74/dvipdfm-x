@@ -71,7 +71,12 @@ typedef struct
 #define INFO_DO_HIDE       (1 << 4)
 extern void   transform_info_clear (transform_info *info);
 
+#include "dpxutil.h"
 #include "pdfdoc.h"
+
+typedef struct pdf_dev pdf_dev;
+
+extern dpx_stack *gs_stack;
 
 extern void   pdf_dev_set_verbose (void);
 

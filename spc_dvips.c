@@ -333,7 +333,8 @@ spc_handler_ps_tricks_pdef (struct spc_env *spe, struct spc_arg *args)
   if (!page_defs)
     page_defs = dpx_create_temp_file();
   if (!page_defs) {
-    WARN("Failed to create temporary input file for PSTricks image conversion.");
+    WARN("Failed to create temporary input file for PSTricks image " \
+         "conversion.");
     return  -1;
   }
 
@@ -470,9 +471,9 @@ spc_handler_ps_tricks_brotate (struct spc_env *spe, struct spc_arg *args)
   RAngles[RAngleCount] = value;
 
   return  spc_handler_xtx_do_transform (spe->x_user, spe->y_user,
-      cos(value * M_PI / 180), sin(value * M_PI / 180),
-      -sin(value * M_PI / 180), cos(value * M_PI / 180),
-      0, 0);
+                              cos(value * M_PI / 180), sin(value * M_PI / 180),
+                              -sin(value * M_PI / 180), cos(value * M_PI / 180),
+                              0, 0);
 }
 
 static int
@@ -900,16 +901,21 @@ spc_dvips_at_begin_document (void)
 {
   FILE* fp;
 
-  /* This, together with \pscharpath support code, must be moved to xtex.pro header. */
+  /* This, together with \pscharpath support code, must be moved to xtex.pro
+   * header.
+   */
   global_defs = dpx_create_temp_file();
   if (!global_defs) {
-    WARN("Failed to create temporary input file for PSTricks image conversion.");
+    WARN("Failed to create temporary input file for" \
+         " PSTricks image conversion.");
     return  -1;
   }
 
   fp = fopen(global_defs, "wb");
   fprintf(fp, "tx@Dict begin /STV {} def end\n");
   fclose(fp);
+
+  spc_put_fixed_point(0, 0);
 
   return  0;
 }
@@ -925,6 +931,8 @@ spc_dvips_at_end_document (void)
   }
   dpx_delete_temp_file(global_defs, true);
   dpx_delete_temp_file(page_defs, true);
+
+  spc_clear_fixed_point();
 
   return  0;
 }
@@ -981,7 +989,7 @@ spc_dvips_check_special (const char *buf, int len)
 
 int
 spc_dvips_setup_handler (struct spc_handler *handle,
-			 struct spc_env *spe, struct spc_arg *args)
+                         struct spc_env *spe, struct spc_arg *args)
 {
   const char *key;
   int   i, keylen;
@@ -1017,7 +1025,7 @@ spc_dvips_setup_handler (struct spc_handler *handle,
   for (i = 0;
        i < sizeof(dvips_handlers) / sizeof(struct spc_handler); i++) {
     if (keylen == strlen(dvips_handlers[i].key) &&
-	!strncmp(key, dvips_handlers[i].key, keylen)) {
+        !strncmp(key, dvips_handlers[i].key, keylen)) {
 
       skip_white(&args->curptr, args->endptr);
 

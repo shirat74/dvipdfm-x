@@ -70,14 +70,17 @@ extern int      spc_resume_annot  (struct spc_env *spe);
 extern int      spc_suspend_annot (struct spc_env *spe);
 
 /* Ugh */
+/* dvipdfmx pdf: special */
 extern void     spc_get_coord  (double *x, double *y);
 extern void     spc_push_coord (double  x, double  y);
 extern void     spc_pop_coord  (void);
-extern void     spc_set_fixed_point (double  x, double  y);
-extern void     spc_get_fixed_point (double *x, double *y);
-extern void     spc_put_fixed_point (double  x, double  y);
-extern void     spc_dup_fixed_point (void);
-extern void     spc_pop_fixed_point (void);
+/* XeTeX */
+extern void     spc_set_fixed_point   (double  x, double  y);
+extern void     spc_get_fixed_point   (double *x, double *y);
+extern void     spc_put_fixed_point   (double  x, double  y);
+extern void     spc_dup_fixed_point   (void);
+extern void     spc_pop_fixed_point   (void);
+extern void     spc_clear_fixed_point (void);
 
 extern void     spc_push_object   (const char *key, pdf_obj *value);
 extern void     spc_flush_object  (const char *key);
@@ -90,7 +93,7 @@ extern int      spc_exec_at_end_document   (void);
 
 extern int      spc_exec_special (const char *p, int32_t size,
                                   pdf_doc *pdf,
-				  double x_user, double y_user, double mag,
+                                  double x_user, double y_user, double mag,
                                   int *is_drawable, pdf_rect *rect); /* ret. */
 
 #endif /* _SPECIALS_H_ */

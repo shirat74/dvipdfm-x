@@ -36,6 +36,7 @@
 #include "numbers.h"
 
 #include "mfileio.h"
+#include "dpxutil.h"
 
 #include "pdfobj.h"
 #include "pdfdoc.h"
@@ -67,8 +68,6 @@ static struct {
 } parser_state = {
   0
 };
-
-static int xtoi (char ch);
 
 void
 dump (const char *start, const char *end)
@@ -556,19 +555,6 @@ parse_pdf_literal_string (const char **pp, const char *endptr)
 /*
  * PDF Hex String
  */
-static int
-xtoi (char ch)
-{
-  if (ch >= '0' && ch <= '9')
-    return ch - '0';
-  if (ch >= 'A' && ch <= 'F')
-    return (ch - 'A') + 10;
-  if (ch >= 'a' && ch <= 'f')
-    return (ch - 'a') + 10;
-
-  return -1;
-}
-
 static pdf_obj *
 parse_pdf_hex_string (const char **pp, const char *endptr)
 {
@@ -696,7 +682,6 @@ parse_pdf_dict_ext (const char **pp, const char *endptr,
     }
 
     skip_white(&p, endptr);
-
     value = parse_pdf_object_ext(&p, endptr,
                                  resolver, user_data1,
                                  unknown_handler, user_data2);
@@ -892,24 +877,25 @@ static int
 is_indirect (const char *p, const char *endptr)
 {
   skip_white(&p, endptr);
-  if (p + 5 > endptr || !isdigit((unsigned char)*p)) {
+  if (p + 5 > endptr || !isdigit(*p)) {
     return 0;
   }
-  while (isdigit((unsigned char)*p)) {
+  while (isdigit(*p)) {
     p++;
   }
 
   skip_white(&p, endptr);
-  if (p + 3 > endptr || !isdigit((unsigned char)*p)) {
+  if (p + 3 > endptr || !isdigit(*p)) {
     return 0;
   }
-  while (isdigit((unsigned char)*p)) {
+  while (isdigit(*p)) {
     p++;
   }
 
   skip_white(&p, endptr);
   if (p >= endptr  || *p != 'R')
     return 0;
+	p++;
   if (!PDF_TOKEN_END(p, endptr))
     return 0;
 

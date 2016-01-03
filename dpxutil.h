@@ -90,6 +90,14 @@ extern char *ht_iter_getkey (struct ht_iter *iter, int *keylen);
 extern void *ht_iter_getval (struct ht_iter *iter);
 extern int   ht_iter_next   (struct ht_iter *iter);
 
+typedef struct dpx_stack dpx_stack;
+extern dpx_stack *dpx_stack_new    (void);
+extern void       dpx_stack_delete (dpx_stack **st, void (free_fn) (void *d));
+extern void      *dpx_stack_pop    (dpx_stack *st);
+extern void       dpx_stack_push   (dpx_stack *st, void *data);
+extern int        dpx_stack_depth  (dpx_stack *st);
+extern void      *dpx_stack_top    (dpx_stack *st);
+
 extern char *parse_float_decimal (const char **pp, const char *endptr);
 extern char *parse_c_string      (const char **pp, const char *endptr);
 extern char *parse_c_ident       (const char **pp, const char *endptr);

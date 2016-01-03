@@ -112,18 +112,24 @@ spc_suspend_annot (struct spc_env *spe)
 /* Migrated form pdf_dev.c
  * No need to palce this into pdfdev.c at all.
  */
-static pdf_coord *coords = NULL;
-static int        num_coords = 0;
-static int        max_coords = 0;
+static dpx_stack *coords = NULL;
+
+static void
+release_coord (void *p)
+{
+   if (p)
+     RELEASE(p);
+}
 
 void
 spc_get_coord (double *x, double *y)
 {
   ASSERT(x && y );
 
-  if (num_coords > 0) {
-    *x = coords[num_coords-1].x;
-    *y = coords[num_coords-1].y;
+  if (coords && dpx_stack_depth(coords) > 0) {
+    pdf_coord *p = dpx_stack_top(coords);
+    *x = p->x;
+    *y = p->y;
   } else {
     *x = *y = 0.0;
   }
@@ -132,20 +138,22 @@ spc_get_coord (double *x, double *y)
 void
 spc_push_coord (double x, double y)
 {
-  if (num_coords >= max_coords) {
-    max_coords += 4;
-    coords = RENEW(coords, max_coords, pdf_coord);
-  }
-  coords[num_coords].x = x;
-  coords[num_coords].y = y;
-  num_coords++;
+  pdf_coord *p;
+  if (!coords)
+    coords = dpx_stack_new();
+  p = NEW(1, pdf_coord);
+  p->x = x; p->y = y;
+  dpx_stack_push(coords, p);
 }
 
 void
 spc_pop_coord (void)
 {
-  if (num_coords > 0)
-    num_coords--;
+  pdf_coord *p;
+  if (coords) {
+    p = dpx_stack_pop(coords);
+    RELEASE(p);
+  }
 }
 
 /* Migrated from pdfdraw.c.
@@ -161,55 +169,82 @@ spc_pop_coord (void)
  * I can't handle this chaotic situation.
  */
 
-static pdf_coord *pt_fixee = NULL;
-static int        st_top   = 0;
-static int        st_size  = 0;
+static dpx_stack *pt_fixee = NULL;
 
 void
 spc_set_fixed_point (double x, double y)
 {
-  ASSERT(pt_fixee && st_top > 0);
+  pdf_coord *p;
 
-  pt_fixee[st_top-1].x = x;
-  pt_fixee[st_top-1].y = y;
+  ASSERT(pt_fixee);
+
+  p = dpx_stack_top(pt_fixee);
+  if (p) {
+    p->x = x;
+    p->y = y;
+  }
 }
 
 void
 spc_get_fixed_point (double *x, double *y)
 {
-  ASSERT(pt_fixee && st_top > 0);
+  pdf_coord *p;
+
+  ASSERT(pt_fixee);
   ASSERT(x && y);
 
-  *x = pt_fixee[st_top-1].x;
-  *y = pt_fixee[st_top-1].y;
+  p = dpx_stack_top(pt_fixee);
+  if (p) {
+    *x = p->x;
+    *y = p->y;
+  }
 }
 
 void
 spc_put_fixed_point (double x, double y)
 {
-  if (st_top == st_size) {
-    pt_fixee = RENEW(pt_fixee, st_size + 16, pdf_coord);
-    st_size += 16;
-  }
+  pdf_coord *p;
 
-  pt_fixee[st_top].x = x;
-  pt_fixee[st_top].y = y;
-  st_top++;
+  if (!pt_fixee)
+    pt_fixee = dpx_stack_new();
+  p = NEW(1, pdf_coord);
+  p->x = x;
+  p->y = y;
+  dpx_stack_push(pt_fixee, p);
 }
 
 void
 spc_dup_fixed_point (void)
 {
-  double x, y;
+  pdf_coord *p1, *p2;
 
-  spc_get_fixed_point(&x, &y);
-  spc_put_fixed_point(x, y);
+  p1 = dpx_stack_top(pt_fixee);
+  p2 = NEW(1, pdf_coord);
+  p2->x = p1->x; p2->y = p1->y;
+  dpx_stack_push(pt_fixee, p2);
 }
 
 void
 spc_pop_fixed_point (void)
 {
-  st_top--;
+  pdf_coord *p;
+  p = dpx_stack_pop(pt_fixee);
+  if (p)
+    RELEASE(p);
+}
+
+void
+spc_clear_fixed_point (void)
+{
+  pdf_coord *p;
+
+  for (;;) {
+    p = dpx_stack_pop(pt_fixee);
+    if (!p)
+      break;
+    else
+      RELEASE(p);
+  }
 }
 
 static struct ht_table *named_objects = NULL;
@@ -575,6 +610,8 @@ spc_exec_at_begin_document (void)
   ASSERT(!named_objects);
 
   named_objects = pdf_new_name_tree();
+  pt_fixee      = dpx_stack_new();
+  coords        = dpx_stack_new();
 
   for (i = 0; known_specials[i].key != NULL; i++) {
     if (known_specials[i].bodhk_func) {
@@ -597,9 +634,12 @@ spc_exec_at_end_document (void)
     }
   }
 
-  if (named_objects) {
+  if (named_objects)
     pdf_delete_name_tree(&named_objects);
-  }
+  if (pt_fixee)
+    dpx_stack_delete(&pt_fixee, release_coord);
+  if (coords)
+    dpx_stack_delete(&coords, release_coord);
 
   return error;
 }
