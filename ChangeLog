@@ -1,3 +1,32 @@
+2016-01-07  Akira Kakuto  <kakuto@fuk.kindai.ac.jp>
+
+	* epdf.c: A typo in a message.
+	* xbb.c: Change copyright year.
+	* tests/: Change test data.
+
+2016-01-06  Akira Kakuto  <kakuto@fuk.kindai.ac.jp>
+
+	* t1_load.c: Avoid to crash for unsupported type1 fonts as native fonts.
+	* configure.ac: version 20160106.
+	* almost all files: change Copyright year.
+
+2016-01-04  Akira Kakuto  <kakuto@fuk.kindai.ac.jp>
+
+	* dvi.c: Symplify support of native type1 fonts in XeTeX.
+
+2016-01-03  Akira Kakuto  <kakuto@fuk.kindai.ac.jp>
+
+	* dpxfile.c: Change \ to / for WIN32 also in the case where
+	HAVE_MKSTEMP is defined (win32 only).
+	* cff.h, dvi.c, t1_load.c: Improve the change made on 2015-08-05.
+	The static function static int is_notdef_notzero() in dvi.c is removed.
+
+2015-12-30  Shunsaku Hirata  <shunsaku.hirata74@gmail.com>
+
+	* epdf.[ch], pdfdoc.[ch], pdfximage.[ch],
+	spc_{dvips,html,misc,pdfm,util}.c, spc_util.h: Don't use global variables
+	for selecting boundary box. Cleanups.
+
 2015-12-29  Shunsaku Hirata  <shunsaku.hirata74@gmail.com>
 
 	* dvipdfmx.c, dvi.c: Allow empty password in pdf:encrypt special.

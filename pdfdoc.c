@@ -210,8 +210,6 @@ typedef struct pdf_doc
 
 } pdf_doc;
 
-static pdf_doc pdoc; /* FIXME */
-
 pdf_dev *
 pdf_doc_get_device (pdf_doc *p)
 {
@@ -2568,7 +2566,7 @@ pdf_open_document (const char *filename,
 {
   pdf_doc *p;
 
-  p = NEW();
+  p = NEW(1, pdf_doc);
 
   p->pdf = pdf_out_init(filename, id_str, ver_major, ver_minor,
                         enable_encrypt,
@@ -2653,6 +2651,14 @@ pdf_close_document (pdf_doc *p)
   RELEASE(p);
 
   return;
+}
+
+void
+pdf_doc_set_device (pdf_doc *p, pdf_dev *pdev)
+{
+  ASSERT(p);
+
+  p->dev = pdev;
 }
 
 /*

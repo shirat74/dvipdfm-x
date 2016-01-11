@@ -1228,10 +1228,10 @@ pdf_dev_concat (pdf_doc *p, const pdf_tmatrix *M)
   }
 
   if (fabs(M->a - 1.0) > 1.e-8 || fabs(M->b) > 1.e-8
-   || fabs(M->c) > 1.e-8 || fabs(M->d - 1.0) > 1.e-8
-   || fabs(M->e) > 1.e-8 || fabs(M->f) > 1.e-8) {
+      || fabs(M->c) > 1.e-8 || fabs(M->d - 1.0) > 1.e-8
+      || fabs(M->e) > 1.e-8 || fabs(M->f) > 1.e-8) {
     buf[len++] = ' ';
-    len += pdf_sprint_matrix(buf + len, M);
+    len += pdf_dev_sprint_matrix(p, buf + len, M);
     buf[len++] = ' ';
     buf[len++] = 'c';
     buf[len++] = 'm';
@@ -1345,12 +1345,12 @@ pdf_dev_setdash (pdf_doc *p, int count, double *pattern, double offset)
   pdf_doc_add_page_content(p, " [", 2);  /* op: */
   for (i = 0; i < count; i++) {
     buf[0] = ' ';
-    len = pdf_sprint_length (buf + 1, pattern[i]);
+    len = pdf_dev_sprint_length(p, buf + 1, pattern[i]);
     pdf_doc_add_page_content(p, buf, len + 1);  /* op: */
     gs->linedash.pattern[i] = pattern[i];
   }
   pdf_doc_add_page_content(p, "] ", 2);  /* op: */
-  len = pdf_sprint_length (buf, offset);
+  len = pdf_dev_sprint_length(p, buf, offset);
   pdf_doc_add_page_content(p, buf, len);  /* op: */
   pdf_doc_add_page_content(p, " d", 2);  /* op: d */
 

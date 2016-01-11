@@ -367,7 +367,7 @@ dpx_stack_delete (dpx_stack **stack, void (free_fn) (void *data))
   void *p;
 
   ASSERT(stack && *stack);
-  while (p = dpx_stack_pop(*stack)) {
+  while ((p = dpx_stack_pop(*stack)) != NULL) {
     if (free_fn)
       free_fn(p);
   }

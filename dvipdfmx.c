@@ -1061,7 +1061,7 @@ main (int argc, char *argv[])
    * they are considered as device's capacity.
    */
   p_dev = pdf_init_device(p, dvi2pts, pdfdecimaldigits, ignore_colors);
-  pdf_set_device(p, p_dev);
+  pdf_doc_set_device(p, p_dev);
 
   /* Miscellaneous option flags */
   if (opt_flags & OPT_CIDFONT_FIXEDPITCH)

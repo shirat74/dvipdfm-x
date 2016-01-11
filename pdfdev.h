@@ -81,10 +81,10 @@ extern dpx_stack *gs_stack;
 extern void   pdf_dev_set_verbose (void);
 
 /* Not in spt_t. */
-extern int pdf_dev_sprint_matrix (pdf_dev *p, char *buf, const pdf_tmatrix *M);
-extern int pdf_dev_sprint_rect   (pdf_dev *p, char *buf, const pdf_rect    *r);
-extern int pdf_dev_sprint_coord  (pdf_dev *p, char *buf, const pdf_coord   *c);
-extern int pdf_dev_sprint_length (pdf_dev *p, char *buf, double value);
+extern int pdf_dev_sprint_matrix (pdf_doc *p, char *buf, const pdf_tmatrix *M);
+extern int pdf_dev_sprint_rect   (pdf_doc *p, char *buf, const pdf_rect    *r);
+extern int pdf_dev_sprint_coord  (pdf_doc *p, char *buf, const pdf_coord   *c);
+extern int pdf_dev_sprint_length (pdf_doc *p, char *buf, double value);
 
 extern int pdf_sprint_number (char *buf, double value);
 

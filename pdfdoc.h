@@ -51,6 +51,7 @@ extern pdf_doc *pdf_open_document  (const char *filename,
                                     int         check_gotos);
 extern void     pdf_close_document (pdf_doc *p);
 
+extern void     pdf_doc_set_device (pdf_doc *p, pdf_dev *dev);
 extern pdf_dev *pdf_doc_get_device (pdf_doc *p);
 
 /* They just return PDF dictionary object.

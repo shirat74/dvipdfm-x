@@ -414,11 +414,16 @@ dev_sprint_bp (pdf_dev *p, char *buf, spt_t value, spt_t *error)
 
 /* They are affected by precision (set at device initialization). */
 int
-pdf_dev_sprint_matrix (pdf_dev *p, char *buf, const pdf_tmatrix *M)
+pdf_dev_sprint_matrix (pdf_doc *d, char *buf, const pdf_tmatrix *M)
 {
+  pdf_dev *p = pdf_doc_get_device(d);
   int  len;
-  int  prec2 = MIN(p->unit.precision + 2, DEV_PRECISION_MAX);
-  int  prec0 = MAX(p->unit.precision, 2);
+  int  prec0, prec2;
+
+  ASSERT(p);
+
+  prec2 = MIN(p->unit.precision + 2, DEV_PRECISION_MAX);
+  prec0 = MAX(p->unit.precision, 2);
 
   len  = p_dtoa(M->a, prec2, buf);
   buf[len++] = ' ';
@@ -437,9 +442,12 @@ pdf_dev_sprint_matrix (pdf_dev *p, char *buf, const pdf_tmatrix *M)
 }
 
 int
-pdf_dev_sprint_rect (pdf_dev *p, char *buf, const pdf_rect *rect)
+pdf_dev_sprint_rect (pdf_doc *d, char *buf, const pdf_rect *rect)
 {
-  int  len;
+  pdf_dev *p = pdf_doc_get_device(d);
+  int      len;
+
+  ASSERT(p);
 
   len  = p_dtoa(rect->llx, p->unit.precision, buf);
   buf[len++] = ' ';
@@ -454,9 +462,12 @@ pdf_dev_sprint_rect (pdf_dev *p, char *buf, const pdf_rect *rect)
 }
 
 int
-pdf_dev_sprint_coord (pdf_dev *p, char *buf, const pdf_coord *c)
+pdf_dev_sprint_coord (pdf_doc *d, char *buf, const pdf_coord *c)
 {
-  int  len;
+  pdf_dev *p = pdf_doc_get_device(d);
+  int      len;
+
+  ASSERT(p);
 
   len  = p_dtoa(c->x, p->unit.precision, buf);
   buf[len++] = ' ';
@@ -467,9 +478,12 @@ pdf_dev_sprint_coord (pdf_dev *p, char *buf, const pdf_coord *c)
 }
 
 int
-pdf_dev_sprint_length (pdf_dev *p, char *buf, double value)
+pdf_dev_sprint_length (pdf_doc *d, char *buf, double value)
 {
-  int  len;
+  pdf_dev *p = pdf_doc_get_device(d);
+  int      len;
+
+  ASSERT(p);
 
   len = p_dtoa(value, p->unit.precision, buf);
   buf[len] = '\0'; /* xxx_sprint_xxx NULL terminates strings. */
@@ -477,7 +491,7 @@ pdf_dev_sprint_length (pdf_dev *p, char *buf, double value)
   return  len;
 }
 
-
+/* FIXME */
 int
 pdf_sprint_number (char *buf, double value)
 {
@@ -551,7 +565,7 @@ dev_set_text_matrix (pdf_dev *p,
   tm.f = ypos * p->unit.dvi2pts;
 
   buf[len++] = ' ';
-  len += pdf_dev_sprint_matrix(p, buf + len, &tm);
+  len += pdf_dev_sprint_matrix(p->pdf, buf + len, &tm); /* FIXME */
   buf[len++] = ' ';
   buf[len++] = 'T';
   buf[len++] = 'm';
@@ -1635,7 +1649,7 @@ pdf_dev_set_rule (pdf_doc *d, spt_t xpos, spt_t ypos, spt_t width, spt_t height)
     rect.lly =  p->unit.dvi2pts * ypos;
     rect.urx =  p->unit.dvi2pts * width;
     rect.ury =  p->unit.dvi2pts * height;
-    len += pdf_dev_sprint_rect(p, p->format_buffer+len, &rect);
+    len += pdf_dev_sprint_rect(p->pdf, p->format_buffer+len, &rect); /* FIXME */
     buf[len++] = ' ';
     buf[len++] = 'r';
     buf[len++] = 'e';
