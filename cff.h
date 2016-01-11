@@ -1,6 +1,6 @@
 /* This is dvipdfmx, an eXtended version of dvipdfm by Mark A. Wicks.
 
-    Copyright (C) 2002-2015 by Jin-Hwan Cho and Shunsaku Hirata,
+    Copyright (C) 2002-2016 by Jin-Hwan Cho and Shunsaku Hirata,
     the dvipdfmx project team.
     
     This program is free software; you can redistribute it and/or modify
@@ -77,6 +77,7 @@ typedef struct
 
   int           index;    /* CFF fontset index */
   int           flag;     /* Flag: see above */
+  int           is_notdef_notzero; /* 1 if .notdef is not the 1st glyph */
 } cff_font;
 
 extern cff_font *cff_open  (FILE *file, int offset, int idx);

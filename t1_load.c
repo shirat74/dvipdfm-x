@@ -1,6 +1,6 @@
 /* This is dvipdfmx, an eXtended version of dvipdfm by Mark A. Wicks.
 
-    Copyright (C) 2002-2015 by Jin-Hwan Cho and Shunsaku Hirata,
+    Copyright (C) 2002-2016 by Jin-Hwan Cho and Shunsaku Hirata,
     the dvipdfmx project team.
 
     Copyright (C) 1998, 1999 by Mark A. Wicks <mwicks@kettering.edu>
@@ -498,7 +498,12 @@ parse_encoding (char **enc_vec, unsigned char **start, unsigned char *end)
        */
       tok = pst_get_token(start, end);
       if (MATCH_OP(tok, "dup")) { /* possibly putinterval type */
-        try_put_or_putinterval(enc_vec, start, end);
+        if (enc_vec == NULL) {
+          WARN ("This kind of type1 fonts are not supported as native fonts.\n"
+                "                   They are supported if used with tfm fonts.\n");
+        } else {
+          try_put_or_putinterval(enc_vec, start, end);
+        }
         RELEASE_TOK(tok)
         continue;
       } else if (!tok || !PST_INTEGERTYPE(tok) ||
@@ -744,6 +749,7 @@ parse_charstrings (cff_font *font,
   offset      = 0;
   have_notdef = 0; /* .notdef must be at gid = 0 in CFF */
 
+  font->is_notdef_notzero = 0;
   seek_operator(start, end, "begin");
   for (i = 0; i < count; i++) {
     char *glyph_name;
@@ -755,6 +761,9 @@ parse_charstrings (cff_font *font,
      */
     tok = pst_get_token(start, end);
     glyph_name = (char *)pst_getSV(tok);
+
+    if ((i == 0) && (glyph_name != NULL) && (strcmp (glyph_name, ".notdef") != 0))
+      font->is_notdef_notzero = 1;
 
     if (PST_NAMETYPE(tok)) {
       RELEASE_TOK(tok);
@@ -960,7 +969,7 @@ parse_part1 (cff_font *font, char **enc_vec,
   int    argn; /* Macro CHECK_ARGN_XX assume 'argn' is used. */
 
   /*
-   * We skip PostScript code inserted before the beginning of
+   * We skip PostScript code inserted before the beginning of 
    * font dictionary so that parser will not be confused with
    * it. See LMRoman10-Regular (lmr10.pfb) for example.
    */

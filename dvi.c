@@ -160,7 +160,6 @@ static struct loaded_font
   int                   descent;
   unsigned              unitsPerEm;
   cff_font             *cffont; /* Ugh */
-  int                   cff_is_standard_encoding;
   unsigned              numGlyphs;
 
   int          layout_dir;
@@ -1045,45 +1044,6 @@ dvi_locate_font (const char *tfm_name, spt_t ptsize)
 }
 
 static int
-is_notdef_notzero (char *path)
-{
-  FILE *f;
-  char buf[2048];
-  char *cmd;
-  char *p;
-  int  ret = 0;
-
-  p = kpse_var_value("SELFAUTOLOC");
-  if (p == NULL)
-    return ret;
-#if defined(_WIN32)
-  cmd = concatn ("\"", p, "/t1disasm.exe\" \"", path, "\"", NULL);
-#else
-  cmd = concat3 (p, "/t1disasm ", path);
-#endif
-  free (p);
-  f = popen (cmd, "r");
-  free (cmd);
-  if (f) {
-    while ((fgets (buf, 2047, f))) {
-      p = strstr (buf, "CharStrings");
-      if (p) {
-        fgets (buf, 2047, f);
-        p = buf;
-        while (*p == ' ' || *p == '\t')
-          p++;
-        if (strncmp (p, "/.notdef", 8) != 0)
-          ret = 1;
-        break;
-      }
-    }
-    fclose(f);
-  }
-
-  return ret;
-}
-
-static int
 dvi_locate_native_font (const char *filename, uint32_t index,
                         spt_t ptsize, int layout_dir,
                         int extend, int slant, int embolden)
@@ -1149,10 +1109,6 @@ dvi_locate_native_font (const char *filename, uint32_t index,
     if (!cffont)
       ERROR("Failed to read Type 1 font \"%s\".", filename);
 
-    loaded_fonts[cur_id].cffont = cffont;
-    loaded_fonts[cur_id].cff_is_standard_encoding =
-      (enc_vec[0] == NULL || !strcmp (enc_vec[0], ".notdef"));
-
     if (cff_dict_known(cffont->topdict, "FontBBox")) {
       loaded_fonts[cur_id].ascent = cff_dict_get(cffont->topdict, "FontBBox", 3);
       loaded_fonts[cur_id].descent = cff_dict_get(cffont->topdict, "FontBBox", 1);
@@ -1165,9 +1121,6 @@ dvi_locate_native_font (const char *filename, uint32_t index,
     loaded_fonts[cur_id].numGlyphs = cffont->num_glyphs;
 
     DPXFCLOSE(fp);
-    if (loaded_fonts[cur_id].cff_is_standard_encoding) {
-      loaded_fonts[cur_id].cff_is_standard_encoding = is_notdef_notzero (path);
-    }
   } else {
     if (is_dfont)
       sfont = dfont_open(fp, index);
@@ -1858,12 +1811,15 @@ do_glyphs (void)
         cff_index *cstrings = font->cffont->cstrings;
         t1_ginfo gm;
 
-        /* For standard encoding, Type1 glyph id is FreeType glyph index + 1. */
-        if (font->cff_is_standard_encoding)
+        /* If .notdef is not the 1st glyph in CharStrings, glyph_id given by
+         * FreeType should be increased by 1.
+         */
+        if (font->cffont->is_notdef_notzero)
           glyph_id += 1;
 
         t1char_get_metrics(cstrings->data + cstrings->offset[glyph_id] - 1,
-                           cstrings->offset[glyph_id + 1] - cstrings->offset[glyph_id],
+                           cstrings->offset[glyph_id + 1] -
+                             cstrings->offset[glyph_id],
                            font->cffont->subrs[0], &gm);
 
         advance = font->layout_dir == 0 ? gm.wx : gm.wy;
