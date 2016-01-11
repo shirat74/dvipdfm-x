@@ -27,6 +27,7 @@ typedef struct pdf_doc pdf_doc;
 
 #include "pdfobj.h"
 #include "pdfdev.h"
+typedef struct pdf_dev pdf_dev;
 
 #define PDF_DOC_GRABBING_NEST_MAX 4
 
@@ -49,6 +50,8 @@ extern pdf_doc *pdf_open_document  (const char *filename,
                                     int         bookmark_open_depth,
                                     int         check_gotos);
 extern void     pdf_close_document (pdf_doc *p);
+
+extern pdf_dev *pdf_doc_get_device (pdf_doc *p);
 
 /* They just return PDF dictionary object.
  * Callers are completely responsible for doing right thing...
@@ -97,8 +100,10 @@ extern void     pdf_doc_end_page     (pdf_doc *p);
 extern void     pdf_doc_set_mediabox (pdf_doc *p,
                                       unsigned page_no, const pdf_rect *mediabox);
 
-extern void     pdf_doc_add_page_content  (const char *buffer, unsigned length);
-extern void     pdf_doc_add_page_resource (const char *category,
+extern void     pdf_doc_add_page_content  (pdf_doc *p,
+                                           const char *buffer, unsigned length);
+extern void     pdf_doc_add_page_resource (pdf_doc    *p,
+                                           const char *category,
                                            const char *resource_name,
                                            pdf_obj    *resources);
 

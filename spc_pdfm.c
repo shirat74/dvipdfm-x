@@ -629,7 +629,7 @@ spc_handler_pdfm_annot (struct spc_env *spe, struct spc_arg *args)
   }
 
   cp.x = spe->x_user; cp.y = spe->y_user;
-  pdf_dev_transform(&cp, NULL);
+  pdf_dev_transform(spe->pdf, &cp, NULL);
   if (ti.flags & INFO_HAS_USER_BBOX) {
     rect.llx = ti.bbox.llx + cp.x;
     rect.lly = ti.bbox.lly + cp.y;
@@ -800,8 +800,8 @@ spc_handler_pdfm_btrans (struct spc_env *spe, struct spc_arg *args)
   M.e += ((1.0 - M.a) * x - M.c * y);
   M.f += ((1.0 - M.d) * y - M.b * x);
 
-  pdf_dev_gsave();
-  pdf_dev_concat(&M);
+  pdf_dev_gsave(spe->pdf);
+  pdf_dev_concat(spe->pdf, &M);
 
   return 0;
 }
@@ -809,7 +809,7 @@ spc_handler_pdfm_btrans (struct spc_env *spe, struct spc_arg *args)
 static int
 spc_handler_pdfm_etrans (struct spc_env *spe, struct spc_arg *args)
 {
-  pdf_dev_grestore();
+  pdf_dev_grestore(spe->pdf);
 
   /*
    * Unfortunately, the following line is necessary in case
@@ -819,7 +819,7 @@ spc_handler_pdfm_etrans (struct spc_env *spe, struct spc_arg *args)
    * we make no assumptions about what fonts. We act like we are
    * starting a new page.
    */
-  pdf_dev_reset_color(0);
+  pdf_dev_reset_color(spe->pdf, 0);
 
   return 0;
 }
@@ -971,7 +971,7 @@ spc_handler_pdfm_bead (struct spc_env *spe, struct spc_arg *args)
   }
 
   cp.x = spe->x_user; cp.y = spe->y_user;
-  pdf_dev_transform(&cp, NULL);
+  pdf_dev_transform(spe->pdf, &cp, NULL);
   if (ti.flags & INFO_HAS_USER_BBOX) {
     rect.llx = ti.bbox.llx + cp.x;
     rect.lly = ti.bbox.lly + cp.y;
@@ -1354,16 +1354,16 @@ spc_handler_pdfm_content (struct spc_env *spe, struct spc_arg *args)
     work_buffer[len++] = ' ';
     work_buffer[len++] = 'q';
     work_buffer[len++] = ' ';
-    len += pdf_sprint_matrix(work_buffer + len, &M);
+    len += pdf_dev_sprint_matrix(spe->pdf, work_buffer + len, &M);
     work_buffer[len++] = ' ';
     work_buffer[len++] = 'c';
     work_buffer[len++] = 'm';
     work_buffer[len++] = ' ';
 
-    pdf_doc_add_page_content(work_buffer, len);  /* op: q cm */
+    pdf_doc_add_page_content(spe->pdf, work_buffer, len);  /* op: q cm */
     len = (int) (args->endptr - args->curptr);
-    pdf_doc_add_page_content(args->curptr, len);  /* op: ANY */
-    pdf_doc_add_page_content(" Q", 2);  /* op: Q */
+    pdf_doc_add_page_content(spe->pdf, args->curptr, len);  /* op: ANY */
+    pdf_doc_add_page_content(spe->pdf, " Q", 2);  /* op: Q */
   }
   args->curptr = args->endptr;
 
@@ -1397,13 +1397,15 @@ spc_handler_pdfm_literal (struct spc_env *spe, struct spc_arg *args)
     if (!direct) {
       M.a = M.d = 1.0; M.b = M.c = 0.0;
       M.e = spe->x_user; M.f = spe->y_user;
-      pdf_dev_concat(&M);
+      pdf_dev_concat(spe->pdf, &M);
     }
-    pdf_doc_add_page_content(" ", 1);  /* op: */
-    pdf_doc_add_page_content(args->curptr, (int) (args->endptr - args->curptr));  /* op: ANY */
+    pdf_doc_add_page_content(spe->pdf, " ", 1);  /* op: */
+    pdf_doc_add_page_content(spe->pdf,
+                             args->curptr,
+                             (int) (args->endptr - args->curptr));
     if (!direct) {
       M.e = -spe->x_user; M.f = -spe->y_user;
-      pdf_dev_concat(&M);
+      pdf_dev_concat(spe->pdf, &M);
     }
   }
 
@@ -1419,7 +1421,7 @@ spc_handler_pdfm_bcontent (struct spc_env *spe, struct spc_arg *args)
   pdf_tmatrix      M;
   double           xpos, ypos;
 
-  pdf_dev_gsave();
+  pdf_dev_gsave(spe->pdf);
   /* IMPORTANT NOTE
    *
    * I'm not very sure what is the purpose of get_coord() and push_coord().
@@ -1435,7 +1437,7 @@ spc_handler_pdfm_bcontent (struct spc_env *spe, struct spc_arg *args)
    */
   spc_get_coord(&xpos, &ypos);
   pdf_setmatrix(&M, 1.0, 0.0, 0.0, 1.0, spe->x_user - xpos, spe->y_user - ypos);
-  pdf_dev_concat(&M);
+  pdf_dev_concat(spe->pdf, &M);
   spc_push_coord(spe->x_user, spe->y_user);
   dvi_set_compensation(spe->x_user, spe->y_user);
 
@@ -1449,8 +1451,8 @@ spc_handler_pdfm_econtent (struct spc_env *spe, struct spc_arg *args)
   spc_pop_coord();
   spc_get_coord(&x, &y);
   dvi_set_compensation(x, y);
-  pdf_dev_grestore();
-  pdf_dev_reset_color(0);
+  pdf_dev_grestore(spe->pdf);
+  pdf_dev_reset_color(spe->pdf, 0);
 
   return 0;
 }
@@ -1461,8 +1463,9 @@ spc_handler_pdfm_code (struct spc_env *spe, struct spc_arg *args)
   skip_white(&args->curptr, args->endptr);
 
   if (args->curptr < args->endptr) {
-    pdf_doc_add_page_content(" ", 1);  /* op: */
-    pdf_doc_add_page_content(args->curptr, (int) (args->endptr - args->curptr));  /* op: ANY */
+    pdf_doc_add_page_content(spe->pdf, " ", 1);  /* op: */
+    pdf_doc_add_page_content(spe->pdf, args->curptr,
+                             (int) (args->endptr - args->curptr));
     args->curptr = args->endptr;
   }
 

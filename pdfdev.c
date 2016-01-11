@@ -60,33 +60,229 @@ pdf_dev_set_verbose (void)
   verbose++;
 }
 
-/* Not working yet... */
-double
-pdf_dev_scale (void)
+
+struct dev_param
 {
-  return 1.0;
-}
+  /* Text composition (direction) mode is ignored (always same
+   * as font's writing mode) if autorotate is unset (value zero).
+   */
+  int    autorotate;
+
+  /*
+   * Ignore color migrated to here. This is device's capacity.
+   * colormode 0 for ignore colors
+   */
+  int    colormode;
+
+};
+
+/*
+ * Text handling routines.
+ */
+
+/* Motion state:
+ *  GRAPHICS_MODE  Initial state (not within BT/ET block nor in string)
+ *  TEXT_MODE      Text section is started via BT operator but not
+ *                 in string.
+ *  STRING_MODE    In string. A string or array of strings are currently
+ *                 in process. May started '[', '<' or '('.
+ */
+#define GRAPHICS_MODE  1
+#define TEXT_MODE      2
+#define STRING_MODE    3
+
+/*
+ * In PDF, vertical text positioning is always applied when current font
+ * is vertical font. While ASCII pTeX manages current writing direction
+ * and font's WMode separately.
+ *
+ * 000/101 WMODE_HH/VV  h(v) font, h(v) direction.
+ * 001    WMODE_HV    -90 deg. rotated
+ * 100    WMODE_VH    +90 deg. rotated
+ * 011    WMODE_HD    +90 deg. rotated
+ * 111    WMODE_VD    180 deg. rotated
+
+ * In MetaPost PostScript file processing (mp_mode = 1), only HH/VV mode
+ * is applied.
+ */
+#define TEXT_WMODE_HH 0
+#define TEXT_WMODE_HV 1
+#define TEXT_WMODE_VH 4
+#define TEXT_WMODE_VV 5
+#define TEXT_WMODE_HD 3
+#define TEXT_WMODE_VD 7
+
+#define ANGLE_CHANGES(m1,m2) ((abs((m1)-(m2)) % 5) == 0 ? 0 : 1)
+#define ROTATE_TEXT(m)       ((m) != TEXT_WMODE_HH && (m) != TEXT_WMODE_VV)
+
+struct text_state {
+
+  /* Current font.
+   * This is index within dev_fonts.
+   */
+  int       font_id;
+
+  /* Dvipdfmx does compression of text by doing text positioning
+   * in relative motion and uses string array [(foo) -250 (bar)]
+   * with kerning (negative kern is used for white space as suited
+   * for TeX). This is offset within current string.
+   */
+  spt_t     offset;
+
+  /* This is reference point of strings.
+   * It may include error correction induced by rounding.
+   */
+  spt_t     ref_x;
+  spt_t     ref_y;
+
+  /* Using text raise and leading is highly recommended for
+   * text extraction to work properly. But not implemented yet.
+   * We can't do consice output for \TeX without this.
+   */
+  spt_t     raise;    /* unused */
+  spt_t     leading;  /* unused */
+
+  /* This is not always text matrix but rather font matrix.
+   * We do not use horizontal scaling in PDF text state parameter
+   * since they always apply scaling in fixed direction regardless
+   * of writing mode.
+   */
+  struct {
+    double  slant;
+    double  extend;
+    int     rotate; /* TEXT_WMODE_XX */
+  } matrix;
+
+  /* Fake bold parameter:
+   * If bold_param is positive, use text rendering mode
+   * fill-then-stroke with stroking line width specified
+   * by bold_param.
+   */
+  double    bold_param;
+
+  /* Text composition (direction) mode. */
+  int       dir_mode;
+
+  /* internal */
+
+  /* Flag indicating text matrix to be forcibly reset.
+   * Enabled if synthetic font features (slant, extend, etc)
+   * are used for current font or when text rotation mode
+   * changes.
+   */
+  int       force_reset;
+
+  /* This information is duplicated from dev[font_id].format.
+   * Set to 1 if font is composite (Type0) font.
+   */
+  int       is_mb;
+};
+
+#define PDF_FONTTYPE_SIMPLE    1
+#define PDF_FONTTYPE_BITMAP    2
+#define PDF_FONTTYPE_COMPOSITE 3
+
+struct dev_font {
+  /* Needs to be big enough to hold name "Fxxx"
+   * where xxx is number of largest font
+   */
+  char     short_name[7];      /* Resource name */
+  int      used_on_this_page;
+
+  char    *tex_name;  /* String identifier of this font */
+  spt_t    sptsize;   /* Point size */
+
+  /* Returned values from font/encoding layer:
+   *
+   * The font_id and enc_id is font and encoding (CMap) identifier
+   * used in pdf_font or encoding/cmap layer.
+   * The PDF object "resource" is an indirect reference object
+   * pointing font resource of this font. The used_chars is somewhat
+   * misleading, this is actually used_glyphs in CIDFont for Type0
+   * and is 65536/8 bytes binary data with each bits representing
+   * whether the glyph is in-use or not. It is 256 char array for
+   * simple font.
+   */
+  int      font_id;
+  int      enc_id;
+
+  /* if >= 0, index of a dev_font that really has the resource and used_chars */
+  int      real_font_index;
+
+  pdf_obj *resource;
+  char    *used_chars;
+
+  /* Font format:
+   * simple, composite or bitmap.
+   */
+  int      format;
+
+  /* Writing mode:
+   * Non-zero for vertical. Duplicated from CMap.
+   */
+  int      wmode;
+
+  /* Syntetic Font:
+   *
+   * We use text matrix for creating extended or slanted font,
+   * but not with font's FontMatrix since TrueType and Type0
+   * font don't support them.
+   */
+  double   extend;
+  double   slant;
+  double   bold;  /* Boldness prameter */
+
+  /* Compatibility */
+  int      mapc;  /* Nasty workaround for Omega */
+
+  /* There are no font metric format supporting four-bytes
+   * charcter code. So we should provide an option to specify
+   * UCS group and plane.
+   */
+  int      ucs_group;
+  int      ucs_plane;
+
+  int      is_unicode;
+
+  cff_charsets *cff_charsets;
+};
 
 /*
  * Unit conversion, formatting and others.
  */
+ struct dev_unit {
+   double dvi2pts;
+   int    min_bp_val; /* Shortest resolvable distance in the output PDF.     */
+   int    precision;  /* Number of decimal digits (in fractional part) kept. */
+ };
 
-#define TEX_ONE_HUNDRED_BP 6578176
-static struct {
-  double dvi2pts;
-  int    min_bp_val; /* Shortest resolvable distance in the output PDF.     */
-  int    precision;  /* Number of decimal digits (in fractional part) kept. */
-} dev_unit = {
-  0.0,
-  658,
-  2
+
+struct pdf_dev {
+  int               motion_state;
+  struct dev_param  param;
+  struct dev_unit   unit;
+  struct text_state text_state;
+  struct dev_font  *fonts;
+  int               num_fonts;
+  int               max_fonts;
+  int               num_phys_fonts;
+  char              format_buffer[4096];
+  pdf_doc          *pdf;
 };
 
-
-double
-dev_unit_dviunit (void)
+static void
+pdf_out (pdf_dev *p, char *str, int len)
 {
-  return (1.0/dev_unit.dvi2pts);
+  pdf_doc_add_page_content(p->pdf, str, len);
+}
+
+#define TEX_ONE_HUNDRED_BP 6578176
+
+/* Not working yet... */
+double
+pdf_dev_scale (pdf_doc *p)
+{
+  return 1.0;
 }
 
 #define DEV_PRECISION_MAX  8
@@ -98,8 +294,8 @@ static double ten_pow_inv[10] = {
   1.0, 0.1,  0.01,  0.001,  0.0001,  0.00001,  0.000001,  0.0000001,  0.00000001,  0.000000001
 };
 
-#define bpt2spt(b) ( (spt_t) round( (b) / dev_unit.dvi2pts  ) )
-#define spt2bpt(s) ( (s) * dev_unit.dvi2pts )
+#define bpt2spt(p,b) ( (spt_t) round( (b) / (p)->unit.dvi2pts  ) )
+#define spt2bpt(p,s) ( (s) * (p)->unit.dvi2pts )
 #define dround_at(v,p) (ROUND( (v), ten_pow_inv[(p)] ))
 
 static int
@@ -201,16 +397,16 @@ p_dtoa (double value, int prec, char *buf)
 }
 
 static int
-dev_sprint_bp (char *buf, spt_t value, spt_t *error)
+dev_sprint_bp (pdf_dev *p, char *buf, spt_t value, spt_t *error)
 {
   double  value_in_bp;
   double  error_in_bp;
-  int     prec = dev_unit.precision;
+  int     prec = p->unit.precision;
 
-  value_in_bp = spt2bpt(value);
+  value_in_bp = spt2bpt(p, value);
   if (error) {
     error_in_bp = value_in_bp - dround_at(value_in_bp, prec);
-    *error = bpt2spt(error_in_bp);
+    *error = bpt2spt(p, error_in_bp);
   }
 
   return  p_dtoa(value_in_bp, prec, buf);
@@ -218,11 +414,11 @@ dev_sprint_bp (char *buf, spt_t value, spt_t *error)
 
 /* They are affected by precision (set at device initialization). */
 int
-pdf_sprint_matrix (char *buf, const pdf_tmatrix *M)
+pdf_dev_sprint_matrix (pdf_dev *p, char *buf, const pdf_tmatrix *M)
 {
   int  len;
-  int  prec2 = MIN(dev_unit.precision + 2, DEV_PRECISION_MAX);
-  int  prec0 = MAX(dev_unit.precision, 2);
+  int  prec2 = MIN(p->unit.precision + 2, DEV_PRECISION_MAX);
+  int  prec0 = MAX(p->unit.precision, 2);
 
   len  = p_dtoa(M->a, prec2, buf);
   buf[len++] = ' ';
@@ -241,41 +437,41 @@ pdf_sprint_matrix (char *buf, const pdf_tmatrix *M)
 }
 
 int
-pdf_sprint_rect (char *buf, const pdf_rect *rect)
+pdf_dev_sprint_rect (pdf_dev *p, char *buf, const pdf_rect *rect)
 {
   int  len;
 
-  len  = p_dtoa(rect->llx, dev_unit.precision, buf);
+  len  = p_dtoa(rect->llx, p->unit.precision, buf);
   buf[len++] = ' ';
-  len += p_dtoa(rect->lly, dev_unit.precision, buf+len);
+  len += p_dtoa(rect->lly, p->unit.precision, buf+len);
   buf[len++] = ' ';
-  len += p_dtoa(rect->urx, dev_unit.precision, buf+len);
+  len += p_dtoa(rect->urx, p->unit.precision, buf+len);
   buf[len++] = ' ';
-  len += p_dtoa(rect->ury, dev_unit.precision, buf+len);
+  len += p_dtoa(rect->ury, p->unit.precision, buf+len);
   buf[len]   = '\0'; /* xxx_sprint_xxx NULL terminates strings. */
 
   return  len;
 }
 
 int
-pdf_sprint_coord (char *buf, const pdf_coord *p)
+pdf_dev_sprint_coord (pdf_dev *p, char *buf, const pdf_coord *c)
 {
   int  len;
 
-  len  = p_dtoa(p->x, dev_unit.precision, buf);
+  len  = p_dtoa(c->x, p->unit.precision, buf);
   buf[len++] = ' ';
-  len += p_dtoa(p->y, dev_unit.precision, buf+len);
+  len += p_dtoa(c->y, p->unit.precision, buf+len);
   buf[len]   = '\0'; /* xxx_sprint_xxx NULL terminates strings. */
 
   return  len;
 }
 
 int
-pdf_sprint_length (char *buf, double value)
+pdf_dev_sprint_length (pdf_dev *p, char *buf, double value)
 {
   int  len;
 
-  len = p_dtoa(value, dev_unit.precision, buf);
+  len = p_dtoa(value, p->unit.precision, buf);
   buf[len] = '\0'; /* xxx_sprint_xxx NULL terminates strings. */
 
   return  len;
@@ -293,229 +489,29 @@ pdf_sprint_number (char *buf, double value)
   return  len;
 }
 
-
-static struct
+double
+pdf_dev_unit_dviunit (pdf_doc *d)
 {
-  /* Text composition (direction) mode is ignored (always same
-   * as font's writing mode) if autorotate is unset (value zero).
-   */
-  int    autorotate;
+  pdf_dev *p = pdf_doc_get_device(d);
 
-  /*
-   * Ignore color migrated to here. This is device's capacity.
-   * colormode 0 for ignore colors
-   */
-  int    colormode;
+  ASSERT(p);
 
-} dev_param = {
-  1, /* autorotate */
-  1, /* colormode  */
-};
+  return (p ? (1.0/p->unit.dvi2pts) : 1.0);
+}
 
-/*
- * Text handling routines.
- */
 
-/* Motion state:
- *  GRAPHICS_MODE  Initial state (not within BT/ET block nor in string)
- *  TEXT_MODE      Text section is started via BT operator but not
- *                 in string.
- *  STRING_MODE    In string. A string or array of strings are currently
- *                 in process. May started '[', '<' or '('.
- */
-#define GRAPHICS_MODE  1
-#define TEXT_MODE      2
-#define STRING_MODE    3
-
-static int motion_state = GRAPHICS_MODE;
-
-#define FORMAT_BUF_SIZE 4096
-static char format_buffer[FORMAT_BUF_SIZE];
-
-/*
- * In PDF, vertical text positioning is always applied when current font
- * is vertical font. While ASCII pTeX manages current writing direction
- * and font's WMode separately.
- *
- * 000/101 WMODE_HH/VV  h(v) font, h(v) direction.
- * 001    WMODE_HV    -90 deg. rotated
- * 100    WMODE_VH    +90 deg. rotated
- * 011    WMODE_HD    +90 deg. rotated
- * 111    WMODE_VD    180 deg. rotated
-
- * In MetaPost PostScript file processing (mp_mode = 1), only HH/VV mode
- * is applied.
- */
-#define TEXT_WMODE_HH 0
-#define TEXT_WMODE_HV 1
-#define TEXT_WMODE_VH 4
-#define TEXT_WMODE_VV 5
-#define TEXT_WMODE_HD 3
-#define TEXT_WMODE_VD 7
-
-#define ANGLE_CHANGES(m1,m2) ((abs((m1)-(m2)) % 5) == 0 ? 0 : 1)
-#define ROTATE_TEXT(m)       ((m) != TEXT_WMODE_HH && (m) != TEXT_WMODE_VV)
-
-static struct {
-
-  /* Current font.
-   * This is index within dev_fonts.
-   */
-  int       font_id;
-
-  /* Dvipdfmx does compression of text by doing text positioning
-   * in relative motion and uses string array [(foo) -250 (bar)]
-   * with kerning (negative kern is used for white space as suited
-   * for TeX). This is offset within current string.
-   */
-  spt_t     offset;
-
-  /* This is reference point of strings.
-   * It may include error correction induced by rounding.
-   */
-  spt_t     ref_x;
-  spt_t     ref_y;
-
-  /* Using text raise and leading is highly recommended for
-   * text extraction to work properly. But not implemented yet.
-   * We can't do consice output for \TeX without this.
-   */
-  spt_t     raise;    /* unused */
-  spt_t     leading;  /* unused */
-
-  /* This is not always text matrix but rather font matrix.
-   * We do not use horizontal scaling in PDF text state parameter
-   * since they always apply scaling in fixed direction regardless
-   * of writing mode.
-   */
-  struct {
-    double  slant;
-    double  extend;
-    int     rotate; /* TEXT_WMODE_XX */
-  } matrix;
-
-  /* Fake bold parameter:
-   * If bold_param is positive, use text rendering mode
-   * fill-then-stroke with stroking line width specified
-   * by bold_param.
-   */
-  double    bold_param;
-
-  /* Text composition (direction) mode. */
-  int       dir_mode;
-
-  /* internal */
-
-  /* Flag indicating text matrix to be forcibly reset.
-   * Enabled if synthetic font features (slant, extend, etc)
-   * are used for current font or when text rotation mode
-   * changes.
-   */
-  int       force_reset;
-
-  /* This information is duplicated from dev[font_id].format.
-   * Set to 1 if font is composite (Type0) font.
-   */
-  int       is_mb;
-} text_state = {
-  -1,            /* font   */
-  0,             /* offset */
-  0, 0,          /* ref_x, ref_y   */
-  0, 0,          /* raise, leading */
-  {0.0, 1.0, 0},
-
-  0.0,  /* Experimental boldness param */
-
-  0,    /* dir_mode      */
-
-  /* internal */
-  0,    /* force_reset   */
-  0     /* is_mb         */
-};
-
-#define PDF_FONTTYPE_SIMPLE    1
-#define PDF_FONTTYPE_BITMAP    2
-#define PDF_FONTTYPE_COMPOSITE 3
-
-struct dev_font {
-  /* Needs to be big enough to hold name "Fxxx"
-   * where xxx is number of largest font
-   */
-  char     short_name[7];      /* Resource name */
-  int      used_on_this_page;
-
-  char    *tex_name;  /* String identifier of this font */
-  spt_t    sptsize;   /* Point size */
-
-  /* Returned values from font/encoding layer:
-   *
-   * The font_id and enc_id is font and encoding (CMap) identifier
-   * used in pdf_font or encoding/cmap layer.
-   * The PDF object "resource" is an indirect reference object
-   * pointing font resource of this font. The used_chars is somewhat
-   * misleading, this is actually used_glyphs in CIDFont for Type0
-   * and is 65536/8 bytes binary data with each bits representing
-   * whether the glyph is in-use or not. It is 256 char array for
-   * simple font.
-   */
-  int      font_id;
-  int      enc_id;
-
-  /* if >= 0, index of a dev_font that really has the resource and used_chars */
-  int      real_font_index;
-
-  pdf_obj *resource;
-  char    *used_chars;
-
-  /* Font format:
-   * simple, composite or bitmap.
-   */
-  int      format;
-
-  /* Writing mode:
-   * Non-zero for vertical. Duplicated from CMap.
-   */
-  int      wmode;
-
-  /* Syntetic Font:
-   *
-   * We use text matrix for creating extended or slanted font,
-   * but not with font's FontMatrix since TrueType and Type0
-   * font don't support them.
-   */
-  double   extend;
-  double   slant;
-  double   bold;  /* Boldness prameter */
-
-  /* Compatibility */
-  int      mapc;  /* Nasty workaround for Omega */
-
-  /* There are no font metric format supporting four-bytes
-   * charcter code. So we should provide an option to specify
-   * UCS group and plane.
-   */
-  int      ucs_group;
-  int      ucs_plane;
-
-  int      is_unicode;
-
-  cff_charsets *cff_charsets;
-};
-static struct dev_font *dev_fonts = NULL;
-
-static int num_dev_fonts   = 0;
-static int max_dev_fonts   = 0;
-static int num_phys_fonts  = 0;
-
-#define CURRENTFONT() ((text_state.font_id < 0) ? NULL : &(dev_fonts[text_state.font_id]))
-#define GET_FONT(n)   (&(dev_fonts[(n)]))
-
+#define CURRENTFONT(p) (((p)->text_state.font_id < 0) ? \
+  NULL : &((p)->fonts[(p)->text_state.font_id]))
+#define GET_FONT(p, n)   (&((p)->fonts[(n)]))
 
 static void
-dev_set_text_matrix (spt_t xpos, spt_t ypos, double slant, double extend, int rotate)
+dev_set_text_matrix (pdf_dev *p,
+                     spt_t xpos, spt_t ypos,
+                     double slant, double extend, int rotate)
 {
-  pdf_tmatrix tm;
-  int         len = 0;
+  pdf_tmatrix    tm;
+  int            len = 0;
+  char          *buf = p->format_buffer;
 
   /* slant is negated for vertical font so that right-side
    * is always lower. */
@@ -551,22 +547,22 @@ dev_set_text_matrix (spt_t xpos, spt_t ypos, double slant, double extend, int ro
     tm.c =  0.0; tm.d =  -extend;
     break;
   }
-  tm.e = xpos * dev_unit.dvi2pts;
-  tm.f = ypos * dev_unit.dvi2pts;
+  tm.e = xpos * p->unit.dvi2pts;
+  tm.f = ypos * p->unit.dvi2pts;
 
-  format_buffer[len++] = ' ';
-  len += pdf_sprint_matrix(format_buffer+len, &tm);
-  format_buffer[len++] = ' ';
-  format_buffer[len++] = 'T';
-  format_buffer[len++] = 'm';
+  buf[len++] = ' ';
+  len += pdf_dev_sprint_matrix(p, buf + len, &tm);
+  buf[len++] = ' ';
+  buf[len++] = 'T';
+  buf[len++] = 'm';
 
-  pdf_doc_add_page_content(format_buffer, len);  /* op: Tm */
+  pdf_out(p, buf, len);  /* op: Tm */
 
-  text_state.ref_x = xpos;
-  text_state.ref_y = ypos;
-  text_state.matrix.slant  = slant;
-  text_state.matrix.extend = extend;
-  text_state.matrix.rotate = rotate;
+  p->text_state.ref_x = xpos;
+  p->text_state.ref_y = ypos;
+  p->text_state.matrix.slant  = slant;
+  p->text_state.matrix.extend = extend;
+  p->text_state.matrix.rotate = rotate;
 }
 
 /*
@@ -575,76 +571,89 @@ dev_set_text_matrix (spt_t xpos, spt_t ypos, double slant, double extend, int ro
  */
 
 static void
-reset_text_state (void)
+reset_text_state (pdf_dev *p)
 {
   /*
    * We need to reset the line matrix to handle slanted fonts.
    */
-  pdf_doc_add_page_content(" BT", 3);  /* op: BT */
+  pdf_out(p, " BT", 3);  /* op: BT */
   /*
    * text_state.matrix is identity at top of page.
    * This sometimes write unnecessary "Tm"s when transition from
    * GRAPHICS_MODE to TEXT_MODE occurs.
    */
-  if (text_state.force_reset ||
-      text_state.matrix.slant  != 0.0 ||
-      text_state.matrix.extend != 1.0 ||
-      ROTATE_TEXT(text_state.matrix.rotate)) {
-    dev_set_text_matrix(0, 0,
-                        text_state.matrix.slant,
-                        text_state.matrix.extend,
-                        text_state.matrix.rotate);
+  if (p->text_state.force_reset ||
+      p->text_state.matrix.slant  != 0.0 ||
+      p->text_state.matrix.extend != 1.0 ||
+      ROTATE_TEXT(p->text_state.matrix.rotate)) {
+    dev_set_text_matrix(p, 0, 0,
+                        p->text_state.matrix.slant,
+                        p->text_state.matrix.extend,
+                        p->text_state.matrix.rotate);
   }
-  text_state.ref_x = 0;
-  text_state.ref_y = 0;
-  text_state.offset   = 0;
-  text_state.force_reset = 0;
+  p->text_state.ref_x = 0;
+  p->text_state.ref_y = 0;
+  p->text_state.offset   = 0;
+  p->text_state.force_reset = 0;
 }
 
 static void
-text_mode (void)
+text_mode (pdf_dev *p)
 {
-  switch (motion_state) {
+  switch (p->motion_state) {
   case TEXT_MODE:
     break;
   case STRING_MODE:
-    pdf_doc_add_page_content(text_state.is_mb ? ">]TJ" : ")]TJ", 4);  /* op: TJ */
+    pdf_out(p, p->text_state.is_mb ? ">]TJ" : ")]TJ", 4);
     break;
   case GRAPHICS_MODE:
-    reset_text_state();
+    reset_text_state(p);
     break;
   }
-  motion_state      = TEXT_MODE;
-  text_state.offset = 0;
+  p->motion_state      = TEXT_MODE;
+  p->text_state.offset = 0;
+}
+
+static void
+dev_graphics_mode (pdf_dev *p)
+{
+  switch (p->motion_state) {
+  case GRAPHICS_MODE:
+    break;
+  case STRING_MODE:
+    pdf_out(p, p->text_state.is_mb ? ">]TJ" : ")]TJ", 4);
+    /* continue */
+  case TEXT_MODE:
+    pdf_out(p, " ET", 3);  /* op: ET */
+    p->text_state.force_reset =  0;
+    p->text_state.font_id     = -1;
+    break;
+  }
+  p->motion_state = GRAPHICS_MODE;
 }
 
 void
-graphics_mode (void)
+pdf_dev_graphics_mode (pdf_doc *d)
 {
-  switch (motion_state) {
-  case GRAPHICS_MODE:
-    break;
-  case STRING_MODE:
-    pdf_doc_add_page_content(text_state.is_mb ? ">]TJ" : ")]TJ", 4);  /* op: TJ */
-    /* continue */
-  case TEXT_MODE:
-    pdf_doc_add_page_content(" ET", 3);  /* op: ET */
-    text_state.force_reset =  0;
-    text_state.font_id     = -1;
-    break;
-  }
-  motion_state = GRAPHICS_MODE;
+  pdf_dev *p;
+
+  ASSERT(d);
+  p = pdf_doc_get_device(d);
+  if (p)
+    dev_graphics_mode(p);
 }
 
 static void
-start_string (spt_t xpos, spt_t ypos, double slant, double extend, int rotate)
+start_string (pdf_dev *p,
+              spt_t xpos, spt_t ypos, double slant, double extend, int rotate)
 {
   spt_t delx, dely, error_delx, error_dely;
   spt_t desired_delx, desired_dely;
   int   len = 0;
+  char *buf = p->format_buffer;
 
-  delx = xpos - text_state.ref_x;
-  dely = ypos - text_state.ref_y;
+  delx = xpos - p->text_state.ref_x;
+  dely = ypos - p->text_state.ref_y;
   /*
    * Precompensating for line transformation matrix.
    *
@@ -701,10 +710,10 @@ start_string (spt_t xpos, spt_t ypos, double slant, double extend, int rotate)
      * We must care about rotation here but not extend/slant...
      * The extend and slant actually is font matrix.
      */
-    format_buffer[len++] = ' ';
-    len += dev_sprint_bp(format_buffer+len, desired_delx, &error_dely);
-    format_buffer[len++] = ' ';
-    len += dev_sprint_bp(format_buffer+len, desired_dely, &error_delx);
+    buf[len++] = ' ';
+    len += dev_sprint_bp(p, buf+len, desired_delx, &error_dely);
+    buf[len++] = ' ';
+    len += dev_sprint_bp(p, buf+len, desired_dely, &error_delx);
     error_delx = -error_delx;
     break;
   case TEXT_WMODE_HV:
@@ -720,10 +729,10 @@ start_string (spt_t xpos, spt_t ypos, double slant, double extend, int rotate)
     /*
      * e = (e_user_y, -e_user_x)
      */
-    format_buffer[len++] = ' ';
-    len += dev_sprint_bp(format_buffer+len, desired_delx, &error_dely);
-    format_buffer[len++] = ' ';
-    len += dev_sprint_bp(format_buffer+len, desired_dely, &error_delx);
+    buf[len++] = ' ';
+    len += dev_sprint_bp(p, buf+len, desired_delx, &error_dely);
+    buf[len++] = ' ';
+    len += dev_sprint_bp(p, buf+len, desired_dely, &error_delx);
     error_dely = -error_dely;
     break;
   case TEXT_WMODE_HH:
@@ -735,10 +744,10 @@ start_string (spt_t xpos, spt_t ypos, double slant, double extend, int rotate)
     desired_delx = (spt_t)((delx - dely*slant)/extend);
     desired_dely = dely;
 
-    format_buffer[len++] = ' ';
-    len += dev_sprint_bp(format_buffer+len, desired_delx, &error_delx);
-    format_buffer[len++] = ' ';
-    len += dev_sprint_bp(format_buffer+len, desired_dely, &error_dely);
+    buf[len++] = ' ';
+    len += dev_sprint_bp(p, buf+len, desired_delx, &error_delx);
+    buf[len++] = ' ';
+    len += dev_sprint_bp(p, buf+len, desired_dely, &error_dely);
     break;
   case TEXT_WMODE_VV:
     /* Vertical font in vertical mode:
@@ -749,10 +758,10 @@ start_string (spt_t xpos, spt_t ypos, double slant, double extend, int rotate)
     desired_delx = delx;
     desired_dely = (spt_t)((dely + delx*slant)/extend);
 
-    format_buffer[len++] = ' ';
-    len += dev_sprint_bp(format_buffer+len, desired_delx, &error_delx);
-    format_buffer[len++] = ' ';
-    len += dev_sprint_bp(format_buffer+len, desired_dely, &error_dely);
+    buf[len++] = ' ';
+    len += dev_sprint_bp(p, buf+len, desired_delx, &error_delx);
+    buf[len++] = ' ';
+    len += dev_sprint_bp(p, buf+len, desired_dely, &error_dely);
     break;
   case TEXT_WMODE_HD:
     /* Horizontal font in down-to-up mode: rot = +90
@@ -764,10 +773,10 @@ start_string (spt_t xpos, spt_t ypos, double slant, double extend, int rotate)
     desired_delx = -(spt_t)(-(dely + delx*slant)/extend);
     desired_dely = -delx;
 
-    format_buffer[len++] = ' ';
-    len += dev_sprint_bp(format_buffer+len, desired_delx, &error_dely);
-    format_buffer[len++] = ' ';
-    len += dev_sprint_bp(format_buffer+len, desired_dely, &error_delx);
+    buf[len++] = ' ';
+    len += dev_sprint_bp(p, buf+len, desired_delx, &error_dely);
+    buf[len++] = ' ';
+    len += dev_sprint_bp(p, buf+len, desired_dely, &error_delx);
     error_delx = -error_delx;
     error_dely = -error_dely;
    break;
@@ -780,48 +789,49 @@ start_string (spt_t xpos, spt_t ypos, double slant, double extend, int rotate)
     desired_delx = -delx;
     desired_dely = -(spt_t)((dely + delx*slant)/extend);
 
-    format_buffer[len++] = ' ';
-    len += dev_sprint_bp(format_buffer+len, desired_delx, &error_delx);
-    format_buffer[len++] = ' ';
-    len += dev_sprint_bp(format_buffer+len, desired_dely, &error_dely);
+    buf[len++] = ' ';
+    len += dev_sprint_bp(p, buf+len, desired_delx, &error_delx);
+    buf[len++] = ' ';
+    len += dev_sprint_bp(p, buf+len, desired_dely, &error_dely);
     error_delx = -error_delx;
     error_dely = -error_dely;
     break;
   }
-  pdf_doc_add_page_content(format_buffer, len);  /* op: */
+  pdf_out(p, buf, len);  /* op: */
   /*
    * dvipdfm wrongly using "TD" in place of "Td".
    * The TD operator set leading, but we are not using T* etc.
    */
-  pdf_doc_add_page_content(text_state.is_mb ? " Td[<" : " Td[(", 5);  /* op: Td */
+  pdf_out(p, p->text_state.is_mb ? " Td[<" : " Td[(", 5);
 
   /* Error correction */
-  text_state.ref_x = xpos - error_delx;
-  text_state.ref_y = ypos - error_dely;
+  p->text_state.ref_x = xpos - error_delx;
+  p->text_state.ref_y = ypos - error_dely;
 
-  text_state.offset   = 0;
+  p->text_state.offset   = 0;
 }
 
 static void
-string_mode (spt_t xpos, spt_t ypos, double slant, double extend, int rotate)
+string_mode (pdf_dev *p,
+             spt_t xpos, spt_t ypos, double slant, double extend, int rotate)
 {
-  switch (motion_state) {
+  switch (p->motion_state) {
   case STRING_MODE:
     break;
   case GRAPHICS_MODE:
-    reset_text_state();
+    reset_text_state(p);
     /* continue */
   case TEXT_MODE:
-    if (text_state.force_reset) {
-      dev_set_text_matrix(xpos, ypos, slant, extend, rotate);
-      pdf_doc_add_page_content(text_state.is_mb ? "[<" : "[(", 2);  /* op: */
-      text_state.force_reset = 0;
+    if (p->text_state.force_reset) {
+      dev_set_text_matrix(p, xpos, ypos, slant, extend, rotate);
+      pdf_out(p, p->text_state.is_mb ? "[<" : "[(", 2);
+      p->text_state.force_reset = 0;
     } else {
-      start_string(xpos, ypos, slant, extend, rotate);
+      start_string(p, xpos, ypos, slant, extend, rotate);
     }
     break;
   }
-  motion_state = STRING_MODE;
+  p->motion_state = STRING_MODE;
 }
 
 /*
@@ -836,45 +846,47 @@ string_mode (spt_t xpos, spt_t ypos, double slant, double extend, int rotate)
  * really a character in that font.
  */
 
-static int
-dev_set_font (int font_id)
+int
+pdf_dev_set_font (pdf_doc *pdf, int font_id)
 {
+  pdf_dev         *p = pdf_doc_get_device(pdf);
   struct dev_font *font;
   struct dev_font *real_font;
-  int    text_rotate;
-  double font_scale;
-  int    len;
-  int    vert_dir, vert_font;
+  int              text_rotate;
+  double           font_scale;
+  int              len;
+  int              vert_dir, vert_font;
+  char            *buf = p->format_buffer;
 
   /* text_mode() must come before text_state.is_mb is changed. */
-  text_mode();
+  text_mode(p);
 
-  font = GET_FONT(font_id);
+  font = GET_FONT(p, font_id);
   ASSERT(font); /* Caller should check font_id. */
 
   if (font->real_font_index >= 0)
-    real_font = GET_FONT(font->real_font_index);
+    real_font = GET_FONT(p, font->real_font_index);
   else
     real_font = font;
 
-  text_state.is_mb = (font->format == PDF_FONTTYPE_COMPOSITE) ? 1 : 0;
+  p->text_state.is_mb = (font->format == PDF_FONTTYPE_COMPOSITE) ? 1 : 0;
 
   vert_font  = font->wmode ? 1 : 0;
-  if (dev_param.autorotate) {
-    vert_dir = text_state.dir_mode;
+  if (p->param.autorotate) {
+    vert_dir = p->text_state.dir_mode;
   } else {
     vert_dir = vert_font;
   }
   text_rotate = (vert_font << 2)|vert_dir;
 
-  if (font->slant  != text_state.matrix.slant  ||
-      font->extend != text_state.matrix.extend ||
-      ANGLE_CHANGES(text_rotate, text_state.matrix.rotate)) {
-    text_state.force_reset = 1;
+  if (font->slant  != p->text_state.matrix.slant  ||
+      font->extend != p->text_state.matrix.extend ||
+      ANGLE_CHANGES(text_rotate, p->text_state.matrix.rotate)) {
+    p->text_state.force_reset = 1;
   }
-  text_state.matrix.slant  = font->slant;
-  text_state.matrix.extend = font->extend;
-  text_state.matrix.rotate = text_rotate;
+  p->text_state.matrix.slant  = font->slant;
+  p->text_state.matrix.extend = font->extend;
+  p->text_state.matrix.rotate = text_rotate;
 
   if (!real_font->resource) {
     real_font->resource   = pdf_get_font_reference(real_font->font_id);
@@ -882,65 +894,47 @@ dev_set_font (int font_id)
   }
 
   if (!real_font->used_on_this_page) {
-    pdf_doc_add_page_resource("Font",
-                              real_font->short_name,
-                              pdf_link_obj(real_font->resource));
+    pdf_doc_add_page_resource(pdf, "Font",
+            real_font->short_name,
+            pdf_link_obj(real_font->resource));
     real_font->used_on_this_page = 1;
   }
 
-  font_scale = (double) font->sptsize * dev_unit.dvi2pts;
-  len  = sprintf(format_buffer, " /%s", real_font->short_name); /* space not necessary. */
-  format_buffer[len++] = ' ';
-  len += p_dtoa(font_scale, MIN(dev_unit.precision+1, DEV_PRECISION_MAX), format_buffer+len);
-  format_buffer[len++] = ' ';
-  format_buffer[len++] = 'T';
-  format_buffer[len++] = 'f';
-  pdf_doc_add_page_content(format_buffer, len);  /* op: Tf */
+  font_scale = (double) font->sptsize * p->unit.dvi2pts;
+  len  = sprintf(buf, " /%s", real_font->short_name); /* space not necessary. */
+  buf[len++] = ' ';
+  len += p_dtoa(font_scale, MIN(p->unit.precision+1, DEV_PRECISION_MAX),
+                buf+len);
+  buf[len++] = ' ';
+  buf[len++] = 'T';
+  buf[len++] = 'f';
+  pdf_out(p, p->format_buffer, len);  /* op: Tf */
 
-  if (font->bold > 0.0 || font->bold != text_state.bold_param) {
+  if (font->bold > 0.0 || font->bold != p->text_state.bold_param) {
     if (font->bold <= 0.0)
-      len = sprintf(format_buffer, " 0 Tr");
+      len = sprintf(buf, " 0 Tr");
     else
-      len = sprintf(format_buffer, " 2 Tr %.6f w", font->bold); /* _FIXME_ */
-    pdf_doc_add_page_content(format_buffer, len);  /* op: Tr w */
+      len = sprintf(buf, " 2 Tr %.6f w", font->bold); /* _FIXME_ */
+    pdf_out(p, buf, len);  /* op: Tr w */
   }
-  text_state.bold_param = font->bold;
+  p->text_state.bold_param = font->bold;
 
-  text_state.font_id    = font_id;
+  p->text_state.font_id    = font_id;
 
   return  0;
 }
 
 
-/* Access text state parameters.
- */
-#if 0
+/* Access text state parameters. */
 int
-pdf_dev_currentfont (void)
+pdf_dev_get_font_wmode (pdf_doc *d, int font_id)
 {
-  return text_state.font_id;
-}
-
-double
-pdf_dev_get_font_ptsize (int font_id)
-{
+  pdf_dev         *p = pdf_doc_get_device(d);
   struct dev_font *font;
 
-  font = GET_FONT(font_id);
-  if (font) {
-    return font->sptsize * dev_unit.dvi2pts;
-  }
+  ASSERT(p);
 
-  return 1.0;
-}
-#endif
-
-int
-pdf_dev_get_font_wmode (int font_id)
-{
-  struct dev_font *font;
-
-  font = GET_FONT(font_id);
+  font = GET_FONT(p, font_id);
   if (font) {
     return font->wmode;
   }
@@ -948,26 +942,30 @@ pdf_dev_get_font_wmode (int font_id)
   return 0;
 }
 
-static unsigned char sbuf0[FORMAT_BUF_SIZE];
-static unsigned char sbuf1[FORMAT_BUF_SIZE];
-
+static unsigned char buf1[1024], buf2[1024]; /* FIXME */
 static int
-handle_multibyte_string (struct dev_font *font,
+handle_multibyte_string (pdf_dev *p, struct dev_font *font,
                          const unsigned char **str_ptr, int *str_len, int ctype)
 {
-  const unsigned char *p;
+  const unsigned char *sp;
   int            i, length;
 
-  p      = *str_ptr;
+  sp     = *str_ptr;
   length = *str_len;
 
   if (ctype == -1 && font->cff_charsets) { /* freetype glyph indexes */
     /* Convert freetype glyph indexes to CID. */
-    const unsigned char *inbuf = p;
-    unsigned char *outbuf = sbuf0;
+    const unsigned char *inbuf  = sp;
+    unsigned char       *outbuf;
+
+    if (length * 2 > 1024) {
+      WARN("String length too large...");
+      return -1;
+    }
+    outbuf = buf1;
     for (i = 0; i < length; i += 2) {
-      unsigned int gid;
-      gid = *inbuf++ << 8;
+      uint16_t  gid;
+      gid  = *inbuf++ << 8;
       gid += *inbuf++;
 
       gid = cff_charsets_lookup_cid(font->cff_charsets, gid);
@@ -976,66 +974,68 @@ handle_multibyte_string (struct dev_font *font,
       *outbuf++ = gid & 0xff;
     }
 
-    p = sbuf0;
-    length = outbuf - sbuf0;
+    sp = buf1;
+    length = outbuf - buf1;
   }
   /* _FIXME_ */
   else if (font->is_unicode) { /* UCS-4 */
     if (ctype == 1) {
-      if (length * 4 >= FORMAT_BUF_SIZE) {
-        WARN("Too long string...");
+      if (length * 4 > 1024) {
+        WARN("String length too large...");
         return -1;
       }
       for (i = 0; i < length; i++) {
-        sbuf1[i*4  ] = font->ucs_group;
-        sbuf1[i*4+1] = font->ucs_plane;
-        sbuf1[i*4+2] = '\0';
-        sbuf1[i*4+3] = p[i];
+        buf2[i*4  ] = font->ucs_group;
+        buf2[i*4+1] = font->ucs_plane;
+        buf2[i*4+2] = '\0';
+        buf2[i*4+3] = sp[i];
       }
       length *= 4;
     } else if (ctype == 2) {
       int len = 0;
-
-      if (length * 2 >= FORMAT_BUF_SIZE) {
-        WARN("Too long string...");
+      if (length * 2 > 1024) {
+        WARN("String length too large...");
         return -1;
       }
       for (i = 0; i < length; i += 2, len += 4) {
-        sbuf1[len  ] = font->ucs_group;
-        if ((p[i] & 0xf8) == 0xd8) {
-          int c;
+        buf2[len  ] = font->ucs_group;
+        /* FIXME: Please put them into unicode.c */
+        if ((sp[i] & 0xf8) == 0xd8) {
+          int  c;
           /* Check for valid surrogate pair.  */
-          if ((p[i] & 0xfc) != 0xd8 || i + 2 >= length || (p[i+2] & 0xfc) != 0xdc) {
-            WARN("Invalid surrogate p[%d]=%02X...", i, p[i]);
+          if ((sp[i] & 0xfc) != 0xd8 || i + 2 >= length ||
+              (sp[i+2] & 0xfc) != 0xdc) {
+            WARN("Invalid surrogate p[%d]=%02X...", i, sp[i]);
             return -1;
           }
-          c = (((p[i] & 0x03) << 10) | (p[i+1] << 2) | (p[i+2] & 0x03)) + 0x100;
-          sbuf1[len+1] = (c >> 8) & 0xff;
-          sbuf1[len+2] = c & 0xff;
+          c = (((sp[i] & 0x03) << 10) | (sp[i+1] << 2) | (sp[i+2] & 0x03))
+                + 0x100;
+          buf2[len+1] = (c >> 8) & 0xff;
+          buf2[len+2] =  c & 0xff;
           i += 2;
         } else {
-          sbuf1[len+1] = font->ucs_plane;
-          sbuf1[len+2] = p[i];
+          buf2[len+1] = font->ucs_plane;
+          buf2[len+2] = sp[i];
         }
-        sbuf1[len+3] = p[i+1];
+        buf2[len+3] = sp[i+1];
       }
       length = len;
     }
-    p = sbuf1;
+    sp = buf2;
   } else if (ctype == 1 && font->mapc >= 0) {
     /* Omega workaround...
      * Translate single-byte chars to double byte code space.
      */
-    if (length * 2 >= FORMAT_BUF_SIZE) {
-      WARN("Too long string...");
+    if (length * 2 > 1024) {
+      WARN("String length too large...");
       return -1;
     }
     for (i = 0; i < length; i++) {
-      sbuf1[i*2  ] = (font->mapc & 0xff);
-      sbuf1[i*2+1] = p[i];
+      buf2[i*2  ] = (font->mapc & 0xff);
+      buf2[i*2+1] = sp[i];
     }
     length *= 2;
-    p       = sbuf1;
+    sp      = buf2;
   }
 
   /*
@@ -1046,14 +1046,29 @@ handle_multibyte_string (struct dev_font *font,
   if (ctype != -1 && font->enc_id >= 0) {
     const unsigned char *inbuf;
     unsigned char *outbuf;
-    int            inbytesleft, outbytesleft;
+    int            outbufsize = 0;
+    int            inbytesleft = 0, outbytesleft = 0;
     CMap          *cmap;
 
     cmap         = CMap_cache_get(font->enc_id);
-    inbuf        = p;
-    outbuf       = sbuf0;
+    if (cmap) {
+      int  n, inbytesmin, outbytesmax;
+      inbytesmin   = CMap_get_profile(cmap, CMAP_PROF_TYPE_INBYTES_MIN);
+      outbytesmax  = CMap_get_profile(cmap, CMAP_PROF_TYPE_OUTBYTES_MAX);
+      ASSERT(inbytesmin > 0);
+      n = length / inbytesmin;
+      outbufsize = n * outbytesmax;
+    } else {
+      return -1;
+    }
+    if (outbufsize > 1024) {
+      WARN("String length too large...");
+      return -1;
+    }
+    inbuf        = sp;
+    outbuf       = buf1;
     inbytesleft  = length;
-    outbytesleft = FORMAT_BUF_SIZE;
+    outbytesleft = outbufsize;
 
     CMap_decode(cmap,
                 &inbuf, &inbytesleft, &outbuf, &outbytesleft);
@@ -1061,11 +1076,11 @@ handle_multibyte_string (struct dev_font *font,
       WARN("CMap conversion failed. (%d bytes remains)", inbytesleft);
       return -1;
     }
-    length  = FORMAT_BUF_SIZE - outbytesleft;
-    p       = sbuf0;
+    length  = outbufsize - outbytesleft;
+    sp      = buf1;
   }
 
-  *str_ptr = p;
+  *str_ptr = sp;
   *str_len = length;
   return 0;
 }
@@ -1083,46 +1098,53 @@ handle_multibyte_string (struct dev_font *font,
  * selectfont(font_name, point_size) and show_string(pos, string)
  */
 void
-pdf_dev_set_string (spt_t xpos, spt_t ypos,
-                    const void *instr_ptr, int instr_len,
-                    spt_t width,
-                    int   font_id, int ctype)
+pdf_dev_set_string (pdf_doc    *pdf,
+                    spt_t       xpos,
+                    spt_t       ypos,
+                    const void *instr_ptr,
+                    int         instr_len,
+                    spt_t       width,
+                    int         font_id,
+                    int         ctype)
 {
-  struct dev_font *font;
-  struct dev_font *real_font;
+  pdf_dev             *p = pdf_doc_get_device(pdf);
+  struct dev_font     *font;
+  struct dev_font     *real_font;
   const unsigned char *str_ptr; /* Pointer to the reencoded string. */
-  int              length, i, len = 0;
-  spt_t            kern, delh, delv;
-  spt_t            text_xorigin;
-  spt_t            text_yorigin;
+  int                  length, i, len = 0;
+  spt_t                kern, delh, delv;
+  spt_t                text_xorigin;
+  spt_t                text_yorigin;
 
-  if (font_id < 0 || font_id >= num_dev_fonts) {
-    ERROR("Invalid font: %d (%d)", font_id, num_dev_fonts);
+  ASSERT(p);
+
+  if (font_id < 0 || font_id >= p->num_fonts) {
+    ERROR("Invalid font: %d (%d)", font_id, p->num_fonts);
     return;
   }
-  if (font_id != text_state.font_id) {
-    dev_set_font(font_id);
+  if (font_id != p->text_state.font_id) {
+    pdf_dev_set_font(pdf, font_id);
   }
 
-  font = CURRENTFONT();
+  font = CURRENTFONT(p);
   if (!font) {
     ERROR("Currentfont not set.");
     return;
   }
 
   if (font->real_font_index >= 0)
-    real_font = GET_FONT(font->real_font_index);
+    real_font = GET_FONT(p, font->real_font_index);
   else
     real_font = font;
 
-  text_xorigin = text_state.ref_x;
-  text_yorigin = text_state.ref_y;
+  text_xorigin = p->text_state.ref_x;
+  text_yorigin = p->text_state.ref_y;
 
   str_ptr = instr_ptr;
   length  = instr_len;
 
   if (font->format == PDF_FONTTYPE_COMPOSITE) {
-    if (handle_multibyte_string(font, &str_ptr, &length, ctype) < 0) {
+    if (handle_multibyte_string(p, font, &str_ptr, &length, ctype) < 0) {
       ERROR("Error in converting input string...");
       return;
     }
@@ -1144,27 +1166,27 @@ pdf_dev_set_string (spt_t xpos, spt_t ypos,
    *
    * Positive kern means kerning (reduce excess white space).
    *
-   * The following formula is of the form a*x/b where a, x, and b are signed long
-   * integers.  Since in integer arithmetic (a*x) could overflow and a*(x/b) would
-   * not be accurate, we use floating point arithmetic rather than trying to do
-   * this all with integer arithmetic.
+   * The following formula is of the form a*x/b where a, x, and b are signed
+   * long integers.  Since in integer arithmetic (a*x) could overflow and
+   * a*(x/b) would not be accurate, we use floating point arithmetic rather than
+   * trying to do this all with integer arithmetic.
    *
    * 1000.0 / (font->extend * font->sptsize) is caluculated each times...
    * Is accuracy really a matter? Character widths are always rounded to integer
    * (in 1000 units per em) but dvipdfmx does not take into account of this...
    */
 
-  if (text_state.dir_mode==0) {
+  if (p->text_state.dir_mode == 0) {
     /* Left-to-right */
-    delh = text_xorigin + text_state.offset - xpos;
+    delh = text_xorigin + p->text_state.offset - xpos;
     delv = ypos - text_yorigin;
-  } else if (text_state.dir_mode==1) {
+  } else if (p->text_state.dir_mode == 1) {
     /* Top-to-bottom */
-    delh = ypos - text_yorigin + text_state.offset;
+    delh = ypos - text_yorigin + p->text_state.offset;
     delv = xpos - text_xorigin;
   } else {
     /* Bottom-to-top */
-    delh = ypos + text_yorigin + text_state.offset;
+    delh = ypos + text_yorigin + p->text_state.offset;
     delv = xpos + text_xorigin;
   }
 
@@ -1178,10 +1200,10 @@ pdf_dev_set_string (spt_t xpos, spt_t ypos,
    */
 #define WORD_SPACE_MAX(f) (spt_t) (3.0 * (f)->extend * (f)->sptsize)
 
-  if (text_state.force_reset ||
-      labs(delv) > dev_unit.min_bp_val ||
+  if (p->text_state.force_reset ||
+      labs(delv) > p->unit.min_bp_val ||
       labs(delh) > WORD_SPACE_MAX(font)) {
-    text_mode();
+    text_mode(p);
     kern = 0;
   } else {
     kern = (spt_t) (1000.0 / font->extend * delh / font->sptsize);
@@ -1191,97 +1213,125 @@ pdf_dev_set_string (spt_t xpos, spt_t ypos,
    * single text block. There are point_size/1000 rounding error per character.
    * If you really care about accuracy, you should compensate this here too.
    */
-  if (motion_state != STRING_MODE)
-    string_mode(xpos, ypos,
-                font->slant, font->extend, text_state.matrix.rotate);
+  if (p->motion_state != STRING_MODE)
+    string_mode(p, xpos, ypos,
+                font->slant, font->extend, p->text_state.matrix.rotate);
   else if (kern != 0) {
     /*
      * Same issues as earlier. Use floating point for simplicity.
      * This routine needs to be fast, so we don't call sprintf() or strcpy().
      */
-    text_state.offset -=
+    p->text_state.offset -=
       (spt_t) (kern * font->extend * (font->sptsize / 1000.0));
-    format_buffer[len++] = text_state.is_mb ? '>' : ')';
+    p->format_buffer[len++] = p->text_state.is_mb ? '>' : ')';
     if (font->wmode)
-      len += p_itoa(-kern, format_buffer + len);
+      len += p_itoa(-kern, p->format_buffer + len);
     else {
-      len += p_itoa( kern, format_buffer + len);
+      len += p_itoa( kern, p->format_buffer + len);
     }
-    format_buffer[len++] = text_state.is_mb ? '<' : '(';
-    pdf_doc_add_page_content(format_buffer, len);  /* op: */
+    p->format_buffer[len++] = p->text_state.is_mb ? '<' : '(';
+    pdf_out(p, p->format_buffer, len);  /* op: */
     len = 0;
   }
 
-  if (text_state.is_mb) {
-    if (FORMAT_BUF_SIZE - len < 2 * length)
-      ERROR("Buffer overflow...");
+  if (p->text_state.is_mb) {
+    if (len + 2*length > 4096) {
+      ERROR("String too long...");
+    }
     for (i = 0; i < length; i++) {
       int first, second;
 
       first  = (str_ptr[i] >> 4) & 0x0f;
       second = str_ptr[i] & 0x0f;
-      format_buffer[len++] = ((first >= 10)  ? first  + 'W' : first  + '0');
-      format_buffer[len++] = ((second >= 10) ? second + 'W' : second + '0');
+      p->format_buffer[len++] = ((first >= 10)  ? first  + 'W' : first  + '0');
+      p->format_buffer[len++] = ((second >= 10) ? second + 'W' : second + '0');
     }
   } else {
-    len += pdfobj_escape_str(format_buffer + len,
-                             FORMAT_BUF_SIZE - len, str_ptr, length);
+    len += pdfobj_escape_str(p->format_buffer + len,
+                             4096 - len, str_ptr, length);
   }
   /* I think if you really care about speed, you should avoid memcopy here. */
-  pdf_doc_add_page_content(format_buffer, len);  /* op: */
+  pdf_out(p, p->format_buffer, len);  /* op: */
 
-  text_state.offset += width;
+  p->text_state.offset += width;
 }
 
-void
-pdf_init_device (double dvi2pts, int precision, int black_and_white)
+pdf_dev *
+pdf_init_device (pdf_doc *pdf,
+                 double dvi2pts, int precision, int black_and_white)
 {
+  pdf_dev  *p;
+
+  p = NEW(1, pdf_dev);
+
+  p->pdf                = pdf;
+  p->motion_state       = GRAPHICS_MODE;
+  p->unit.dvi2pts       = 0.0;
+  p->unit.min_bp_val    = 658;
+  p->unit.precision     = 2;
+  p->param.autorotate   = 1;
+  p->param.colormode    = 1;
+  p->text_state.font_id = -1;
+  p->text_state.offset  = 0;
+  p->text_state.matrix.slant  = 0;
+  p->text_state.matrix.extend = 0;
+  p->text_state.matrix.rotate = 0;
+  p->text_state.bold_param  = 0;
+  p->text_state.dir_mode    = 0;
+  p->text_state.force_reset = 0;
+  p->text_state.is_mb       = 0;
+
   if (precision < 0 ||
       precision > DEV_PRECISION_MAX)
     WARN("Number of decimal digits out of range [0-%d].",
          DEV_PRECISION_MAX);
 
   if (precision < 0) {
-    dev_unit.precision  = 0;
+    p->unit.precision  = 0;
   } else if (precision > DEV_PRECISION_MAX) {
-    dev_unit.precision  = DEV_PRECISION_MAX;
+    p->unit.precision  = DEV_PRECISION_MAX;
   } else {
-    dev_unit.precision  = precision;
+    p->unit.precision  = precision;
   }
-  dev_unit.dvi2pts      = dvi2pts;
-  dev_unit.min_bp_val   = (int) ROUND(1.0/(ten_pow[dev_unit.precision]*dvi2pts), 1);
-  if (dev_unit.min_bp_val < 0)
-    dev_unit.min_bp_val = -dev_unit.min_bp_val;
+  p->unit.dvi2pts      = dvi2pts;
+  p->unit.min_bp_val   =
+    (int) ROUND(1.0/(ten_pow[p->unit.precision]*dvi2pts), 1);
+  if (p->unit.min_bp_val < 0)
+    p->unit.min_bp_val = -p->unit.min_bp_val;
 
-  dev_param.colormode = (black_and_white ? 0 : 1);
+  p->param.colormode = (black_and_white ? 0 : 1);
 
-  graphics_mode();
+  dev_graphics_mode(p);
   pdf_color_clear_stack();
   pdf_dev_init_gstates();
 
-  num_dev_fonts  = max_dev_fonts = 0;
-  dev_fonts      = NULL;
+  p->num_fonts  = p->max_fonts = 0;
+  p->num_phys_fonts = 0;
+  p->fonts      = NULL;
+
+  return p;
 }
 
 void
-pdf_close_device (void)
+pdf_close_device (pdf_dev *p)
 {
-  if (dev_fonts) {
+  if (p->fonts) {
     int    i;
 
-    for (i = 0; i < num_dev_fonts; i++) {
-      if (dev_fonts[i].tex_name)
-        RELEASE(dev_fonts[i].tex_name);
-      if (dev_fonts[i].resource)
-        pdf_release_obj(dev_fonts[i].resource);
-      dev_fonts[i].tex_name = NULL;
-      dev_fonts[i].resource = NULL;
-      dev_fonts[i].cff_charsets = NULL;
+    for (i = 0; i < p->num_fonts; i++) {
+      if (p->fonts[i].tex_name)
+        RELEASE(p->fonts[i].tex_name);
+      if (p->fonts[i].resource)
+        pdf_release_obj(p->fonts[i].resource);
+      p->fonts[i].tex_name = NULL;
+      p->fonts[i].resource = NULL;
+      p->fonts[i].cff_charsets = NULL;
     }
-    RELEASE(dev_fonts);
+    RELEASE(p->fonts);
+    p->fonts = NULL;
   }
   pdf_dev_clear_gstates(); /* Manually clean gs_stack */
-  dpx_stack_delete(&gs_stack, NULL);
+  /* dpx_stack_delete(p->gstates, NULL); */
 }
 
 /*
@@ -1290,80 +1340,71 @@ pdf_close_device (void)
  * as the font stuff.
  */
 void
-pdf_dev_reset_fonts (int newpage)
+pdf_dev_reset_fonts (pdf_doc *d, int newpage)
 {
-  int  i;
+  pdf_dev *p = pdf_doc_get_device(d);
+  int      i;
 
-  for (i = 0; i < num_dev_fonts; i++) {
-    dev_fonts[i].used_on_this_page = 0;
+  for (i = 0; i < p->num_fonts; i++) {
+    p->fonts[i].used_on_this_page = 0;
   }
 
-  text_state.font_id       = -1;
+  p->text_state.font_id       = -1;
 
-  text_state.matrix.slant  = 0.0;
-  text_state.matrix.extend = 1.0;
-  text_state.matrix.rotate = TEXT_WMODE_HH;
+  p->text_state.matrix.slant  = 0.0;
+  p->text_state.matrix.extend = 1.0;
+  p->text_state.matrix.rotate = TEXT_WMODE_HH;
 
   if (newpage)
-    text_state.bold_param  = 0.0;
+    p->text_state.bold_param  = 0.0;
 
-  text_state.is_mb         = 0;
+  p->text_state.is_mb         = 0;
 }
 
 void
-pdf_dev_reset_color (int force)
+pdf_dev_reset_color (pdf_doc *pdf, int force)
 {
   pdf_color *sc, *fc;
 
   pdf_color_get_current(&sc, &fc);
-  pdf_dev_set_color(sc,    0, force);
-  pdf_dev_set_color(fc, 0x20, force);
-}
-
-#if 0
-/* Not working */
-void
-pdf_dev_set_origin (double phys_x, double phys_y)
-{
-  pdf_tmatrix M0, M1;
-
-  pdf_dev_currentmatrix(&M0);
-  pdf_dev_currentmatrix(&M1);
-  pdf_invertmatrix(&M1);
-  M0.e = phys_x; M0.f = phys_y;
-  pdf_concatmatrix(&M1, &M0);
-
-  pdf_dev_concat(&M1);
-}
-#endif
-
-void
-pdf_dev_bop (const pdf_tmatrix *M)
-{
-  graphics_mode();
-
-  text_state.force_reset  = 0;
-
-  pdf_dev_gsave();
-  pdf_dev_concat(M);
-
-  pdf_dev_reset_fonts(1);
-  pdf_dev_reset_color(0);
+  pdf_dev_set_color(pdf, sc,    0, force);
+  pdf_dev_set_color(pdf, fc, 0x20, force);
 }
 
 void
-pdf_dev_eop (void)
+pdf_dev_bop (pdf_doc *d, const pdf_tmatrix *M)
 {
-  int  depth;
+  pdf_dev *p = pdf_doc_get_device(d);
 
-  graphics_mode();
+  ASSERT(p);
 
-  depth = pdf_dev_current_depth();
+  dev_graphics_mode(p);
+
+  p->text_state.force_reset  = 0;
+
+  pdf_dev_gsave(d);
+  pdf_dev_concat(d, M);
+
+  pdf_dev_reset_fonts(d, 1);
+  pdf_dev_reset_color(d, 0);
+}
+
+void
+pdf_dev_eop (pdf_doc *d)
+{
+  pdf_dev *p = pdf_doc_get_device(d);
+  int      depth;
+
+  ASSERT(p);
+
+  dev_graphics_mode(p);
+
+  depth = pdf_dev_current_depth(d);
   if (depth != 1) {
     WARN("Unbalenced q/Q nesting...: %d", depth);
-    pdf_dev_grestore_to(0);
+    pdf_dev_grestore_to(d, 0);
   } else {
-    pdf_dev_grestore();
+    pdf_dev_grestore(d);
   }
 }
 
@@ -1415,11 +1456,14 @@ print_fontmap (const char *font_name, fontmap_rec *mrec)
  * of the same font at different sizes.
  */
 int
-pdf_dev_locate_font (const char *font_name, spt_t ptsize)
+pdf_dev_locate_font (pdf_doc *d, const char *font_name, spt_t ptsize)
 {
+  pdf_dev         *p = pdf_doc_get_device(d);
   int              i;
   fontmap_rec     *mrec;
   struct dev_font *font;
+
+  ASSERT(p);
 
   if (!font_name)
     return  -1;
@@ -1429,11 +1473,11 @@ pdf_dev_locate_font (const char *font_name, spt_t ptsize)
     return -1;
   }
 
-  for (i = 0; i < num_dev_fonts; i++) {
-    if (strcmp(font_name, dev_fonts[i].tex_name) == 0) {
-      if (ptsize == dev_fonts[i].sptsize)
+  for (i = 0; i < p->num_fonts; i++) {
+    if (strcmp(font_name, p->fonts[i].tex_name) == 0) {
+      if (ptsize == p->fonts[i].sptsize)
         return i; /* found a dev_font that matches the request */
-      if (dev_fonts[i].format != PDF_FONTTYPE_BITMAP)
+      if (p->fonts[i].format != PDF_FONTTYPE_BITMAP)
         break; /* new dev_font will share pdf resource with /i/ */
     }
   }
@@ -1442,12 +1486,12 @@ pdf_dev_locate_font (const char *font_name, spt_t ptsize)
    * Make sure we have room for a new one, even though we may not
    * actually create one.
    */
-  if (num_dev_fonts >= max_dev_fonts) {
-    max_dev_fonts += 16;
-    dev_fonts      = RENEW(dev_fonts, max_dev_fonts, struct dev_font);
+  if (p->num_fonts >= p->max_fonts) {
+    p->max_fonts += 16;
+    p->fonts      = RENEW(p->fonts, p->max_fonts, struct dev_font);
   }
 
-  font = &dev_fonts[num_dev_fonts];
+  font = &(p->fonts[p->num_fonts]);
 
   /* New font */
   mrec = pdf_lookup_fontmap_record(font_name);
@@ -1455,7 +1499,8 @@ pdf_dev_locate_font (const char *font_name, spt_t ptsize)
   if (verbose > 1)
     print_fontmap(font_name, mrec);
 
-  font->font_id = pdf_font_findresource(font_name, ptsize * dev_unit.dvi2pts, mrec);
+  font->font_id = pdf_font_findresource(font_name,
+                                        ptsize * p->unit.dvi2pts, mrec);
   if (font->font_id < 0)
     return  -1;
 
@@ -1463,15 +1508,15 @@ pdf_dev_locate_font (const char *font_name, spt_t ptsize)
     font->cff_charsets = mrec->opt.cff_charsets;
 
   /* We found device font here. */
-  if (i < num_dev_fonts) {
+  if (i < p->num_fonts) {
     font->real_font_index = i;
-    strcpy(font->short_name, dev_fonts[i].short_name);
+    strcpy(font->short_name, p->fonts[i].short_name);
   }
   else {
     font->real_font_index = -1;
     font->short_name[0] = 'F';
-    p_itoa(num_phys_fonts + 1, &font->short_name[1]); /* NULL terminated here */
-    num_phys_fonts++;
+    p_itoa(p->num_phys_fonts + 1, &font->short_name[1]);
+    p->num_phys_fonts++;
   }
 
   font->used_on_this_page = 0;
@@ -1530,33 +1575,33 @@ pdf_dev_locate_font (const char *font_name, spt_t ptsize)
     }
   }
 
-  return  num_dev_fonts++;
+  return  p->num_fonts++;
 }
 
 
 /* This does not remember current stroking width. */
 static int
-dev_sprint_line (char *buf, spt_t width,
+dev_sprint_line (pdf_dev *p, char *buf, spt_t width,
                  spt_t p0_x, spt_t p0_y, spt_t p1_x, spt_t p1_y)
 {
   int    len = 0;
   double w;
 
-  w = width * dev_unit.dvi2pts;
+  w = width * p->unit.dvi2pts;
 
-  len += p_dtoa(w, MIN(dev_unit.precision+1, DEV_PRECISION_MAX), buf+len);
+  len += p_dtoa(w, MIN(p->unit.precision+1, DEV_PRECISION_MAX), buf+len);
   buf[len++] = ' ';
   buf[len++] = 'w';
   buf[len++] = ' ';
-  len += dev_sprint_bp(buf+len, p0_x, NULL);
+  len += dev_sprint_bp(p, buf+len, p0_x, NULL);
   buf[len++] = ' ';
-  len += dev_sprint_bp(buf+len, p0_y, NULL);
+  len += dev_sprint_bp(p, buf+len, p0_y, NULL);
   buf[len++] = ' ';
   buf[len++] = 'm';
   buf[len++] = ' ';
-  len += dev_sprint_bp(buf+len, p1_x, NULL);
+  len += dev_sprint_bp(p, buf+len, p1_x, NULL);
   buf[len++] = ' ';
-  len += dev_sprint_bp(buf+len, p1_y, NULL);
+  len += dev_sprint_bp(p, buf+len, p1_y, NULL);
   buf[len++] = ' ';
   buf[len++] = 'l';
   buf[len++] = ' ';
@@ -1568,32 +1613,34 @@ dev_sprint_line (char *buf, spt_t width,
 /* Not optimized. */
 #define PDF_LINE_THICKNESS_MAX 5.0
 void
-pdf_dev_set_rule (spt_t xpos, spt_t ypos, spt_t width, spt_t height)
+pdf_dev_set_rule (pdf_doc *d, spt_t xpos, spt_t ypos, spt_t width, spt_t height)
 {
-  int    len = 0;
-  double width_in_bp;
+  pdf_dev       *p = pdf_doc_get_device(d);
+  int            len = 0;
+  double         width_in_bp;
+  char          *buf = p->format_buffer;
 
-  graphics_mode();
+  dev_graphics_mode(p);
 
-  format_buffer[len++] = ' ';
-  format_buffer[len++] = 'q';
-  format_buffer[len++] = ' ';
+  buf[len++] = ' ';
+  buf[len++] = 'q';
+  buf[len++] = ' ';
   /* Don't use too thick line. */
-  width_in_bp = ((width < height) ? width : height) * dev_unit.dvi2pts;
+  width_in_bp = ((width < height) ? width : height) * p->unit.dvi2pts;
   if (width_in_bp < 0.0 || /* Shouldn't happen */
       width_in_bp > PDF_LINE_THICKNESS_MAX) {
     pdf_rect rect;
 
-    rect.llx =  dev_unit.dvi2pts * xpos;
-    rect.lly =  dev_unit.dvi2pts * ypos;
-    rect.urx =  dev_unit.dvi2pts * width;
-    rect.ury =  dev_unit.dvi2pts * height;
-    len += pdf_sprint_rect(format_buffer+len, &rect);
-    format_buffer[len++] = ' ';
-    format_buffer[len++] = 'r';
-    format_buffer[len++] = 'e';
-    format_buffer[len++] = ' ';
-    format_buffer[len++] = 'f';
+    rect.llx =  p->unit.dvi2pts * xpos;
+    rect.lly =  p->unit.dvi2pts * ypos;
+    rect.urx =  p->unit.dvi2pts * width;
+    rect.ury =  p->unit.dvi2pts * height;
+    len += pdf_dev_sprint_rect(p, p->format_buffer+len, &rect);
+    buf[len++] = ' ';
+    buf[len++] = 'r';
+    buf[len++] = 'e';
+    buf[len++] = ' ';
+    buf[len++] = 'f';
   } else {
     if (width > height) {
       /* NOTE:
@@ -1601,22 +1648,24 @@ pdf_dev_set_rule (spt_t xpos, spt_t ypos, spt_t width, spt_t height)
        *  device resolution. See, PDF Reference Manual 4th ed., sec. 4.3.2,
        *  "Details of Graphics State Parameters", p. 185.
        */
-      if (height < dev_unit.min_bp_val) {
+      if (height < p->unit.min_bp_val) {
         WARN("Too thin line: height=%ld (%g bp)", height, width_in_bp);
         WARN("Please consider using \"-d\" option.");
       }
-      len += dev_sprint_line(format_buffer+len,
+      len += dev_sprint_line(p,
+                             buf + len,
                              height,
                              xpos,
                              ypos + height/2,
                              xpos + width,
                              ypos + height/2);
     } else {
-      if (width < dev_unit.min_bp_val) {
+      if (width < p->unit.min_bp_val) {
         WARN("Too thin line: width=%ld (%g bp)", width, width_in_bp);
         WARN("Please consider using \"-d\" option.");
       }
-      len += dev_sprint_line(format_buffer+len,
+      len += dev_sprint_line(p,
+                             buf + len,
                              width,
                              xpos + width/2,
                              ypos,
@@ -1624,27 +1673,31 @@ pdf_dev_set_rule (spt_t xpos, spt_t ypos, spt_t width, spt_t height)
                              ypos + height);
     }
   }
-  format_buffer[len++] = ' ';
-  format_buffer[len++] = 'Q';
-  pdf_doc_add_page_content(format_buffer, len);  /* op: q re f Q */
+  buf[len++] = ' ';
+  buf[len++] = 'Q';
+  pdf_out(p, buf, len);  /* op: q re f Q */
+
 }
 
 /* Rectangle in device space coordinate. */
 void
-pdf_dev_set_rect (pdf_rect *rect,
+pdf_dev_set_rect (pdf_doc *d, pdf_rect *rect,
                   spt_t x_user, spt_t y_user,
                   spt_t width,  spt_t height, spt_t depth)
 {
+  pdf_dev    *p = pdf_doc_get_device(d);
   double      dev_x, dev_y;
   pdf_coord   p0, p1, p2, p3;
   double      min_x, min_y, max_x, max_y;
 
-  dev_x = x_user * dev_unit.dvi2pts;
-  dev_y = y_user * dev_unit.dvi2pts;
-  if (text_state.dir_mode) {
-    p0.x = dev_x - dev_unit.dvi2pts * depth;
-    p0.y = dev_y - dev_unit.dvi2pts * width;
-    p1.x = dev_x + dev_unit.dvi2pts * height;
+  ASSERT(p);
+
+  dev_x = x_user * p->unit.dvi2pts;
+  dev_y = y_user * p->unit.dvi2pts;
+  if (p->text_state.dir_mode) {
+    p0.x = dev_x - p->unit.dvi2pts * depth;
+    p0.y = dev_y - p->unit.dvi2pts * width;
+    p1.x = dev_x + p->unit.dvi2pts * height;
     p1.y = p0.y;
     p2.x = p1.x;
     p2.y = dev_y;
@@ -1652,19 +1705,19 @@ pdf_dev_set_rect (pdf_rect *rect,
     p3.y = p2.y;
   } else {
     p0.x = dev_x;
-    p0.y = dev_y - dev_unit.dvi2pts * depth;
-    p1.x = dev_x + dev_unit.dvi2pts * width;
+    p0.y = dev_y - p->unit.dvi2pts * depth;
+    p1.x = dev_x + p->unit.dvi2pts * width;
     p1.y = p0.y;
     p2.x = p1.x;
-    p2.y = dev_y + dev_unit.dvi2pts * height;
+    p2.y = dev_y + p->unit.dvi2pts * height;
     p3.x = p0.x;
     p3.y = p2.y;
   }
 
-  pdf_dev_transform(&p0, NULL); /* currentmatrix */
-  pdf_dev_transform(&p1, NULL);
-  pdf_dev_transform(&p2, NULL);
-  pdf_dev_transform(&p3, NULL);
+  pdf_dev_transform(d, &p0, NULL); /* currentmatrix */
+  pdf_dev_transform(d, &p1, NULL);
+  pdf_dev_transform(d, &p2, NULL);
+  pdf_dev_transform(d, &p3, NULL);
 
   min_x = MIN(p0.x , p1.x);
   min_x = MIN(min_x, p2.x);
@@ -1691,22 +1744,25 @@ pdf_dev_set_rect (pdf_rect *rect,
 }
 
 int
-pdf_dev_get_dirmode (void)
+pdf_dev_get_dirmode (pdf_doc *d)
 {
-  return text_state.dir_mode;
+  pdf_dev *p = pdf_doc_get_device(d);
+
+  return (p ? p->text_state.dir_mode : 0);
 }
 
 void
-pdf_dev_set_dirmode (int text_dir)
+pdf_dev_set_dirmode (pdf_doc *d, int text_dir)
 {
+  pdf_dev         *p = pdf_doc_get_device(d);
   struct dev_font *font;
-  int text_rotate;
-  int vert_dir, vert_font;
+  int              text_rotate;
+  int              vert_dir, vert_font;
 
-  font = CURRENTFONT();
+  font = CURRENTFONT(p);
 
   vert_font = (font && font->wmode) ? 1 : 0;
-  if (dev_param.autorotate) {
+  if (p->param.autorotate) {
     vert_dir = text_dir;
   } else {
     vert_dir = vert_font;
@@ -1714,48 +1770,52 @@ pdf_dev_set_dirmode (int text_dir)
   text_rotate = (vert_font << 2)|vert_dir;
 
   if (font &&
-      ANGLE_CHANGES(text_rotate, text_state.matrix.rotate)) {
-    text_state.force_reset = 1;
+      ANGLE_CHANGES(text_rotate, p->text_state.matrix.rotate)) {
+    p->text_state.force_reset = 1;
   }
 
-  text_state.matrix.rotate = text_rotate;
-  text_state.dir_mode      = text_dir;
+  p->text_state.matrix.rotate = text_rotate;
+  p->text_state.dir_mode      = text_dir;
 }
 
 static void
-dev_set_param_autorotate (int auto_rotate)
+dev_set_param_autorotate (pdf_dev *p, int auto_rotate)
 {
   struct dev_font *font;
   int    text_rotate, vert_font, vert_dir;
 
-  font = CURRENTFONT();
+  font = CURRENTFONT(p);
 
   vert_font = (font && font->wmode) ? 1 : 0;
   if (auto_rotate) {
-    vert_dir = text_state.dir_mode;
+    vert_dir = p->text_state.dir_mode;
   } else {
     vert_dir = vert_font;
   }
   text_rotate = (vert_font << 2)|vert_dir;
 
-  if (ANGLE_CHANGES(text_rotate, text_state.matrix.rotate)) {
-    text_state.force_reset = 1;
+  if (ANGLE_CHANGES(text_rotate, p->text_state.matrix.rotate)) {
+    p->text_state.force_reset = 1;
   }
-  text_state.matrix.rotate = text_rotate;
-  dev_param.autorotate     = auto_rotate;
+  p->text_state.matrix.rotate = text_rotate;
+  p->param.autorotate         = auto_rotate;
 }
 
 int
-pdf_dev_get_param (int param_type)
+pdf_dev_get_param (pdf_doc *d, int param_type)
 {
-  int value = 0;
+  pdf_dev *p = pdf_doc_get_device(d);
+  int      value = 0;
+
+  if (!p)
+    return 0;
 
   switch (param_type) {
   case PDF_DEV_PARAM_AUTOROTATE:
-    value = dev_param.autorotate;
+    value = p->param.autorotate;
     break;
   case PDF_DEV_PARAM_COLORMODE:
-    value = dev_param.colormode;
+    value = p->param.colormode;
     break;
   default:
     ERROR("Unknown device parameter: %d", param_type);
@@ -1765,17 +1825,23 @@ pdf_dev_get_param (int param_type)
 }
 
 void
-pdf_dev_set_param (int param_type, int value)
+pdf_dev_set_param (pdf_doc *d, int param_type, int value)
 {
+  pdf_dev *p = pdf_doc_get_device(d);
+
+  if (!p)
+    return;
+
   switch (param_type) {
   case PDF_DEV_PARAM_AUTOROTATE:
-    dev_set_param_autorotate(value);
+    dev_set_param_autorotate(p, value);
     break;
   case PDF_DEV_PARAM_COLORMODE:
-    dev_param.colormode = value; /* 0 for B&W */
+    p->param.colormode = value; /* 0 for B&W */
     break;
   default:
-    ERROR("Unknown device parameter: %d", param_type);
+    WARN("Unknown device parameter: %d", param_type);
+    break;
   }
 
   return;
@@ -1784,59 +1850,64 @@ pdf_dev_set_param (int param_type, int value)
 /* pdf_dev_put_image() now returns a rect as optional value.
  *
  */
+ /* FIXME: pdf_dev --> pdf */
 int
 pdf_dev_put_image (pdf_doc        *pdf,
                    int             id,
-                   transform_info *p,
+                   transform_info *ti,
                    double          ref_x,
                    double          ref_y,
                    pdf_rect       *rect) /* returned value */
 {
-  char        *res_name;
-  pdf_tmatrix  M, M1;
-  pdf_rect     r;
-  int          len = 0;
+  pdf_dev       *p = pdf_doc_get_device(pdf);
+  char          *res_name;
+  pdf_tmatrix    M, M1;
+  pdf_rect       r;
+  char          *buf;
+  int            len = 0;
 
-  pdf_copymatrix(&M, &(p->matrix));
+  buf = p->format_buffer;
+
+  pdf_copymatrix(&M, &(ti->matrix));
   M.e += ref_x; M.f += ref_y;
   /* Just rotate by -90, but not tested yet. Any problem if M has scaling? */
-  if (dev_param.autorotate &&
-      text_state.dir_mode) {
+  if (p->param.autorotate &&
+      p->text_state.dir_mode) {
     double tmp;
     tmp = -M.a; M.a = M.b; M.b = tmp;
     tmp = -M.c; M.c = M.d; M.d = tmp;
   }
 
-  graphics_mode();
-  pdf_dev_gsave();
+  dev_graphics_mode(p);
+  pdf_dev_gsave(pdf);
 
-  pdf_ximage_scale_image(id, &M1, &r, p);
+  pdf_ximage_scale_image(id, &M1, &r, ti);
   pdf_concatmatrix(&M, &M1);
-  pdf_dev_concat(&M);
+  pdf_dev_concat(pdf, &M);
 
   /* Clip */
-  if (p->flags & INFO_DO_CLIP) {
-    pdf_dev_rectclip(r.llx, r.lly, r.urx - r.llx, r.ury - r.lly);
+  if (ti->flags & INFO_DO_CLIP) {
+    pdf_dev_rectclip(pdf, r.llx, r.lly, r.urx - r.llx, r.ury - r.lly);
   }
 
   res_name = pdf_ximage_get_resname(id);
-  len = sprintf(work_buffer, " /%s Do", res_name);
-  pdf_doc_add_page_content(work_buffer, len);  /* op: Do */
+  len = sprintf(buf, " /%s Do", res_name);
+  pdf_doc_add_page_content(pdf, buf, len);  /* op: Do */
 
   if (rect) {
     pdf_rect  r1;
 
     /* Sorry for ugly code. */
-    pdf_dev_set_rect(&r1,
-                     bpt2spt(r.llx), bpt2spt(r.lly),
-                     bpt2spt(r.urx - r.llx), bpt2spt(r.ury - r.lly), 0);
+    pdf_dev_set_rect(pdf, &r1,
+                     bpt2spt(p, r.llx), bpt2spt(p, r.lly),
+                     bpt2spt(p, r.urx - r.llx), bpt2spt(p, r.ury - r.lly), 0);
     rect->llx = r1.llx; rect->lly = r1.lly;
     rect->urx = r1.urx; rect->ury = r1.ury;
   }
 
-  pdf_dev_grestore();
+  pdf_dev_grestore(pdf);
 
-  pdf_doc_add_page_resource("XObject",
+  pdf_doc_add_page_resource(pdf, "XObject",
                             res_name,
                             pdf_ximage_get_reference(id));
 

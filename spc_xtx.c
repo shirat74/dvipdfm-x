@@ -60,7 +60,8 @@
 
 
 int
-spc_handler_xtx_do_transform (double x_user, double y_user,
+spc_handler_xtx_do_transform (pdf_doc *p,
+                              double x_user, double y_user,
                               double a, double b, double c, double d,
                               double e, double f)
 {
@@ -75,7 +76,7 @@ spc_handler_xtx_do_transform (double x_user, double y_user,
   M.e = ((1.0 - M.a) * x_user - M.c * y_user) + e;
   M.f = ((1.0 - M.d) * y_user - M.b * x_user) + f;
 
-  pdf_dev_concat(&M);
+  pdf_dev_concat(p, &M);
   spc_get_fixed_point(&x, &y);
   spc_set_fixed_point(x_user - x, y_user - y);
 
@@ -92,7 +93,7 @@ spc_handler_xtx_scale (struct spc_env *spe, struct spc_arg *args)
   }
   args->curptr = args->endptr;
 
-  return spc_handler_xtx_do_transform(spe->x_user, spe->y_user, values[0], 0, 0, values[1], 0, 0);
+  return spc_handler_xtx_do_transform(spe->pdf, spe->x_user, spe->y_user, values[0], 0, 0, values[1], 0, 0);
 }
 
 /* Scaling without gsave/grestore. */
@@ -116,7 +117,7 @@ spc_handler_xtx_bscale (struct spc_env *spe, struct spc_arg *args)
   scaleFactors[scaleFactorCount].y = 1 / values[1];
   args->curptr = args->endptr;
 
-  return  spc_handler_xtx_do_transform (spe->x_user, spe->y_user, values[0],
+  return  spc_handler_xtx_do_transform (spe->pdf, spe->x_user, spe->y_user, values[0],
                                         0, 0, values[1], 0, 0);
 }
 
@@ -127,7 +128,7 @@ spc_handler_xtx_escale (struct spc_env *spe, struct spc_arg *args)
 
   args->curptr = args->endptr;
 
-  return  spc_handler_xtx_do_transform (spe->x_user, spe->y_user, factor.x, 0, 0, factor.y, 0, 0);
+  return  spc_handler_xtx_do_transform (spe->pdf, spe->x_user, spe->y_user, factor.x, 0, 0, factor.y, 0, 0);
 }
 
 static int
@@ -140,7 +141,7 @@ spc_handler_xtx_rotate (struct spc_env *spe, struct spc_arg *args)
   }
   args->curptr = args->endptr;
 
-  return  spc_handler_xtx_do_transform (spe->x_user, spe->y_user,
+  return  spc_handler_xtx_do_transform (spe->pdf, spe->x_user, spe->y_user,
                               cos(value * M_PI / 180), sin(value * M_PI / 180),
                               -sin(value * M_PI / 180), cos(value * M_PI / 180),
                               0, 0);
@@ -149,7 +150,7 @@ spc_handler_xtx_rotate (struct spc_env *spe, struct spc_arg *args)
 int
 spc_handler_xtx_gsave (struct spc_env *spe, struct spc_arg *args)
 {
-  pdf_dev_gsave();
+  pdf_dev_gsave(spe->pdf);
   spc_dup_fixed_point();
 
   return  0;
@@ -158,7 +159,7 @@ spc_handler_xtx_gsave (struct spc_env *spe, struct spc_arg *args)
 int
 spc_handler_xtx_grestore (struct spc_env *spe, struct spc_arg *args)
 {
-  pdf_dev_grestore();
+  pdf_dev_grestore(spe->pdf);
   spc_pop_fixed_point();
 
   /*
@@ -168,8 +169,8 @@ spc_handler_xtx_grestore (struct spc_env *spe, struct spc_arg *args)
    * we make no assumptions about what fonts. We act like we are
    * starting a new page.
    */
-  pdf_dev_reset_fonts(0);
-  pdf_dev_reset_color(0);
+  pdf_dev_reset_fonts(spe->pdf, 0);
+  pdf_dev_reset_color(spe->pdf, 0);
 
   return  0;
 }
@@ -314,11 +315,11 @@ spc_handler_xtx_clipoverlay (struct spc_env *spe, struct spc_arg *args)
   skip_white(&args->curptr, args->endptr);
   if (args->curptr >= args->endptr)
     return -1;
-  pdf_dev_grestore();
-  pdf_dev_gsave();
+  pdf_dev_grestore(spe->pdf);
+  pdf_dev_gsave(spe->pdf);
   if (strncmp(overlay_name, args->curptr, strlen(overlay_name)) != 0
    && strncmp("all", args->curptr, strlen("all")) != 0)
-    pdf_doc_add_page_content(" 0 0 m W n", 10);
+    pdf_doc_add_page_content(spe->pdf, " 0 0 m W n", 10);
 
   args->curptr = args->endptr;
   return 0;
@@ -337,11 +338,11 @@ spc_handler_xtx_renderingmode (struct spc_env *spe, struct spc_arg *args)
     return -1;
   }
   sprintf(work_buffer, " %d Tr", (int) value);
-  pdf_doc_add_page_content(work_buffer, strlen(work_buffer));
+  pdf_doc_add_page_content(spe->pdf,  work_buffer, strlen(work_buffer));
   skip_white(&args->curptr, args->endptr);
   if (args->curptr < args->endptr) {
-    pdf_doc_add_page_content(" ", 1);
-    pdf_doc_add_page_content(args->curptr, args->endptr - args->curptr);
+    pdf_doc_add_page_content(spe->pdf,  " ", 1);
+    pdf_doc_add_page_content(spe->pdf,  args->curptr, args->endptr - args->curptr);
   }
 
   args->curptr = args->endptr;

@@ -158,7 +158,8 @@ struct name_dict
 
 typedef struct pdf_doc
 {
-  PDF  *pdf; /* Object representing PDF file */
+  PDF     *pdf; /* Object representing PDF file */
+  pdf_dev *dev;
 
   struct {
     pdf_obj *dict;
@@ -210,6 +211,12 @@ typedef struct pdf_doc
 } pdf_doc;
 
 static pdf_doc pdoc; /* FIXME */
+
+pdf_dev *
+pdf_doc_get_device (pdf_doc *p)
+{
+   return (p ? p->dev : NULL);
+}
 
 void
 pdf_doc_enable_manual_thumbnails (pdf_doc *p)
@@ -397,8 +404,7 @@ void
 pdf_doc_set_bop_content (pdf_doc *p,
                          const char *content, unsigned length)
 {
-  if (!p)
-    return;
+  ASSERT(p);
 
   if (p->pages.bop) {
     pdf_release_obj(p->pages.bop);
@@ -419,8 +425,7 @@ void
 pdf_doc_set_eop_content (pdf_doc *p,
                          const char *content, unsigned length)
 {
-  if (!p)
-    return;
+  ASSERT(p);
 
   if (p->pages.eop) {
     pdf_release_obj(p->pages.eop);
@@ -602,12 +607,13 @@ pdf_doc_get_page_resources (pdf_doc *p, const char *category)
 }
 
 void
-pdf_doc_add_page_resource (const char *category,
+pdf_doc_add_page_resource (pdf_doc *p, const char *category,
                            const char *resource_name, pdf_obj *resource_ref)
 {
-  pdf_doc *p = &pdoc;
   pdf_obj *resources;
   pdf_obj *duplicate;
+
+  ASSERT(p);
 
   if (!PDF_OBJ_INDIRECTTYPE(resource_ref)) {
     WARN("Passed non indirect reference...");
@@ -1387,8 +1393,7 @@ pdf_doc_bookmarks_up (pdf_doc *p)
 {
   pdf_olitem *parent, *item;
 
-  if (!p)
-    return -1;
+  ASSERT(p);
 
   item = p->outlines.current;
   if (!item || !item->parent) {
@@ -1416,8 +1421,7 @@ pdf_doc_bookmarks_down (pdf_doc *p)
 {
   pdf_olitem *item, *first;
 
-  if (!p)
-    return -1;
+  ASSERT(p);
 
   item = p->outlines.current;
   if (!item->dict) {
@@ -1479,8 +1483,7 @@ pdf_doc_bookmarks_add (pdf_doc *p, pdf_obj *dict, int is_open)
 {
   pdf_olitem *item, *next;
 
-  if (!p || !dict)
-    return;
+  ASSERT(p && dict);
 
   item = p->outlines.current;
 
@@ -1586,8 +1589,7 @@ pdf_doc_add_names (pdf_doc *p,
 {
   int  i;
 
-  if (!p)
-    return -1;
+  ASSERT(p);
 
   for (i = 0; p->names[i].category != NULL; i++) {
     if (!strcmp(p->names[i].category, category)) {
@@ -1809,8 +1811,7 @@ pdf_doc_add_annot (pdf_doc *p,
   pdf_obj  *rect_array;
   double    annot_grow = p->opt.annot_grow;
 
-  if (!p || !rect)
-    return;
+  ASSERT(p && rect);
 
   page = doc_get_page_entry(p, page_no);
   if (!page)
@@ -1880,8 +1881,7 @@ pdf_doc_begin_article (pdf_doc *p,
 {
   pdf_article *article;
 
-  if (!p)
-    return;
+  ASSERT(p);
 
   if (article_id == NULL || strlen(article_id) == 0)
     ERROR("Article thread without internal identifier.");
@@ -1931,8 +1931,7 @@ pdf_doc_add_bead (pdf_doc *p,
   pdf_bead    *bead;
   int          i;
 
-  if (!p)
-    return;
+  ASSERT(p);
 
   if (!article_id) {
     ERROR("No article identifier specified.");
@@ -2104,6 +2103,8 @@ pdf_doc_close_articles (pdf_doc *p)
 {
   int  i;
 
+  ASSERT(p);
+
   for (i = 0; i < p->articles.num_entries; i++) {
     pdf_article *article;
 
@@ -2143,8 +2144,7 @@ pdf_doc_set_mediabox (pdf_doc *p,
 {
   pdf_page *page;
 
-  if (!p)
-    return;
+  ASSERT(p);
 
   if (page_no == 0) {
     p->pages.mediabox.llx = mediabox->llx;
@@ -2200,8 +2200,7 @@ pdf_doc_current_page_resources (pdf_doc *p)
   pdf_obj  *resources;
   pdf_page *currentpage;
 
-  if (!p)
-    return NULL;
+  ASSERT(p);
 
   if (p->pending_forms) {
     if (p->pending_forms->form.resources) {
@@ -2229,8 +2228,7 @@ pdf_doc_get_dictionary (pdf_doc *p, const char *category)
   if (!category)
     return NULL;
 
-  if (!p)
-    p = &pdoc;
+  ASSERT(p);
 
   if (!strcmp(category, "Names")) {
     if (!p->root.names)
@@ -2274,8 +2272,7 @@ pdf_doc_ref_page (pdf_doc *p, unsigned page_no)
 {
   pdf_page *page;
 
-  if (!p)
-    return NULL;
+  ASSERT(p);
 
   page = doc_get_page_entry(p, page_no);
   if (!page->page_obj) {
@@ -2295,8 +2292,7 @@ pdf_doc_get_reference (pdf_doc *p, const char *category)
   if (!category)
     return NULL;
 
-  if (!p)
-    p = &pdoc;
+  ASSERT(p);
 
   page_no = pdf_doc_current_page_number(p);
   if (!strcmp(category, "@THISPAGE")) {
@@ -2321,6 +2317,8 @@ static void
 pdf_doc_new_page (pdf_doc *p)
 {
   pdf_page *currentpage;
+
+  ASSERT(p);
 
   if (PAGECOUNT(p) >= MAXPAGES(p)) {
     doc_resize_page_entries(p, MAXPAGES(p) + PDFDOC_PAGES_ALLOC_SIZE);
@@ -2351,6 +2349,8 @@ static void
 pdf_doc_finish_page (pdf_doc *p)
 {
   pdf_page *currentpage;
+
+  ASSERT(p);
 
   if (p->pending_forms) {
     ERROR("A pending form XObject at the end of page.");
@@ -2469,7 +2469,9 @@ doc_fill_page_background (pdf_doc *p)
   int        cm;
   pdf_obj   *saved_content;
 
-  cm = pdf_dev_get_param(PDF_DEV_PARAM_COLORMODE);
+  ASSERT(p);
+
+  cm = pdf_dev_get_param(p, PDF_DEV_PARAM_COLORMODE);
   if (!cm || pdf_color_is_white(&bgcolor)) {
     return;
   }
@@ -2485,10 +2487,10 @@ doc_fill_page_background (pdf_doc *p)
   saved_content = currentpage->contents;
   currentpage->contents = currentpage->background;
 
-  pdf_dev_gsave();
-  pdf_dev_set_nonstrokingcolor(&bgcolor);
-  pdf_dev_rectfill(r.llx, r.lly, r.urx - r.llx, r.ury - r.lly);
-  pdf_dev_grestore();
+  pdf_dev_gsave(p);
+  pdf_dev_set_nonstrokingcolor(p, &bgcolor);
+  pdf_dev_rectfill(p, r.llx, r.lly, r.urx - r.llx, r.ury - r.lly);
+  pdf_dev_grestore(p);
 
   currentpage->contents = saved_content;
 
@@ -2501,8 +2503,7 @@ pdf_doc_begin_page (pdf_doc *p,
 {
   pdf_tmatrix  M;
 
-  if (!p)
-    return;
+  ASSERT(p);
 
   M.a = scale; M.b = 0.0;
   M.c = 0.0  ; M.d = scale;
@@ -2511,7 +2512,7 @@ pdf_doc_begin_page (pdf_doc *p,
 
   /* pdf_doc_new_page() allocates page content stream. */
   pdf_doc_new_page(p);
-  pdf_dev_bop(&M);
+  pdf_dev_bop(p, &M);
 
   return;
 }
@@ -2522,7 +2523,7 @@ pdf_doc_end_page (pdf_doc *p)
   if (!p)
     return;
 
-  pdf_dev_eop();
+  pdf_dev_eop(p);
   doc_fill_page_background(p);
 
   pdf_doc_finish_page(p);
@@ -2531,10 +2532,11 @@ pdf_doc_end_page (pdf_doc *p)
 }
 
 void
-pdf_doc_add_page_content (const char *buffer, unsigned length)
+pdf_doc_add_page_content (pdf_doc *p, const char *buffer, unsigned length)
 {
-  pdf_doc  *p = &pdoc;
   pdf_page *currentpage;
+
+  ASSERT(p);
 
   if (p->pending_forms) {
     pdf_add_stream(p->pending_forms->form.contents, buffer, length);
@@ -2564,7 +2566,9 @@ pdf_open_document (const char *filename,
                    int         bookmark_open_depth,
                    int         check_gotos)
 {
-  pdf_doc *p = &pdoc;
+  pdf_doc *p;
+
+  p = NEW();
 
   p->pdf = pdf_out_init(filename, id_str, ver_major, ver_minor,
                         enable_encrypt,
@@ -2580,7 +2584,7 @@ pdf_open_document (const char *filename,
   p->opt.outline_open_depth = bookmark_open_depth;
 
   pdf_init_resources();
-  pdf_init_colors();
+  pdf_init_colors(p);
   pdf_init_fonts();
   /* Thumbnail want this to be initialized... */
   pdf_init_images();
@@ -2622,8 +2626,7 @@ pdf_open_document (const char *filename,
 void
 pdf_close_document (pdf_doc *p)
 {
-  if (!p)
-    return;
+  ASSERT(p);
 
   /*
    * Following things were kept around so user can add dictionary items.
@@ -2646,6 +2649,8 @@ pdf_close_document (pdf_doc *p)
 
   if (p->opt.basename)
     RELEASE(p->opt.basename);
+
+  RELEASE(p);
 
   return;
 }
@@ -2716,15 +2721,14 @@ pdf_doc_begin_grabbing (pdf_doc *p, const char *ident,
   struct form_list_node *fnode;
   xform_info  info;
 
-  if (!p)
-    return -1;
+  ASSERT(p);
 
-  pdf_dev_push_gstate();
+  pdf_dev_push_gstate(p);
 
   fnode = NEW(1, struct form_list_node);
 
   fnode->prev    = p->pending_forms;
-  fnode->q_depth = pdf_dev_current_depth();
+  fnode->q_depth = pdf_dev_current_depth(p);
   form           = &fnode->form;
 
   /*
@@ -2770,8 +2774,8 @@ pdf_doc_begin_grabbing (pdf_doc *p, const char *ident,
    * Make sure the object is self-contained by adding the
    * current font and color to the object stream.
    */
-  pdf_dev_reset_fonts(1);
-  pdf_dev_reset_color(1);  /* force color operators to be added to stream */
+  pdf_dev_reset_fonts(p, 1);
+  pdf_dev_reset_color(p, 1);  /* force color operators to be added to stream */
 
   return xobj_id;
 }
@@ -2783,8 +2787,7 @@ pdf_doc_end_grabbing (pdf_doc *p, pdf_obj *attrib)
   pdf_obj  *procset;
   struct form_list_node *fnode;
 
-  if (!p)
-    return;
+  ASSERT(p);
 
   if (!p->pending_forms) {
     WARN("Tried to close a nonexistent form XOject.");
@@ -2794,7 +2797,7 @@ pdf_doc_end_grabbing (pdf_doc *p, pdf_obj *attrib)
   fnode = p->pending_forms;
   form  = &fnode->form;
 
-  pdf_dev_grestore_to(fnode->q_depth);
+  pdf_dev_grestore_to(p, fnode->q_depth);
 
   /*
    * ProcSet is obsolete in PDF-1.4 but recommended for compatibility.
@@ -2816,10 +2819,10 @@ pdf_doc_end_grabbing (pdf_doc *p, pdf_obj *attrib)
 
   p->pending_forms = fnode->prev;
 
-  pdf_dev_pop_gstate();
+  pdf_dev_pop_gstate(p);
 
-  pdf_dev_reset_fonts(1);
-  pdf_dev_reset_color(0);
+  pdf_dev_reset_fonts(p, 1);
+  pdf_dev_reset_color(p, 0);
 
   RELEASE(fnode);
 

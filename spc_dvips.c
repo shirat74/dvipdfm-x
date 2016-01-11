@@ -274,15 +274,15 @@ spc_handler_ps_literal (struct spc_env *spe, struct spc_arg *args)
   if (args->curptr < args->endptr) {
 
     st_depth = mps_stack_depth();
-    gs_depth = pdf_dev_current_depth();
+    gs_depth = pdf_dev_current_depth(spe->pdf);
 
     error = mps_exec_inline(&args->curptr,
-			    args->endptr,
+                            args->endptr,
                             spe->pdf,
-			    x_user, y_user);
+                            x_user, y_user);
     if (error) {
       spc_warn(spe, "Interpreting PS code failed!!! Output might be broken!!!");
-      pdf_dev_grestore_to(gs_depth);
+      pdf_dev_grestore_to(spe->pdf, gs_depth);
     } else if (st_depth != mps_stack_depth()) {
       spc_warn(spe, "Stack not empty after execution of inline PostScript code.");
       spc_warn(spe, ">> Your macro package makes some assumption on internal behaviour of DVI drivers.");
@@ -324,7 +324,7 @@ spc_handler_ps_tricks_pdef (struct spc_env *spe, struct spc_arg *args)
   pdf_tmatrix M, T = { 1, 0, 0, 1, 0, 0 };
   double x, y;
 
-  pdf_dev_currentmatrix(&M);
+  pdf_dev_currentmatrix(spe->pdf, &M);
   spc_get_fixed_point(&x, &y);
   T.e = x;
   T.f = y;
@@ -391,7 +391,7 @@ spc_handler_ps_tricks_bput (struct spc_env *spe, struct spc_arg *args, int must_
     temporary_defs = 0;
   }
 
-  pdf_dev_currentmatrix(&M);
+  pdf_dev_currentmatrix(spe->pdf, &M);
   formula = malloc(args->endptr - args->curptr + 120);
   if (label != 0) {
     sprintf(formula, "[%f %f %f %f %f %f] concat %f %f moveto\n", M.a, M.b, M.c, M.d, M.e, M.f, spe->x_user + get_origin(1), spe->y_user + get_origin(0));
@@ -408,7 +408,7 @@ spc_handler_ps_tricks_bput (struct spc_env *spe, struct spc_arg *args, int must_
   }
   T.e = tr.x; T.f = tr.y;
 
-  pdf_dev_concat(&T);
+  pdf_dev_concat(spe->pdf, &T);
 
   if (must_def != 0) {
     FILE* fp;
@@ -438,7 +438,7 @@ spc_handler_ps_tricks_eput (struct spc_env *spe, struct spc_arg *args)
   pdf_coord tr = put_stack[put_stack_depth--];
   pdf_tmatrix M = { 1, 0, 0, 1, -tr.x, -tr.y };
 
-  pdf_dev_concat(&M);
+  pdf_dev_concat(spe->pdf, &M);
 
   return 0;
 }
@@ -470,7 +470,7 @@ spc_handler_ps_tricks_brotate (struct spc_env *spe, struct spc_arg *args)
     return -1;
   RAngles[RAngleCount] = value;
 
-  return  spc_handler_xtx_do_transform (spe->x_user, spe->y_user,
+  return  spc_handler_xtx_do_transform (spe->pdf, spe->x_user, spe->y_user,
                               cos(value * M_PI / 180), sin(value * M_PI / 180),
                               -sin(value * M_PI / 180), cos(value * M_PI / 180),
                               0, 0);
@@ -481,7 +481,7 @@ spc_handler_ps_tricks_erotate (struct spc_env *spe, struct spc_arg *args)
 {
   double value = RAngles[RAngleCount--];
 
-  return  spc_handler_xtx_do_transform (spe->x_user, spe->y_user,
+  return  spc_handler_xtx_do_transform (spe->pdf, spe->x_user, spe->y_user,
       cos(value * M_PI / 180), -sin(value * M_PI / 180),
       sin(value * M_PI / 180), cos(value * M_PI / 180),
       0, 0);
@@ -507,11 +507,13 @@ spc_handler_ps_tricks_transform (struct spc_env *spe, struct spc_arg *args)
     *concat = ' ';
     if (calculate_PS(cmd, strlen(cmd), &d1, &d2, &d3, &d4, &d5, &d6) != 0)
       return -1;
-    if (spc_handler_xtx_gsave (0, 0) != 0)
+    if (spc_handler_xtx_gsave (spe, 0) != 0)
       return -1;
-    return spc_handler_xtx_do_transform (spe->x_user, spe->y_user, d1, d2, d3, d4, d5, d6);
+    return spc_handler_xtx_do_transform (spe->pdf,
+                                         spe->x_user, spe->y_user,
+                                         d1, d2, d3, d4, d5, d6);
   }
-  return  spc_handler_xtx_grestore (0, 0);
+  return  spc_handler_xtx_grestore (spe, 0);
 }
 
 static int
@@ -554,7 +556,7 @@ spc_handler_ps_tricks_parse_path (struct spc_env *spe, struct spc_arg *args)
   if (!distiller_template)
     distiller_template = get_distiller_template();
 
-  pdf_dev_currentmatrix(&M);
+  pdf_dev_currentmatrix(spe->pdf, &M);
   if (!gs_in) {
     gs_in = dpx_create_temp_file();
     if (!gs_in) {
@@ -629,7 +631,7 @@ spc_handler_ps_tricks_parse_path (struct spc_env *spe, struct spc_arg *args)
   }
 
   fp = fopen(gs_out, "rb");
-   if (pdf_copy_clip(fp, 1, 0, 0) != 0) {
+   if (pdf_copy_clip(spe->pdf, fp, 1, 0, 0) != 0) {
     spc_warn(spe, "Failed to parse the clipping path.");
     RELEASE(gs_in);
     gs_in = 0;
@@ -656,7 +658,7 @@ spc_handler_ps_tricks_render (struct spc_env *spe, struct spc_arg *args)
   if (!distiller_template)
     distiller_template = get_distiller_template();
 
-  pdf_dev_currentmatrix(&M);
+  pdf_dev_currentmatrix(spe->pdf, &M);
   if (!gs_in) {
     gs_in = dpx_create_temp_file();
     if (!gs_in) {
@@ -851,21 +853,21 @@ spc_handler_ps_default (struct spc_env *spe, struct spc_arg *args)
 
   ASSERT(spe && args);
 
-  pdf_dev_gsave();
+  pdf_dev_gsave(spe->pdf);
 
   st_depth = mps_stack_depth();
-  gs_depth = pdf_dev_current_depth();
+  gs_depth = pdf_dev_current_depth(spe->pdf);
 
   {
     pdf_tmatrix M;
     M.a = M.d = 1.0; M.b = M.c = 0.0; M.e = spe->x_user; M.f = spe->y_user;
-    pdf_dev_concat(&M);
+    pdf_dev_concat(spe->pdf, &M);
     error = mps_exec_inline(&args->curptr,
                             args->endptr,
                             spe->pdf,
                             spe->x_user, spe->y_user);
     M.e = -spe->x_user; M.f = -spe->y_user;
-    pdf_dev_concat(&M);
+    pdf_dev_concat(spe->pdf, &M);
   }
   if (error)
     spc_warn(spe, "Interpreting PS code failed!!! Output might be broken!!!");
@@ -877,8 +879,8 @@ spc_handler_ps_default (struct spc_env *spe, struct spc_arg *args)
     }
   }
 
-  pdf_dev_grestore_to(gs_depth);
-  pdf_dev_grestore();
+  pdf_dev_grestore_to(spe->pdf, gs_depth);
+  pdf_dev_grestore(spe->pdf);
 
   return  error;
 }

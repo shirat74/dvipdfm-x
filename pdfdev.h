@@ -81,55 +81,24 @@ extern dpx_stack *gs_stack;
 extern void   pdf_dev_set_verbose (void);
 
 /* Not in spt_t. */
-extern int    pdf_sprint_matrix (char *buf, const pdf_tmatrix *p);
-extern int    pdf_sprint_rect   (char *buf, const pdf_rect    *p);
-extern int    pdf_sprint_coord  (char *buf, const pdf_coord   *p);
-extern int    pdf_sprint_length (char *buf, double value);
-extern int    pdf_sprint_number (char *buf, double value);
+extern int pdf_dev_sprint_matrix (pdf_dev *p, char *buf, const pdf_tmatrix *M);
+extern int pdf_dev_sprint_rect   (pdf_dev *p, char *buf, const pdf_rect    *r);
+extern int pdf_dev_sprint_coord  (pdf_dev *p, char *buf, const pdf_coord   *c);
+extern int pdf_dev_sprint_length (pdf_dev *p, char *buf, double value);
+
+extern int pdf_sprint_number (char *buf, double value);
 
 /* unit_conv: multiplier for input unit (spt_t) to bp conversion.
  * precision: How many fractional digits preserved in output (not real
  *            accuracy control).
  * is_bw:     Ignore color related special instructions.
  */
-extern void   pdf_init_device   (double unit_conv, int precision, int is_bw);
-extern void   pdf_close_device  (void);
+extern pdf_dev *pdf_init_device   (pdf_doc *pdf,
+                                   double unit_conv, int precision, int is_bw);
+extern void     pdf_close_device  (pdf_dev *p);
 
 /* returns 1.0/unit_conv */
-extern double dev_unit_dviunit  (void);
-
-#if 0
-/* DVI interpreter knows text positioning in relative motion.
- * However, pdf_dev_set_string() recieves text string with placement
- * in absolute position in user space, and it convert absolute
- * positioning back to relative positioning. It is quite wasteful.
- *
- * TeX using DVI register stack operation to do CR and then use down
- * command for LF. DVI interpreter knows hint for current leading
- * and others (raised or lowered), but they are mostly lost in
- * pdf_dev_set_string().
- */
-
-typedef struct
-{
-  int      argc;
-
-  struct {
-    int    is_kern; /* kern or string */
-
-    spt_t  kern;    /* negative kern means space */
-
-    int    offset;  /* offset to sbuf   */
-    int    length;  /* length of string */
-  } args[];
-
-  unsigned char sbuf[PDF_STRING_LEN_MAX];
-
-} pdf_text_string;
-
-/* Something for handling raise, leading, etc. here. */
-
-#endif
+extern double   pdf_dev_unit_dviunit  (pdf_doc *p);
 
 /* Draw texts and rules:
  *
@@ -142,65 +111,58 @@ typedef struct
  *   1 - input string is in 8-bit encoding.
  *   2 - input string is in 16-bit encoding.
  */
-extern void   pdf_dev_set_string (spt_t xpos, spt_t ypos,
-				  const void *instr_ptr, int instr_len,
-				  spt_t text_width,
-				  int   font_id, int ctype);
-extern void   pdf_dev_set_rule   (spt_t xpos, spt_t ypos,
-				  spt_t width, spt_t height);
+extern void   pdf_dev_set_string (pdf_doc *p, spt_t xpos, spt_t ypos,
+                                  const void *instr_ptr, int instr_len,
+                                  spt_t text_width,
+                                  int   font_id, int ctype);
+extern void   pdf_dev_set_rule   (pdf_doc *p, spt_t xpos, spt_t ypos,
+                                  spt_t width, spt_t height);
 
 /* Place XObject */
 extern int    pdf_dev_put_image  (pdf_doc *pdf, int xobj_id,
-				  transform_info *p, double ref_x, double ref_y,
+                                  transform_info *ti,
+                                  double ref_x, double ref_y,
                                   pdf_rect *rect); /* optional, ret. value */
 
 /* The design_size and ptsize required by PK font support...
  */
-extern int    pdf_dev_locate_font (const char *font_name, spt_t ptsize);
+extern int    pdf_dev_locate_font (pdf_doc *p,
+                                   const char *font_name, spt_t ptsize);
 
-/* The following two routines are NOT WORKING.
- * Dvipdfmx doesn't manage gstate well..
- */
-#if 0
-/* pdf_dev_translate() or pdf_dev_concat() should be used. */
-extern void   pdf_dev_set_origin (double orig_x, double orig_y);
-#endif
 /* Always returns 1.0, please rename this. */
-extern double pdf_dev_scale      (void);
+extern double pdf_dev_scale      (pdf_doc *p);
 
 /* Access text state parameters. */
-#if 0
-extern int    pdf_dev_currentfont     (void); /* returns font_id */
-extern double pdf_dev_get_font_ptsize (int font_id);
-#endif
-extern int    pdf_dev_get_font_wmode  (int font_id); /* ps: special support want this (pTeX). */
+/* ps: special support want this (pTeX). */
+extern int    pdf_dev_get_font_wmode  (pdf_doc *p, int font_id);
 
 /* Text composition (direction) mode
  * This affects only when auto_rotate is enabled.
  */
-extern int    pdf_dev_get_dirmode     (void);
-extern void   pdf_dev_set_dirmode     (int dir_mode);
+extern int    pdf_dev_get_dirmode     (pdf_doc *p);
+extern void   pdf_dev_set_dirmode     (pdf_doc *p, int dimode);
 
 /* Set rect to rectangle in device space.
  * Unit conversion spt_t to bp and transformation applied within it.
  */
-extern void   pdf_dev_set_rect   (pdf_rect *rect,
-				  spt_t x_pos, spt_t y_pos,
-				  spt_t width, spt_t height, spt_t depth);
+extern void   pdf_dev_set_rect   (pdf_doc *p, pdf_rect *rect,
+                                  spt_t x_pos, spt_t y_pos,
+                                  spt_t width, spt_t height, spt_t depth);
 
 /* Accessor to various device parameters.
  */
 #define PDF_DEV_PARAM_AUTOROTATE  1
 #define PDF_DEV_PARAM_COLORMODE   2
 
-extern int    pdf_dev_get_param (int param_type);
-extern void   pdf_dev_set_param (int param_type, int value);
+extern int    pdf_dev_get_param (pdf_doc *p, int param_type);
+extern void   pdf_dev_set_param (pdf_doc *p, int param_type, int value);
 
 /* Text composition mode is ignored (always same as font's
  * writing mode) and glyph rotation is not enabled if
  * auto_rotate is unset.
  */
-#define pdf_dev_set_autorotate(v) pdf_dev_set_param(PDF_DEV_PARAM_AUTOROTATE, (v))
+#define pdf_dev_set_autorotate(p,v) \
+  pdf_dev_set_param((p), PDF_DEV_PARAM_AUTOROTATE, (v))
 
 /*
  * For pdf_doc, pdf_draw and others.
@@ -209,19 +171,19 @@ extern void   pdf_dev_set_param (int param_type, int value);
 /* Force reselecting font and color:
  * XFrom (content grabbing) and Metapost support want them.
  */
-extern void   pdf_dev_reset_fonts (int newpage);
-extern void   pdf_dev_reset_color (int force);
+extern void   pdf_dev_reset_fonts (pdf_doc *p, int newpage);
+extern void   pdf_dev_reset_color (pdf_doc *p, int force);
 
 /* Initialization of transformation matrix with M and others.
  * They are called within pdf_doc_begin_page() and pdf_doc_end_page().
  */
-extern void   pdf_dev_bop (const pdf_tmatrix *M);
-extern void   pdf_dev_eop (void);
+extern void   pdf_dev_bop (pdf_doc *p, const pdf_tmatrix *M);
+extern void   pdf_dev_eop (pdf_doc *p);
 
 /* Text is normal and line art is not normal in dvipdfmx. So we don't have
  * begin_text (BT in PDF) and end_text (ET), but instead we have graphics_mode()
  * to terminate text section. pdf_dev_flushpath() and others call this.
  */
-extern void   graphics_mode (void);
+extern void   pdf_dev_graphics_mode (pdf_doc *p);
 
 #endif /* _PDFDEV_H_ */

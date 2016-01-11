@@ -2,19 +2,19 @@
 
     Copyright (C) 2007-2015 by Jin-Hwan Cho and Shunsaku Hirata,
     the dvipdfmx project team.
-
+    
     Copyright (C) 1998, 1999 by Mark A. Wicks <mwicks@kettering.edu>
 
     This program is free software; you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
     the Free Software Foundation; either version 2 of the License, or
     (at your option) any later version.
-
+    
     This program is distributed in the hope that it will be useful,
     but WITHOUT ANY WARRANTY; without even the implied warranty of
     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
     GNU General Public License for more details.
-
+    
     You should have received a copy of the GNU General Public License
     along with this program; if not, write to the Free Software
     Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA.
@@ -146,7 +146,7 @@ miktex_find_psheader_file (const char *filename, char *buf)
   }
   RELEASE(fqpn);
 
-  return  r;
+  return  r; 
 }
 
 #endif /* TESTCOMPILE */
@@ -372,7 +372,7 @@ dpx_find__app__xyz (const char *filename,
   if (!fqpn && strcmp(q, filename))
     fqpn = kpse_find_file(filename,
                            (is_text ?
-                              kpse_program_text_format : kpse_program_binary_format), 0);
+                              kpse_program_text_format : kpse_program_binary_format), 0);   
   RELEASE(q);
 
   return  fqpn;
@@ -497,7 +497,7 @@ dpx_find_fontmap_file (const char *filename)
     fqpn = dpx_find__app__xyz(q, ".map", 1);
     if (fqpn)
       insistupdate(q, fqpn, "dvipdfmx",
-                   kpse_program_text_format, kpse_fontmap_format);
+                   kpse_program_text_format, kpse_fontmap_format); 
   }
 #endif /* MIKETEX */
   RELEASE(q);
@@ -521,7 +521,7 @@ dpx_find_agl_file (const char *filename)
     fqpn = dpx_find__app__xyz(q, ".txt", 1);
     if (fqpn)
       insistupdate(q, fqpn, "dvipdfmx",
-                   kpse_program_text_format, kpse_fontmap_format);
+                   kpse_program_text_format, kpse_fontmap_format); 
   }
 #endif /* MIKETEX */
   RELEASE(q);
@@ -568,18 +568,18 @@ dpx_find_cmap_file (const char *filename)
     memset(_tmpbuf, 0, _MAX_PATH+1);
   }
 #else
-  fqpn = kpse_find_file(filename, kpse_cmap_format, 0);
+  fqpn = kpse_find_file(filename, kpse_cmap_format, 0); 
 #endif
 
   /* Files found above are assumed to be CMap,
    * if it's not really CMap it will cause an error.
    */
-  for (i = 0; !fqpn && fools[i]; i++) {
+  for (i = 0; !fqpn && fools[i]; i++) { 
     fqpn = dpx_foolsearch(fools[i], filename, 1);
     if (fqpn) {
 #ifndef  MIKTEX
       insistupdate(filename, fqpn, fools[i],
-                   kpse_program_text_format, kpse_cmap_format);
+                   kpse_program_text_format, kpse_cmap_format); 
 #endif
       if (!qcheck_filetype(fqpn, DPX_RES_TYPE_CMAP)) {
         WARN("Found file \"%s\" for PostScript CMap but it doesn't look like a CMap...", fqpn);
@@ -597,7 +597,7 @@ dpx_find_cmap_file (const char *filename)
  *   SFDFONTS (TDS 1.1)
  *   ttf2pk   (text file)
  *   ttf2tfm  (text file)
- *   dvipdfm  (text file)
+ *   dvipdfm  (text file)   
  */
 static char *
 dpx_find_sfd_file (const char *filename)
@@ -614,12 +614,12 @@ dpx_find_sfd_file (const char *filename)
   fqpn = kpse_find_file(q, kpse_sfd_format, 0);
 #endif /* !MIKTEX */
 
-  for (i = 0; !fqpn && fools[i]; i++) {
+  for (i = 0; !fqpn && fools[i]; i++) { 
     fqpn = dpx_foolsearch(fools[i], q, 1);
 #ifndef  MIKTEX
     if (fqpn)
       insistupdate(filename, fqpn, fools[i],
-                   kpse_program_text_format, kpse_sfd_format);
+                   kpse_program_text_format, kpse_sfd_format); 
 #endif
   }
   RELEASE(q);
@@ -648,12 +648,12 @@ dpx_find_enc_file (const char *filename)
   fqpn = kpse_find_file(q, kpse_enc_format, 0);
 #endif /* MIKTEX */
 
-  for (i = 0; !fqpn && fools[i]; i++) {
+  for (i = 0; !fqpn && fools[i]; i++) { 
     fqpn = dpx_foolsearch(fools[i], q, 1);
 #ifndef  MIKTEX
     if (fqpn)
       insistupdate(filename, fqpn, fools[i],
-                   kpse_program_text_format, kpse_enc_format);
+                   kpse_program_text_format, kpse_enc_format); 
 #endif
   }
   RELEASE(q);
@@ -732,7 +732,7 @@ dpx_find_opentype_file (const char *filename)
 #ifndef  MIKTEX
     if (fqpn)
       insistupdate(filename, fqpn, "dvipdfmx",
-                   kpse_program_binary_format, kpse_opentype_format);
+                   kpse_program_binary_format, kpse_opentype_format); 
   }
 #endif
   RELEASE(q);
@@ -766,7 +766,7 @@ dpx_find_dfont_file (const char *filename)
   }
   return fqpn;
 }
-
+ 
 static const char *
 dpx_get_tmpdir (void)
 {
@@ -817,13 +817,20 @@ dpx_create_temp_file (void)
     strcpy(tmp, _tmpd);
     strcat(tmp, TEMPLATE);
     _fd  = mkstemp(tmp);
-    if (_fd != -1)
+    if (_fd != -1) {
 #  ifdef WIN32
+      char *p;
+      for (p = tmp; *p; p++) {
+        if (IS_KANJI (p))
+          p++;
+        else if (*p == '\\')
+          *p = '/';
+      }
       _close(_fd);
 #  else
       close(_fd);
 #  endif /* WIN32 */
-    else {
+    } else {
       RELEASE(tmp);
       tmp = NULL;
     }
@@ -849,18 +856,6 @@ dpx_create_temp_file (void)
 #  endif /* WIN32 */
   }
 #endif /* MIKTEX */
-
-#if WIN32
-  if (tmp) {
-    char *p;
-    for (p = tmp; *p; p++) {
-      if (IS_KANJI(p))
-        p++;
-      else if (*p == '\\')
-       *p = '/';
-    }
-  }
-#endif
 
   return  tmp;
 }
@@ -969,7 +964,7 @@ dpx_delete_temp_file (char *tmp, int force)
 /* dpx_file_apply_filter() is used for converting unsupported graphics
  * format to one of the formats that dvipdfmx can natively handle.
  * 'input' is the filename of the original file and 'output' is actually
- * temporal files 'generated' by the above routine.
+ * temporal files 'generated' by the above routine.   
  * This should be system dependent. (MiKTeX may want something different)
  * Please modify as appropriate (see also pdfximage.c and dvipdfmx.c).
  */
@@ -1080,7 +1075,7 @@ istruetype (FILE *fp)
 
   return  0;
 }
-
+      
 /* "OpenType" is only for ".otf" here */
 static int
 isopentype (FILE *fp)
@@ -1165,7 +1160,7 @@ isdfont (FILE *fp)
   }
   return 0;
 }
-
+      
 /* This actually opens files. */
 static int
 qcheck_filetype (const char *fqpn, dpx_res_type type)
@@ -1211,3 +1206,4 @@ qcheck_filetype (const char *fqpn, dpx_res_type type)
 
   return  r;
 }
+

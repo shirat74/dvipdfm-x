@@ -2,19 +2,19 @@
 
     Copyright (C) 2007-2015 by Jin-Hwan Cho and Shunsaku Hirata,
     the dvipdfmx project team.
-    
+
     Copyright (C) 1998, 1999 by Mark A. Wicks <mwicks@kettering.edu>
 
     This program is free software; you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
     the Free Software Foundation; either version 2 of the License, or
     (at your option) any later version.
-    
+
     This program is distributed in the hope that it will be useful,
     but WITHOUT ANY WARRANTY; without even the implied warranty of
     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
     GNU General Public License for more details.
-    
+
     You should have received a copy of the GNU General Public License
     along with this program; if not, write to the Free Software
     Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA.
@@ -80,7 +80,7 @@ static int  concat_stream    (pdf_obj *dst, pdf_obj *src);
  * in the absence of additional information (such as imposition instructions
  * specified in a JDF or PJTF job ticket), the crop box will determine how
  * the pageâ€™s contents are to be positioned on the output medium. The default
- * value is the pageâ€™s media box. 
+ * value is the pageâ€™s media box.
  *
  * BleedBox rectangle (Optional; PDF 1.3)
  *
@@ -89,14 +89,14 @@ static int  concat_stream    (pdf_obj *dst, pdf_obj *src);
  * include any extra â€œbleed areaâ€ needed to accommodate the physical
  * limitations of cutting, folding, and trimming equipment. The actual printed
  * page may include printing marks that fall outside the bleed box.
- * The default value is the pageâ€™s crop box. 
+ * The default value is the pageâ€™s crop box.
  *
  * TrimBox rectangle (Optional; PDF 1.3)
  *
  * The trim box (PDF 1.3) defines the intended dimensions of the finished page
  * after trimming. It may be smaller than the media box, to allow for
  * production-related content such as printing instructions, cut marks, or
- * color bars. The default value is the pageâ€™s crop box. 
+ * color bars. The default value is the pageâ€™s crop box.
  *
  * ArtBox rectangle (Optional; PDF 1.3)
  *
@@ -204,7 +204,7 @@ pdf_get_page_obj (pdf_file *pf, int page_no,
 
     while (1) {
       int kids_length, i;
- 
+
       if ((tmp = pdf_deref_obj(pdf_lookup_dict(page_tree, "MediaBox")))) {
 	if (bbox)
 	  pdf_release_obj(bbox);
@@ -282,7 +282,7 @@ pdf_get_page_obj (pdf_file *pf, int page_no,
 
 	page_idx -= count;
       }
-      
+
       pdf_release_obj(kids);
 
       if (i == kids_length) {
@@ -320,7 +320,7 @@ pdf_get_page_obj (pdf_file *pf, int page_no,
     pdf_release_obj(rotate);
     rotate = NULL;
   }
-  
+
   if (ret_bbox != NULL)
     *ret_bbox = bbox;
   if (ret_resources != NULL)
@@ -459,7 +459,7 @@ pdf_include_page (pdf_ximage        *ximage,
       content_new = pdf_new_stream(0);
       /* TODO: better don't include anything if the page is empty */
     } else if (PDF_OBJ_STREAMTYPE(contents)) {
-      /* 
+      /*
        * We must import the stream because its dictionary
        * may contain indirect references.
        */
@@ -652,7 +652,8 @@ static struct operator
 
 
 int
-pdf_copy_clip (FILE *image_file, int pageNo, double x_user, double y_user)
+pdf_copy_clip (pdf_doc *p, FILE *image_file, int pageNo,
+               double x_user, double y_user)
 {
   pdf_obj *page_tree, *contents;
   int depth = 0, top = -1;
@@ -661,12 +662,12 @@ pdf_copy_clip (FILE *image_file, int pageNo, double x_user, double y_user)
   pdf_tmatrix M;
   double stack[6];
   pdf_file *pf;
-  
+
   pf = pdf_open(NULL, image_file);
   if (!pf)
     return -1;
 
-  pdf_dev_currentmatrix(&M);
+  pdf_dev_currentmatrix(p, &M);
   pdf_invertmatrix(&M);
   M.e += x_user; M.f += y_user;
   page_tree = pdf_get_page_obj (pf, pageNo, NULL, NULL);
@@ -682,7 +683,7 @@ pdf_copy_clip (FILE *image_file, int pageNo, double x_user, double y_user)
     return -1;
   }
 
-  pdf_doc_add_page_content(" ", 1);
+  pdf_doc_add_page_content(p, " ", 1);
 
   save_path = malloc(pdf_stream_length(contents) + 1);
   strncpy(save_path, (const char *) pdf_stream_dataptr(contents),  pdf_stream_length(contents));
@@ -770,12 +771,12 @@ pdf_copy_clip (FILE *image_file, int pageNo, double x_user, double y_user)
 	    return -1;
 	  break;
 	case OP_CLOSEandCLIP:
-	  pdf_dev_closepath();
+	  pdf_dev_closepath(p);
 	case OP_CLIP:
 #if 0
-	  pdf_dev_clip();
+	  pdf_dev_clip(p);
 #else
-	  pdf_dev_flushpath('W', PDF_FILL_RULE_NONZERO);
+	  pdf_dev_flushpath(p, 'W', PDF_FILL_RULE_NONZERO);
 #endif
 	  break;
 	case OP_CONCATMATRIX:
@@ -806,15 +807,15 @@ pdf_copy_clip (FILE *image_file, int pageNo, double x_user, double y_user)
             p1.x = p0.x + w; p1.y = p0.y;
             p2.x = p0.x + w; p2.y = p0.y + h;
             p3.x = p0.x;     p3.y = p0.y + h;
-            pdf_dev_transform(&p0, &M);
-            pdf_dev_transform(&p1, &M);
-            pdf_dev_transform(&p2, &M);
-            pdf_dev_transform(&p3, &M);
-            pdf_dev_moveto(p0.x, p0.y);
-            pdf_dev_lineto(p1.x, p1.y);
-            pdf_dev_lineto(p2.x, p2.y);
-            pdf_dev_lineto(p3.x, p3.y);
-            pdf_dev_lineto(p0.x, p0.y);
+            pdf_dev_transform(p, &p0, &M);
+            pdf_dev_transform(p, &p1, &M);
+            pdf_dev_transform(p, &p2, &M);
+            pdf_dev_transform(p, &p3, &M);
+            pdf_dev_moveto(p, p0.x, p0.y);
+            pdf_dev_lineto(p, p1.x, p1.y);
+            pdf_dev_lineto(p, p2.x, p2.y);
+            pdf_dev_lineto(p, p3.x, p3.y);
+            pdf_dev_lineto(p, p0.x, p0.y);
 	  }
 	  break;
 	case OP_CURVETO:
@@ -822,36 +823,36 @@ pdf_copy_clip (FILE *image_file, int pageNo, double x_user, double y_user)
 	    return -1;
 	  p0.y = stack[top--];
 	  p0.x = stack[top--];
-	  pdf_dev_transform(&p0, &M);
+	  pdf_dev_transform(p, &p0, &M);
 	  p1.y = stack[top--];
 	  p1.x = stack[top--];
-	  pdf_dev_transform(&p1, &M);
+	  pdf_dev_transform(p, &p1, &M);
 	  p2.y = stack[top--];
 	  p2.x = stack[top--];
-	  pdf_dev_transform(&p2, &M);
-	  pdf_dev_curveto(p2.x, p2.y, p1.x, p1.y, p0.x, p0.y);
+	  pdf_dev_transform(p, &p2, &M);
+	  pdf_dev_curveto(p, p2.x, p2.y, p1.x, p1.y, p0.x, p0.y);
 	  break;
 	case OP_CLOSEPATH:
-	  pdf_dev_closepath();
+	  pdf_dev_closepath(p);
 	  break;
 	case OP_LINETO:
 	  if (top < 1)
 	    return -1;
 	  p0.y = stack[top--];
 	  p0.x = stack[top--];
-	  pdf_dev_transform(&p0, &M);
-	  pdf_dev_lineto(p0.x, p0.y);
+	  pdf_dev_transform(p, &p0, &M);
+	  pdf_dev_lineto(p, p0.x, p0.y);
 	  break;
 	case OP_MOVETO:
 	  if (top < 1)
 	    return -1;
 	  p0.y = stack[top--];
 	  p0.x = stack[top--];
-	  pdf_dev_transform(&p0, &M);
-	  pdf_dev_moveto(p0.x, p0.y);
+	  pdf_dev_transform(p, &p0, &M);
+	  pdf_dev_moveto(p, p0.x, p0.y);
 	  break;
 	case OP_NOOP:
-	  pdf_doc_add_page_content(" n", 2);
+	  pdf_doc_add_page_content(p, " n", 2);
 	  break;
 	case OP_GSAVE:
 	  depth++;
@@ -864,22 +865,22 @@ pdf_copy_clip (FILE *image_file, int pageNo, double x_user, double y_user)
 	    return -1;
 	  p0.y = stack[top--];
 	  p0.x = stack[top--];
-	  pdf_dev_transform(&p0, &M);
+	  pdf_dev_transform(p, &p0, &M);
 	  p1.y = stack[top--];
 	  p1.x = stack[top--];
-	  pdf_dev_transform(&p1, &M);
-	  pdf_dev_vcurveto(p1.x, p1.y, p0.x, p0.y);
+	  pdf_dev_transform(p, &p1, &M);
+	  pdf_dev_vcurveto(p, p1.x, p1.y, p0.x, p0.y);
 	  break;
 	case OP_CURVETO2:
 	  if (top < 3)
 	    return -1;
 	  p0.y = stack[top--];
 	  p0.x = stack[top--];
-	  pdf_dev_transform(&p0, &M);
+	  pdf_dev_transform(p, &p0, &M);
 	  p1.y = stack[top--];
 	  p1.x = stack[top--];
-	  pdf_dev_transform(&p1, &M);
-	  pdf_dev_ycurveto(p1.x, p1.y, p0.x, p0.y);
+	  pdf_dev_transform(p, &p1, &M);
+	  pdf_dev_ycurveto(p, p1.x, p1.y, p0.x, p0.y);
 	  break;
 	default:
 	  return -1;

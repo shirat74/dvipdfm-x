@@ -897,6 +897,7 @@ main (int argc, char *argv[])
 #endif
 {
   pdf_doc *p;
+  pdf_dev *p_dev;
   double   dvi2pts;
   char    *base;
 #ifdef WIN32
@@ -1059,7 +1060,8 @@ main (int argc, char *argv[])
   /* Ignore_colors placed here since
    * they are considered as device's capacity.
    */
-  pdf_init_device(dvi2pts, pdfdecimaldigits, ignore_colors);
+  p_dev = pdf_init_device(p, dvi2pts, pdfdecimaldigits, ignore_colors);
+  pdf_set_device(p, p_dev);
 
   /* Miscellaneous option flags */
   if (opt_flags & OPT_CIDFONT_FIXEDPITCH)
@@ -1079,7 +1081,7 @@ main (int argc, char *argv[])
   pdf_files_close();
 
   /* Order of close... */
-  pdf_close_device  ();
+  pdf_close_device(p_dev);
   /* pdf_close_document flushes XObject (image) and other resources. */
   pdf_close_document(p);
 
