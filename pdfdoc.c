@@ -158,7 +158,7 @@ struct name_dict
 
 typedef struct pdf_doc
 {
-  PDF     *pdf; /* Object representing PDF file */
+  pdf_out *out; /* Object representing PDF file */
   pdf_dev *dev;
 
   struct {
@@ -271,7 +271,7 @@ pdf_doc_init_catalog (pdf_doc *p)
   p->root.threads    = NULL;
 
   p->root.dict = pdf_new_dict();
-  pdf_set_root(p->pdf, p->root.dict);
+  pdf_out_set_root(p->out, p->root.dict);
 
   return;
 }
@@ -499,7 +499,7 @@ static void
 pdf_doc_init_docinfo (pdf_doc *p)
 {
   p->info = pdf_new_dict();
-  pdf_set_info(p->pdf, p->info);
+  pdf_out_set_info(p->out, p->info);
 
   return;
 }
@@ -2568,7 +2568,7 @@ pdf_open_document (const char *filename,
 
   p = NEW(1, pdf_doc);
 
-  p->pdf = pdf_out_init(filename, id_str, ver_major, ver_minor,
+  p->out = pdf_out_init(filename, id_str, ver_major, ver_minor,
                         enable_encrypt,
                         keybits, permission, opasswd, upasswd,
                         enable_objstm);
@@ -2576,7 +2576,7 @@ pdf_open_document (const char *filename,
   pdf_doc_init_catalog(p);
   /* FIXME: order */
   if (enable_encrypt)
-    pdf_set_encrypt_dict(p->pdf);
+    pdf_out_set_encrypt_dict(p->out);
 
   p->opt.annot_grow = annot_grow_amount;
   p->opt.outline_open_depth = bookmark_open_depth;
@@ -2643,7 +2643,7 @@ pdf_close_document (pdf_doc *p)
 
   pdf_close_resources(); /* Should be at last. */
 
-  pdf_out_flush(p->pdf);
+  pdf_out_flush(p->out);
 
   if (p->opt.basename)
     RELEASE(p->opt.basename);
@@ -2659,6 +2659,30 @@ pdf_doc_set_device (pdf_doc *p, pdf_dev *pdev)
   ASSERT(p);
 
   p->dev = pdev;
+}
+
+void
+pdf_set_compression (pdf_doc *p, int level)
+{
+  ASSERT(p);
+
+  pdf_out_set_compression(p->out, level);
+}
+
+void
+pdf_set_use_predictor (pdf_doc *p, int enable)
+{
+  ASSERT(p);
+
+  pdf_out_set_use_predictor(p->out, enable);
+}
+
+pdf_out *
+pdf_doc_get_output (pdf_doc *p)
+{
+  ASSERT(p);
+
+  return p->out;
 }
 
 /*

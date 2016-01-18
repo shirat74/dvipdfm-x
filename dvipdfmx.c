@@ -1055,7 +1055,7 @@ main (int argc, char *argv[])
    * PDF generation but there are no guarantee that it is reflected immediately.
    * Writing PDF stream object can be delayed in dvipdfmx.
    */
-  pdf_set_compression(compression_level);
+  pdf_set_compression(p, compression_level);
 
   /* Ignore_colors placed here since
    * they are considered as device's capacity.
@@ -1070,7 +1070,7 @@ main (int argc, char *argv[])
   if (opt_flags & OPT_TPIC_TRANSPARENT_FILL)
     tpic_set_fill_mode(1);
   if (opt_flags & OPT_PDFOBJ_NO_PREDICTOR)
-    pdf_set_use_predictor(0); /* No prediction */
+    pdf_set_use_predictor(p, 0); /* No prediction */
 
   if (mp_mode) {
     do_mps_pages(p);

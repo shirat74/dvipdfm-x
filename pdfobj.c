@@ -184,7 +184,7 @@ static int error_out = 0;
 #define OBJSTM_MAX_OBJS  200
 /* the limit is only 100 for linearized PDF */
 
-struct pdf {
+struct pdf_out {
   struct {
     int    enc_mode; /* boolean */
   } state;
@@ -229,7 +229,7 @@ struct pdf {
 };
 
 static void
-init_pdf_struct (PDF *p)
+init_pdf_struct (pdf_out *p)
 {
   ASSERT(p);
 
@@ -263,15 +263,15 @@ init_pdf_struct (PDF *p)
 }
 
 #if 1
-static PDF _pdf;
+static pdf_out _pdf;
 #endif
 
-static PDF *
+static pdf_out *
 pdf_new (void) {
 #if 0
-  PDF *p = NEW(1, PDF);
+  pdf_out *p = NEW(1, pdf_out);
 #else
-  PDF *p = &_pdf;
+  pdf_out *p = &_pdf;
 #endif
   init_pdf_struct(p);
   return p;
@@ -279,9 +279,9 @@ pdf_new (void) {
 
 #if 0
 static void
-pdf_delete (PDF **pp)
+pdf_delete (pdf_out **pp)
 {
-  PDF *p;
+  pdf_out *p;
   if (!pp || !*pp)
     return;
 
@@ -306,53 +306,50 @@ pdf_delete (PDF **pp)
 /* Internal static routines */
 
 static int  check_for_pdf_version (FILE *file);
-static void pdf_set_version (PDF *p, int ver_major, int ver_minor);
+static void pdf_out_set_version (pdf_out *p, int ver_major, int ver_minor);
 
-static void pdf_flush_obj (PDF *p, pdf_obj *object);
-static void pdf_label_obj (PDF *p, pdf_obj *object);
-static void pdf_write_obj (PDF *p, pdf_obj *object);
+static void pdf_flush_obj (pdf_out *p, pdf_obj *object);
+static void pdf_label_obj (pdf_out *p, pdf_obj *object);
+static void pdf_write_obj (pdf_out *p, pdf_obj *object);
 
 static void set_objstm_data (pdf_obj *objstm, int *data);
 static int *get_objstm_data (pdf_obj *objstm);
 static void release_objstm  (pdf_obj *objstm);
 
-static void pdf_out_char (PDF *p, char c);
-static void pdf_out      (PDF *p, const void *buffer, int length);
+static void pdf_out_char (pdf_out *p, char c);
+static void pdf_out_str  (pdf_out *p, const void *buffer, int length);
 
-static pdf_obj *pdf_new_ref  (PDF *p, pdf_obj *object);
+static pdf_obj *pdf_new_ref  (pdf_out *p, pdf_obj *object);
 static void release_indirect (pdf_indirect *data);
-static void write_indirect   (PDF *p, pdf_indirect *indirect);
+static void write_indirect   (pdf_out *p, pdf_indirect *indirect);
 
 static void release_boolean (pdf_obj *data);
-static void write_boolean   (PDF *p, pdf_boolean *data);
+static void write_boolean   (pdf_out *p, pdf_boolean *data);
 
-static void write_null   (PDF *p);
+static void write_null   (pdf_out *p);
 
 static void release_number (pdf_number *number);
-static void write_number   (PDF *p, pdf_number *number);
+static void write_number   (pdf_out *p, pdf_number *number);
 
-static void write_string   (PDF *p, pdf_string *str);
+static void write_string   (pdf_out *p, pdf_string *str);
 static void release_string (pdf_string *str);
 
-static void write_name   (PDF *p, pdf_name *name);
+static void write_name   (pdf_out *p, pdf_name *name);
 static void release_name (pdf_name *name);
 
-static void write_array   (PDF *p, pdf_array *array);
+static void write_array   (pdf_out *p, pdf_array *array);
 static void release_array (pdf_array *array);
 
-static void write_dict   (PDF *p, pdf_dict *dict);
+static void write_dict   (pdf_out *p, pdf_dict *dict);
 static void release_dict (pdf_dict *dict);
 
-static void write_stream   (PDF *p, pdf_stream *stream);
+static void write_stream   (pdf_out *p, pdf_stream *stream);
 static void release_stream (pdf_stream *stream);
 
 void
-pdf_set_compression (int level)
+pdf_out_set_compression (pdf_out *p, int level)
 {
-  PDF *p = &_pdf;
-
-  if (!p)
-    return;
+  ASSERT(p);
 
 #ifndef   HAVE_ZLIB
   ERROR("You don't have compression compiled in. Possibly libz wasn't found by configure.");
@@ -372,18 +369,15 @@ pdf_set_compression (int level)
 }
 
 void
-pdf_set_use_predictor (int bval)
+pdf_out_set_use_predictor (pdf_out *p, int bval)
 {
-  PDF *p = &_pdf;
-
-  if (!p)
-    return;
+  ASSERT(p);
 
   p->options.compression.use_predictor = bval ? 1 : 0;
 }
 
 static void
-pdf_set_version (PDF *p, int ver_major, int ver_minor)
+pdf_out_set_version (pdf_out *p, int ver_major, int ver_minor)
 {
   ASSERT(p);
 
@@ -399,7 +393,7 @@ pdf_set_version (PDF *p, int ver_major, int ver_minor)
 unsigned
 pdf_get_version (void)
 {
-  PDF *p = &_pdf;
+  pdf_out *p = &_pdf;
   return p->version.minor;
 }
 
@@ -450,7 +444,7 @@ compute_id (unsigned char *id, const char *str1, const char *str2)
 }
 
 static void
-add_xref_entry (PDF *p,
+add_xref_entry (pdf_out *p,
                 uint32_t label, unsigned char type,
                 uint32_t field2, uint16_t field3)
 {
@@ -470,14 +464,14 @@ add_xref_entry (PDF *p,
 }
 
 #define BINARY_MARKER "%\344\360\355\370\n"
-PDF *
+pdf_out *
 pdf_out_init (const char *filename, const char *id_str,
               int ver_major, int ver_minor,
               int enable_encrypt, int keybits, int32_t permission,
               const char *opasswd, const char *upasswd,
               int enable_objstm)
 {
-  PDF *p = &_pdf;
+  pdf_out *p = &_pdf;
   char v;
 
   /* For a moment we simply discard returned value. (its pointer to _pdf)
@@ -486,7 +480,7 @@ pdf_out_init (const char *filename, const char *id_str,
    */
   pdf_new();
 
-  pdf_set_version(p, ver_major, ver_minor);
+  pdf_out_set_version(p, ver_major, ver_minor);
 
   add_xref_entry(p, 0, 0, 0, 0xffff);
   p->obj.next_label = 1;
@@ -525,11 +519,11 @@ pdf_out_init (const char *filename, const char *id_str,
         ERROR("Unable to open file.");
     }
   }
-  pdf_out(p, "%PDF-1.", strlen("%PDF-1."));
+  pdf_out_str(p, "%PDF-1.", strlen("%PDF-1."));
   v = '0' + p->version.minor;
-  pdf_out(p, &v, 1);
-  pdf_out(p, "\n", 1);
-  pdf_out(p, BINARY_MARKER, strlen(BINARY_MARKER));
+  pdf_out_str(p, &v, 1);
+  pdf_out_str(p, "\n", 1);
+  pdf_out_str(p, BINARY_MARKER, strlen(BINARY_MARKER));
 
 
   /* Computatin of ID and setup security handler */
@@ -561,7 +555,7 @@ pdf_out_init (const char *filename, const char *id_str,
 
 /* FIXME: This routine must be called after catalog is initialized... */
 void
-pdf_set_encrypt_dict (PDF *p)
+pdf_out_set_encrypt_dict (pdf_out *p)
 {
   pdf_obj *encrypt;
 
@@ -574,17 +568,17 @@ pdf_set_encrypt_dict (PDF *p)
 }
 
 static void
-dump_xref_table (PDF *p)
+dump_xref_table (pdf_out *p)
 {
   int   length, i;
   char  buf[32];
 
   ASSERT(p);
 
-  pdf_out(p, "xref\n", 5);
+  pdf_out_str(p, "xref\n", 5);
 
   length = sprintf(buf, "%d %u\n", 0, p->obj.next_label);
-  pdf_out(p, buf, length);
+  pdf_out_str(p, buf, length);
 
   /*
    * Every space counts.  The space after the 'f' and 'n' is * *essential*.
@@ -598,18 +592,18 @@ dump_xref_table (PDF *p)
     length = sprintf(buf, "%010u %05hu %c \n",
 		                 p->xref_table[i].field2, p->xref_table[i].field3,
 		                 type ? 'n' : 'f');
-    pdf_out(p, buf, length);
+    pdf_out_str(p, buf, length);
   }
 }
 
 static void
-dump_trailer (PDF *p)
+dump_trailer (pdf_out *p)
 {
   pdf_obj *trailer = p->trailer;
 
   ASSERT(p);
 
-  pdf_out(p, "trailer\n", 8);
+  pdf_out_str(p, "trailer\n", 8);
   p->state.enc_mode = 0;
   write_dict(p, trailer->data);
   pdf_release_obj(trailer);
@@ -622,7 +616,7 @@ dump_trailer (PDF *p)
  * contributed by Matthias Franz (March 21, 2007)
  */
 static void
-dump_xref_stream (PDF *p)
+dump_xref_stream (pdf_out *p)
 {
   unsigned int pos, i;
   unsigned poslen;
@@ -667,7 +661,7 @@ dump_xref_stream (PDF *p)
 }
 
 void
-pdf_out_flush (PDF *p)
+pdf_out_flush (pdf_out *p)
 {
   char buf[16];
 
@@ -708,10 +702,10 @@ pdf_out_flush (PDF *p)
     RELEASE(p->xref_table);
     p->xref_table = NULL;
 
-    pdf_out(p, "startxref\n", 10);
+    pdf_out_str(p, "startxref\n", 10);
     length = sprintf(buf, "%u\n", p->startxref);
-    pdf_out(p, buf, length);
-    pdf_out(p, "%%EOF\n", 6);
+    pdf_out_str(p, buf, length);
+    pdf_out_str(p, "%%EOF\n", 6);
 
     MESG("\n");
     if (verbose) {
@@ -734,7 +728,7 @@ pdf_out_flush (PDF *p)
 void
 pdf_error_cleanup (void)
 {
-  PDF *p = &_pdf;
+  pdf_out *p = &_pdf;
   /*
    * This routine is the cleanup required for an abnormal exit.
    * For now, simply close the file.
@@ -746,7 +740,7 @@ pdf_error_cleanup (void)
 
 
 void
-pdf_set_root (PDF *p, pdf_obj *object)
+pdf_out_set_root (pdf_out *p, pdf_obj *object)
 {
   ASSERT(p && object);
 
@@ -763,7 +757,7 @@ pdf_set_root (PDF *p, pdf_obj *object)
 }
 
 void
-pdf_set_info (PDF *p, pdf_obj *object)
+pdf_out_set_info (pdf_out *p, pdf_obj *object)
 {
   ASSERT(p && object);
 
@@ -773,7 +767,7 @@ pdf_set_info (PDF *p, pdf_obj *object)
 }
 
 static void
-pdf_out_char (PDF *p, char c)
+pdf_out_char (pdf_out *p, char c)
 {
   ASSERT(p);
 
@@ -793,11 +787,11 @@ pdf_out_char (PDF *p, char c)
   }
 }
 
-static void pdf_out_xchar (PDF *p, char c);
+static void pdf_out_xchar (pdf_out *p, char c);
 
 static char xchar[] = "0123456789abcdef";
 static void
-pdf_out_xchar (PDF *p, char c)
+pdf_out_xchar (pdf_out *p, char c)
 {
   ASSERT(p);
 
@@ -806,7 +800,7 @@ pdf_out_xchar (PDF *p, char c)
 }
 
 static void
-pdf_out (PDF *p, const void *buffer, int length)
+pdf_out_str (pdf_out *p, const void *buffer, int length)
 {
   ASSERT(p);
 
@@ -837,7 +831,7 @@ need_white (int type1, int type2)
 }
 
 static void
-pdf_out_white (PDF *p)
+pdf_out_white (pdf_out *p)
 {
   ASSERT(p);
 
@@ -887,7 +881,7 @@ pdf_obj_typeof (pdf_obj *object)
 }
 
 static void
-pdf_label_obj (PDF *p, pdf_obj *object)
+pdf_label_obj (pdf_out *p, pdf_obj *object)
 {
   ASSERT(p);
 
@@ -937,7 +931,7 @@ pdf_link_obj (pdf_obj *object)
 pdf_obj *
 pdf_ref_obj (pdf_obj *object)
 {
-  PDF *p = &_pdf;
+  pdf_out *p = &_pdf;
 
   if (INVALIDOBJ(object))
     ERROR("pdf_ref_obj(): passed invalid object.");
@@ -964,7 +958,7 @@ release_indirect (pdf_indirect *data)
 }
 
 static void
-write_indirect (PDF *p, pdf_indirect *indirect)
+write_indirect (pdf_out *p, pdf_indirect *indirect)
 {
   int   length;
   char  buf[64];
@@ -973,7 +967,7 @@ write_indirect (PDF *p, pdf_indirect *indirect)
 
   length = sprintf(buf, "%u %hu R",
                    indirect->label, indirect->generation);
-  pdf_out(p, buf, length);
+  pdf_out_str(p, buf, length);
 }
 
 /* The undefined object is used as a placeholder in pdfnames.c
@@ -1002,11 +996,11 @@ pdf_new_null (void)
 }
 
 static void
-write_null (PDF *p)
+write_null (pdf_out *p)
 {
   ASSERT(p);
 
-  pdf_out(p, "null", 4);
+  pdf_out_str(p, "null", 4);
 }
 
 pdf_obj *
@@ -1030,14 +1024,14 @@ release_boolean (pdf_obj *data)
 }
 
 static void
-write_boolean (PDF *p, pdf_boolean *data)
+write_boolean (pdf_out *p, pdf_boolean *data)
 {
   ASSERT(p);
 
   if (data->value) {
-    pdf_out(p, "true", 4);
+    pdf_out_str(p, "true", 4);
   } else {
-    pdf_out(p, "false", 5);
+    pdf_out_str(p, "false", 5);
   }
 }
 
@@ -1074,7 +1068,7 @@ release_number (pdf_number *data)
 }
 
 static void
-write_number (PDF *p, pdf_number *number)
+write_number (pdf_out *p, pdf_number *number)
 {
   int  count;
   char buf[512]; /* enough space to represent "double" */
@@ -1083,7 +1077,7 @@ write_number (PDF *p, pdf_number *number)
 
   count = pdf_sprint_number(buf, number->value);
 
-  pdf_out(p, buf, count);
+  pdf_out_str(p, buf, count);
 }
 
 void
@@ -1212,7 +1206,7 @@ pdfobj_escape_str (char *dst, size_t dstlen,
 }
 
 static void
-write_string (PDF *p, pdf_string *str)
+write_string (pdf_out *p, pdf_string *str)
 {
   unsigned char *s = NULL;
   int            i, num_esc = 0;
@@ -1265,7 +1259,7 @@ write_string (PDF *p, pdf_string *str)
      */
     for (i = 0; i < len; i++) {
       int count = pdfobj_escape_str(buf, size, &(s[i]), 1);
-      pdf_out(p, buf, count);
+      pdf_out_str(p, buf, count);
     }
     pdf_out_char(p, ')');
 
@@ -1331,7 +1325,7 @@ pdf_new_name (const char *name)
 }
 
 static void
-write_name (PDF *p, pdf_name *name)
+write_name (pdf_out *p, pdf_name *name)
 {
   char *s;
   int   i, length;
@@ -1416,7 +1410,7 @@ pdf_new_array (void)
 }
 
 static void
-write_array (PDF *p, pdf_array *array)
+write_array (pdf_out *p, pdf_array *array)
 {
   ASSERT(p);
 
@@ -1603,14 +1597,14 @@ pdf_pop_array (pdf_obj *array)
 #endif
 
 static void
-write_dict (PDF *p, pdf_dict *dict)
+write_dict (pdf_out *p, pdf_dict *dict)
 {
   ASSERT(p);
 
 #if 0
-  pdf_out (p, "<<\n", 3); /* dropping \n saves few kb. */
+  pdf_out_str(p, "<<\n", 3); /* dropping \n saves few kb. */
 #else
-  pdf_out (p, "<<", 2);
+  pdf_out_str(p, "<<", 2);
 #endif
   while (dict->key != NULL) {
     pdf_write_obj(p, dict->key);
@@ -1623,7 +1617,7 @@ write_dict (PDF *p, pdf_dict *dict)
 #endif
     dict = dict->next;
   }
-  pdf_out (p, ">>", 2);
+  pdf_out_str(p, ">>", 2);
 }
 
 pdf_obj *
@@ -2175,7 +2169,7 @@ filter_create_predictor_dict (int predictor, int32_t columns,
 }
 
 static void
-write_stream (PDF *p, pdf_stream *stream)
+write_stream (pdf_out *p, pdf_stream *stream)
 {
   unsigned char *filtered;
   unsigned int   filtered_length;
@@ -2325,10 +2319,10 @@ write_stream (PDF *p, pdf_stream *stream)
 
   pdf_write_obj(p, stream->dict);
 
-  pdf_out(p, "\nstream\n", 8);
+  pdf_out_str(p, "\nstream\n", 8);
 
   if (filtered_length > 0)
-    pdf_out(p, filtered, filtered_length);
+    pdf_out_str(p, filtered, filtered_length);
   RELEASE(filtered);
 
   /*
@@ -2338,8 +2332,8 @@ write_stream (PDF *p, pdf_stream *stream)
    * filters, this could be a problem.
    */
 
-  pdf_out(p, "\n", 1);
-  pdf_out(p, "endstream", 9);
+  pdf_out_str(p, "\n", 1);
+  pdf_out_str(p, "endstream", 9);
 }
 
 static void
@@ -2866,7 +2860,7 @@ pdf_stream_get_flags (pdf_obj *stream)
 #endif
 
 static void
-pdf_write_obj (PDF *p, pdf_obj *object)
+pdf_write_obj (pdf_out *p, pdf_obj *object)
 {
   ASSERT(p);
 
@@ -2914,7 +2908,7 @@ pdf_write_obj (PDF *p, pdf_obj *object)
 
 /* Write the object to the file */
 static void
-pdf_flush_obj (PDF *p, pdf_obj *object)
+pdf_flush_obj (pdf_out *p, pdf_obj *object)
 {
   int  length;
   char buf[64];
@@ -2932,13 +2926,13 @@ pdf_flush_obj (PDF *p, pdf_obj *object)
    (p->options.encrypt && !(object->flags & OBJ_NO_ENCRYPT)) ? 1 : 0;
   pdf_sec_set_label(p->sec_data, object->label);
   pdf_sec_set_generation(p->sec_data, object->generation);
-  pdf_out(p, buf, length);
+  pdf_out_str(p, buf, length);
   pdf_write_obj(p, object);
-  pdf_out(p, "\nendobj\n", 8);
+  pdf_out_str(p, "\nendobj\n", 8);
 }
 
 static int
-pdf_add_objstm (PDF *p, pdf_obj *objstm, pdf_obj *object)
+pdf_add_objstm (pdf_out *p, pdf_obj *objstm, pdf_obj *object)
 {
   int *data, pos;
 
@@ -3009,7 +3003,7 @@ release_objstm (pdf_obj *objstm)
 void
 pdf_release_obj (pdf_obj *object)
 {
-  PDF *p = &_pdf;
+  pdf_out *p = &_pdf;
   if (object == NULL)
     return;
   if (INVALIDOBJ(object) || object->refcount <= 0) {
@@ -3500,7 +3494,7 @@ pdf_get_object (pdf_file *pf, unsigned int obj_num, unsigned short obj_gen)
 #define OBJ_GEN(o)  (((pdf_indirect *)((o)->data))->generation)
 
 static pdf_obj *
-pdf_new_ref (PDF *p, pdf_obj *object)
+pdf_new_ref (pdf_out *p, pdf_obj *object)
 {
   pdf_obj *result;
 

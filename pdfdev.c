@@ -271,7 +271,7 @@ struct pdf_dev {
 };
 
 static void
-pdf_out (pdf_dev *p, char *str, int len)
+pdf_out_str (pdf_dev *p, char *str, int len)
 {
   pdf_doc_add_page_content(p->pdf, str, len);
 }
@@ -570,7 +570,7 @@ dev_set_text_matrix (pdf_dev *p,
   buf[len++] = 'T';
   buf[len++] = 'm';
 
-  pdf_out(p, buf, len);  /* op: Tm */
+  pdf_out_str(p, buf, len);  /* op: Tm */
 
   p->text_state.ref_x = xpos;
   p->text_state.ref_y = ypos;
@@ -590,7 +590,7 @@ reset_text_state (pdf_dev *p)
   /*
    * We need to reset the line matrix to handle slanted fonts.
    */
-  pdf_out(p, " BT", 3);  /* op: BT */
+  pdf_out_str(p, " BT", 3);  /* op: BT */
   /*
    * text_state.matrix is identity at top of page.
    * This sometimes write unnecessary "Tm"s when transition from
@@ -618,7 +618,7 @@ text_mode (pdf_dev *p)
   case TEXT_MODE:
     break;
   case STRING_MODE:
-    pdf_out(p, p->text_state.is_mb ? ">]TJ" : ")]TJ", 4);
+    pdf_out_str(p, p->text_state.is_mb ? ">]TJ" : ")]TJ", 4);
     break;
   case GRAPHICS_MODE:
     reset_text_state(p);
@@ -635,10 +635,10 @@ dev_graphics_mode (pdf_dev *p)
   case GRAPHICS_MODE:
     break;
   case STRING_MODE:
-    pdf_out(p, p->text_state.is_mb ? ">]TJ" : ")]TJ", 4);
+    pdf_out_str(p, p->text_state.is_mb ? ">]TJ" : ")]TJ", 4);
     /* continue */
   case TEXT_MODE:
-    pdf_out(p, " ET", 3);  /* op: ET */
+    pdf_out_str(p, " ET", 3);  /* op: ET */
     p->text_state.force_reset =  0;
     p->text_state.font_id     = -1;
     break;
@@ -811,12 +811,12 @@ start_string (pdf_dev *p,
     error_dely = -error_dely;
     break;
   }
-  pdf_out(p, buf, len);  /* op: */
+  pdf_out_str(p, buf, len);  /* op: */
   /*
    * dvipdfm wrongly using "TD" in place of "Td".
    * The TD operator set leading, but we are not using T* etc.
    */
-  pdf_out(p, p->text_state.is_mb ? " Td[<" : " Td[(", 5);
+  pdf_out_str(p, p->text_state.is_mb ? " Td[<" : " Td[(", 5);
 
   /* Error correction */
   p->text_state.ref_x = xpos - error_delx;
@@ -838,7 +838,7 @@ string_mode (pdf_dev *p,
   case TEXT_MODE:
     if (p->text_state.force_reset) {
       dev_set_text_matrix(p, xpos, ypos, slant, extend, rotate);
-      pdf_out(p, p->text_state.is_mb ? "[<" : "[(", 2);
+      pdf_out_str(p, p->text_state.is_mb ? "[<" : "[(", 2);
       p->text_state.force_reset = 0;
     } else {
       start_string(p, xpos, ypos, slant, extend, rotate);
@@ -922,14 +922,14 @@ pdf_dev_set_font (pdf_doc *pdf, int font_id)
   buf[len++] = ' ';
   buf[len++] = 'T';
   buf[len++] = 'f';
-  pdf_out(p, p->format_buffer, len);  /* op: Tf */
+  pdf_out_str(p, p->format_buffer, len);  /* op: Tf */
 
   if (font->bold > 0.0 || font->bold != p->text_state.bold_param) {
     if (font->bold <= 0.0)
       len = sprintf(buf, " 0 Tr");
     else
       len = sprintf(buf, " 2 Tr %.6f w", font->bold); /* _FIXME_ */
-    pdf_out(p, buf, len);  /* op: Tr w */
+    pdf_out_str(p, buf, len);  /* op: Tr w */
   }
   p->text_state.bold_param = font->bold;
 
@@ -1244,7 +1244,7 @@ pdf_dev_set_string (pdf_doc    *pdf,
       len += p_itoa( kern, p->format_buffer + len);
     }
     p->format_buffer[len++] = p->text_state.is_mb ? '<' : '(';
-    pdf_out(p, p->format_buffer, len);  /* op: */
+    pdf_out_str(p, p->format_buffer, len);  /* op: */
     len = 0;
   }
 
@@ -1265,7 +1265,7 @@ pdf_dev_set_string (pdf_doc    *pdf,
                              4096 - len, str_ptr, length);
   }
   /* I think if you really care about speed, you should avoid memcopy here. */
-  pdf_out(p, p->format_buffer, len);  /* op: */
+  pdf_out_str(p, p->format_buffer, len);  /* op: */
 
   p->text_state.offset += width;
 }
@@ -1689,7 +1689,7 @@ pdf_dev_set_rule (pdf_doc *d, spt_t xpos, spt_t ypos, spt_t width, spt_t height)
   }
   buf[len++] = ' ';
   buf[len++] = 'Q';
-  pdf_out(p, buf, len);  /* op: q re f Q */
+  pdf_out_str(p, buf, len);  /* op: q re f Q */
 
 }
 

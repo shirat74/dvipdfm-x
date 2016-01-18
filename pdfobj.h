@@ -48,23 +48,23 @@
 
 typedef struct pdf_obj  pdf_obj;
 typedef struct pdf_file pdf_file;
-typedef struct pdf      PDF;
+typedef struct pdf_out  pdf_out;
 
 /* External interface to pdf routines */
 extern int      pdf_obj_get_verbose (void);
 extern void     pdf_obj_set_verbose (void);
 extern void     pdf_error_cleanup   (void);
 
-extern PDF     *pdf_out_init      (const char *filename, const char *id_str,
+extern pdf_out *pdf_out_init      (const char *filename, const char *id_str,
                                    int ver_major, int ver_minor,
                                    int enable_encrypt, int keybits, int32_t permission,
                                    const char *opasswd, const char *upasswd,
                                    int enable_objstm);
-extern void     pdf_out_flush     (PDF *p);
+extern void     pdf_out_flush     (pdf_out *p);
 extern unsigned pdf_get_version   (void);
 
 /* FIXME */
-extern void     pdf_set_encrypt_dict (PDF *p);
+extern void     pdf_out_set_encrypt_dict (pdf_out *p);
 
 extern void     pdf_release_obj (pdf_obj *object);
 extern int      pdf_obj_typeof  (pdf_obj *object);
@@ -178,11 +178,11 @@ extern int         pdf_compare_reference (pdf_obj *ref1, pdf_obj *ref2);
 /* The following routines are not appropriate for pdfobj.
  */
 
-extern void      pdf_set_compression   (int level);
-extern void      pdf_set_use_predictor (int bval);
+extern void      pdf_out_set_compression   (pdf_out *p, int level);
+extern void      pdf_out_set_use_predictor (pdf_out *p, int bval);
 
-extern void      pdf_set_info     (PDF *p, pdf_obj *obj);
-extern void      pdf_set_root     (PDF *p, pdf_obj *obj);
+extern void      pdf_out_set_info     (pdf_out *p, pdf_obj *obj);
+extern void      pdf_out_set_root     (pdf_out *p, pdf_obj *obj);
 
 extern void      pdf_files_init    (void);
 extern void      pdf_files_close   (void);

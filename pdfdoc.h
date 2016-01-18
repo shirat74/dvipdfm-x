@@ -53,6 +53,10 @@ extern void     pdf_close_document (pdf_doc *p);
 
 extern void     pdf_doc_set_device (pdf_doc *p, pdf_dev *dev);
 extern pdf_dev *pdf_doc_get_device (pdf_doc *p);
+extern pdf_out *pdf_doc_get_output (pdf_doc *p);
+
+extern void     pdf_set_compression   (pdf_doc *p, int level);
+extern void     pdf_set_use_predictor (pdf_doc *p, int enable);
 
 /* They just return PDF dictionary object.
  * Callers are completely responsible for doing right thing...
