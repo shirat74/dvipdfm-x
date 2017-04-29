@@ -40,11 +40,11 @@ encodings and large character sets such as for East Asian languages.
 This project started as a combined work of the dvipdfm-jpn project by
 Shunsaku Hirata and its modified one, dvipdfm-kor, by Jin-Hwan Cho.
 
-Extension to dvipdfm includes,
+Extensions to dvipdfm includes,
 
 * Support for OpenType and TrueType font including partial support
   for OpenType Layout GSUB Feature for finding glyphs and vertical
-  writing support.
+  writing.
 * Advanced support for CJK-LaTeX and Subfont Definition Files.
 * Support for various legacy multi-byte encodings via PostScript CMap
   Resources.
@@ -52,7 +52,7 @@ Extension to dvipdfm includes,
   auto-creation of ToUnicode CMaps.
 * Support for pTeX (a Japanese localized variant of TeX).
 * Some pdfTeX compatible DVI specials.
-* Reduction of files size with on-the-fly Type1 to CFF (Type1C)
+* Reduction of output files size with on-the-fly Type1 to CFF (Type1C)
   conversion and PDF object stream.
 * Advanced raster image support including alpha channels, embedded
   ICC profiles, 16-bit colors, and so on.
@@ -88,8 +88,8 @@ Dvipdfmx requires various auxiliary files.
 
 ### PostScript CMap Resources
 
-Those files are required only for supporting lagacy encodings such as
-Shif-JIS, EUC-JP and other East Asian encodings.
+PostScript CMap Resources are required for supporting lagacy
+encodings such as Shif-JIS, EUC-JP and other East Asian encodings.
 
 Dvipdfmx internally identifies glyphs in fonts with identifiers (CID)
 represented as an integer ranging from 0 to 65535.
@@ -100,47 +100,49 @@ found at:
 
 https://github.com/adobe-type-tools/cmap-resources
 
-CMap Resources are basically not required for use with XeTeX.
+Those files are required for supporting pTeX.
 
 ### SubFont Definition Files
 
 CJK fonts usually contain several thousand of glyphs.
 For using such fonts with (original) TeX, which can only handle 8-bit
-encodings, it is necessary to split such large fonts into several subfonts.
-SubFont Definition File (SFD) specify the way how those fonts are split
-into subfonts.
+encodings, it is necessary to split such large fonts into several
+subfonts. SubFont Definition File (SFD) specify the way how those
+fonts are split into subfonts.
+Dvipdfmx uses SFD files to convert subfonts back to a single font.
 
-Dvipdfmx uses SFD files to convert subfonts back to a single font. SFD files
-are not required for use with TeX variants which can handle multi-byte
-character encodings such as pTeX, upTeX, XeTeX, and Omega.
+SFD files are not required for use with TeX variants which can handle
+multi-byte character encodings such as pTeX, upTeX, XeTeX, and Omega.
+HLaTeX and CJK-LaTeX users are required to have those files to be
+installed.
 
-HLaTeX and CJK-LaTeX users are required to have those files to be installed.
-
-### Adobe Glyph List and ToUnicode Mapping Files
+### Adobe Glyph List and ToUnicode Mapping
 
 The Adobe Glyph List (AGL) describes correspondence between PostScript
-glyph names (e.g., AE, Aacute, ...) and it's Unicode character sequences.
-Some features described in the section "Unicode Support" requires this file.
+glyph names (e.g., AE, Aacute, ...) and it's Unicode character
+sequences. Some features described in the section "Unicode Support"
+requires this file.
 
-Dvipdfmx looks for file `glyphlist.txt` when conversion from PostScript
-glyph names to Unicode sequence is necessary. This conversion is done in
-various situations;
+Dvipdfmx looks for file `glyphlist.txt` when conversion from
+PostScript glyph names to Unicode sequence is necessary.
+This conversion is done in various situations;
 when creating ToUnicode CMaps for 8-bit encoding fonts, finding glyph
-descriptions from TrueType/OpenType fonts when the font itself does not
-provide a mapping from PostScript glyph names to glyph indices (version 2.0
-"post" table), and when the encoding `unicode` is specified for Type 1 font.
+descriptions from TrueType/OpenType fonts when the font itself does
+not provide a mapping from PostScript glyph names to glyph indices
+(version 2.0 "post" table), and when the encoding `unicode` is
+specified for Type 1 font.
 
 The AGL file maintained by Adobe is found at:
 
 https://github.com/adobe-type-tools/agl-aglfn
 
-ToUnicode Mapping Files are similar to the Adobe glyph list file but they
-describe correspondence between CID numbers (instead of glyph names) and
-Unicode values. The content
-of those files are the same as CMap Resources. They are required
-for when using TrueType fonts (including OpenType fonts with TrueType
-outline) emulated as CID-keyed fonts. They should be installed in the same
-directory as ordinary CMap files.
+ToUnicode Mapping Files are similar to the Adobe glyph list file but
+they describe correspondence between CID numbers (instead of glyph
+names) and Unicode values.
+The content of those files are the same as CMap Resources.
+They are required when using TrueType fonts (including OpenType fonts
+with TrueType outline) emulated as CID-keyed fonts.
+They should be installed in the same directory as ordinary CMap files.
 
 Those files are not required for XeTeX users.
 
@@ -151,13 +153,14 @@ languages.
 
 ### Legacy Multibyte Encodings
 
-Dvipdfmx has an extensible support for encodings by means of
-The PostScript CMap Resource.
-Just like `enc` files for 8-bit encodings, one can write their
-own custom CMap files to support custom encodings.
+Dvipdfmx has an extensible support for multibyte encodings by means of
+the PostScript CMap Resource.
+Just like `enc` files are written for 8-bit encodings, one can write
+their own CMap files to support custom encodings.
 See, Adobe's technical note for details on CMap Resources.
 Adobe provides a set of CMap files necessary for processing various
-CJK encodings. See, section of "PostScript CMap Resources".
+CJK encodings in conjunction with their character collections.
+See, section of "PostScript CMap Resources".
 
 ### Vertical Writing
 
@@ -167,29 +170,43 @@ GSUB Feature is supported for selecting vertical version of glyphs.
 
 ## Unicode Support
 
-Dvipdfmx supports an additional keyword in fontmap encoding field `unicode`.
-It can be used when character codes are specified as Unicode in DVI
-and TFM.
+There are several features for supporting Unicode in dvipdfmx.
+
+### Unicode as Input Encoding
+
+Dvipdfmx supports an additional keyword `unicode` in the fontmap
+encoding field. It can be used when character codes are specified
+as Unicode in the input DVI file. Unicode support is basically
+limited to Basic Multilingual Plane (BMP) since there are no support
+for code ranges requires more than three bytes in TFM and extended
+TFM format. The fontmap option `-p` can be used for specifying plane
+other than BMP. IVS support is not available.
 
 ### ToUnicode CMap Support
 
-In PDF, texts are often not encoded in Unicode encodings. However, modern
-applications usually require texts to be encoded in Unicode encodings to make
-them reusable. ToUnicode CMap makes it possible to extract texts in PDF as
-Unicode encoded strings. It is also necessary to make PDF search-able and
-texts in PDF copy-and-past-able. Dvipdfmx supports auto-creation of ToUnicode
-CMap.
+In PDF, texts are often not encoded in Unicode encodings.
+However, modern applications usually require texts to be encoded
+in Unicode encodings to make them reusable. The ToUnicode CMap is
+a bridge between PDF text string encoding and Unicode and makes it
+possible to extract texts in PDF as Unicode encoded strings.
+It is important to make PDF search-able and texts in PDF
+copy-and-past-able. Dvipdfmx supports auto-creation of ToUnicode
+CMaps.
 
-It is done in various ways, by inverse lookup of OpenType Unicode cmap or
-by converting PostScript glyph names to Unicode sequences via Adobe Glyph
-List.
+It is done in various ways, by inverse lookup of OpenType Unicode
+cmap for OpenType fonts or by converting PostScript glyph names to
+Unicode sequences via Adobe Glyph List for Type1 fonts.
+
+It will not work properly for multiply encoded glyphs due to
+fundamental limitations of Unicode conversion mechanism with
+ToUnicode CMaps.
 
 ## Graphics and Image Format
 
 Dvipdfmx does not support various features common to graphics manipulation
 programs such as resampling, color conversion, and selection of
 compression filters.
-Thus, it is recommended to use other programs specialized for
+Thus, it is recommended to use other programs specialized in
 image manipulation for preparation of images.
 
 ### Supported Graphics File Format
@@ -198,7 +215,7 @@ Supported formats are, PNG, JPEG, JPEG2000, BMP, PDF,
 and MetaPost generated EPS. All other format images, such as SVG
 and PostScript, must be converted to other format supported by
 dvipdfmx before inclusion.
-The `-D` option, as in dvipdfm, can be used to filter images.
+The `-D` option, as in dvipdfm, can be used for this purpose.
 
 PNG support includes nearly all features of PNG such as color palette,
 transparency, XMP metadata, ICC Profiles, and calibrated colors
@@ -259,15 +276,22 @@ object from a PDF string instead of a file:
 
 ```
 \special{pdf:stream @MyPattern01
-(0.16 0 0 0.16 0 0 cm 4 w 50 0 m 50 28 28 50 0 50 c S 100 50 m 72 50 50 28 50 0 c S
-50 100 m 50 72 72 50 100 50 c S 0 50 m 28 50 50 72 50 100 c S
-100 50 m 100 78 78 100 50 100 c 22 100 0 78 0 50 c 0 22 22 0 50 0 c 78 0 100 22 100 50 c S
-0 0 m 20 10 25 5 25 0 c f 0 0 m 10 20 5 25 0 25 c f 100 0 m 80 10 75 5 75 0 c f
+(0.16 0 0 0.16 0 0 cm 4 w 50 0 m 50 28 28 50 0 50 c S 100 50
+m 72 50 50 28 50 0 c S
+50 100 m 50 72 72 50 100 50 c S
+0 50 m 28 50 50 72 50 100 c S
+100 50 m 100 78 78 100 50 100 c 22 100 0 78 0 50 c
+0 22 22 0 50 0 c 78 0 100 22 100 50 c S
+0 0 m 20 10 25 5 25 0 c f 0 0 m 10 20 5 25 0 25 c f
+100 0 m 80 10 75 5 75 0 c f
 100 0 m 90 20 95 25 100 25 c f 100 100 m 80 90 75 95 75 100 c f
 100 100 m 90 80 95 75 100 75 c f 0 100 m 20 90 25 95 25 100 c f
-0 100 m 10 80 5 75 0 75 c f 50 50 m 70 60 75 55 75 50 c 75 45 70 40 50 50 c f
-50 50 m 60 70 55 75 50 75 c 45 75 40 70 50 50 c f 50 50 m 30 60 25 55 25 50 c
-25 45 30 40 50 50 c f 50 50 m 60 30 55 25 50 25 c 45 25 40 30 50 50 c f)
+0 100 m 10 80 5 75 0 75 c f
+50 50 m 70 60 75 55 75 50 c 75 45 70 40 50 50 c f
+50 50 m 60 70 55 75 50 75 c 45 75 40 70 50 50 c f
+50 50 m 30 60 25 55 25 50 c
+25 45 30 40 50 50 c f
+50 50 m 60 30 55 25 50 25 c 45 25 40 30 50 50 c f)
 <<
   /BBox [0 0 16 16]
   /PaintType 2
@@ -332,12 +356,30 @@ extensions in dvipdfmx. In addition to 8-bit `enc` files and
 keyword `builtin` and `none`, dvipdfmx accepts CMap name and
 the keyword `unicode` in the encoding field.
 
-### Options for CJK Font
+### Extended Syntax and Options
 
 Few options are available in dvipdfmx in addition to the original
 dvipdfm's one. All options that makes dvipdfmx to use unembedded
 fonts are deprecated as by using them makes divpdfmx to create PDF
 files which are not compliant to "ISO" spec.
+
+#### SFD Specification
+
+For bundling up fonts split into multiple subfonts via SFD back into
+a single font, dvipdfmx supports an extended sytax of the form
+
+```
+tfm_name@SFD@  encoding  filename  options
+```
+
+A typical example might look like:
+
+```
+gbsn@EUC@  GB-EUC-H  gbsn00lp
+```
+
+where TFMs `gbsn00, gbsn01, gbsn02...` are mapped into a single font
+`gbsn00lp` via the rule described in the SFD file `EUC`.
 
 #### TTC Index
 
@@ -345,7 +387,7 @@ TrueType Collection index number can be specified with `:n:`
 in front of TrueType font name:
 
 ```
-min10  H :1:mincho
+min10  H  :1:mincho
 ```
 
 In this example, the option ``:1:`` tells dvipdfmx to select first
@@ -353,7 +395,7 @@ TrueType font from the TTC font `mincho.ttc`. Alternatively, the
 `-i` option can be used in the option field to specify TTC index:
 
 ```
-min10 H mincho -i 1
+min10  H  mincho  -i 1
 ```
 
 #### No-embed Switch (deprecated)
@@ -374,8 +416,8 @@ synthetic bold, italic, and bolditalic style variants from other font
 using PDF viewer's (or OS's) function.
 
 ```
-jbtmo@UKS@     UniKSCms-UCS2-H :0:!batang,Italic
-jbtb@Unicode@  Identity-H      !batang/UCS,Bold
+jbtmo@UKS@     UniKSCms-UCS2-H  :0:!batang,Italic
+jbtb@Unicode@  Identity-H       !batang/UCS,Bold
 ```
 
 Availability of this feature highly depends on the implementation of PDF
@@ -384,7 +426,19 @@ PDF viewers, like Adobe Acrobat Reader and GNU Ghostscript.
 
 Notice that this option automatically disable font embedding.
 
-#### OpentType Layout Feature support
+#### Specifying the Unicode Plane
+
+As there are no existing 3-bytes or 4-bytes TFM formats, the only
+way to use Unicode characters other than BMP is to map code range
+0-65535 to different planes via (e.g., to plane 1)
+
+```
+-p 1
+```
+
+fontmap option.
+
+#### OpentType Layout Feature Support
 
 With the `-w` option in the option field, writing mode can be specified.
 
@@ -405,7 +459,13 @@ For examples,
 
 enables "jp04" feature to select JIS2004 forms for Kanjis.
 Features can be specified as a ":" separated list of OpenType Layout
-Feature tags. Script and language may be additionally specified as
+Feature tags like
+
+```
+-l vkna:jp04
+```
+
+Script and language may be additionally specified as
 
 ```
  -l kana.JAN.ruby
@@ -414,18 +474,19 @@ Feature tags. Script and language may be additionally specified as
 An example can be
 
 ```
-uprml-v unicode SourceHanSerifJP-Light.otf -w 1 -l jp90
+uprml-v  unicode  SourceHanSerifJP-Light.otf  -w 1 -l jp90
 ```
 
 which declares that font should be treated as for vertical writing and
 use JIS1990 form for Kanjis.
 
-## Incompatible Changes From Dvipdfm
+## Incompatible Changes from Dvipdfm
 
 There are various minor incompatible changes to dvipdfm.
 
-The `-C` command line option flags may be used for compatibility to
-dvipdfm or older versions of dvipdfmx.
+The `-C` command line option  may be used for compatibility to
+dvipdfm or older versions of dvipdfmx. The `-C` option takes flags
+meaning
 
 * bit position 2: Use semi-transparent filling for tpic shading command, instead of opaque gray color. (requires PDF 1.4)
 * bit position 3: Treat all CIDFont as fixed-pitch font. This is only for backward compatibility.
@@ -433,21 +494,21 @@ dvipdfm or older versions of dvipdfmx.
 * bit position 5: Do not optimize PDF destinations. Use this if you want to refer from other files to destinations in the current file.
 * bit position 6: Do not use predictor filter for Flate compression.
 
+## Other Improvements
 
-
-## Other Improvement Over Dvipdfm
-
-Numerous improvement over dvipdfm had been done. Especially, font support
-is hugely enhanced. Various legacy multi-byte encodings support is added.
+Numerous improvement over dvipdfm had been done. Especially, font
+support is hugely enhanced. Various legacy multi-byte encodings
+support is added.
 
 ### Encryption
 
 Dvipdfmx offers basic PDF password security support including
 256-bits AES encryption.
-Use `-S` command line option to enable encryption and use `-P` option to set
-permission flags. Each bits of the integer number given to the `-P` option
-represents user access permissions; e.g., bit position 3 for allowing "print",
-4 for "modify the contents", 5 for "copy or extract texts", and so on.
+Use `-S` command line option to enable encryption and use `-P`
+option to set permission flags. Each bits of the integer number given
+to the `-P` option represents user access permissions; e.g., bit
+position 3 for allowing "print", 4 for "modify the contents", 5 for
+"copy or extract texts", and so on.
 
 For examples,
 
@@ -466,12 +527,6 @@ Adobe Extension).
 Input of passowrd will be asked when ecryption is enabled. It may not work
 correctly on Windows system. Windows users may want to use the `pdf:encrypt`
 special instead of command line options.
-
-### Font
-
-Dvipdfmx includes Type1-to-CFF conversion for better compression, TrueType
-font subset embedding, CFF OpenType font support. Various other improvement
-had been done.
 
 ## Font Licensing and Embedding
 
