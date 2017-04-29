@@ -384,7 +384,7 @@ use JIS1990 form for Kanjis.
 
 ## Incompatible Changes From Dvipdfm
 
-There are various minor incompatibilities from dvipdfm.
+There are various minor incompatibilities to dvipdfm.
 
 ## Other Improvement Over Dvipdfm
 
