@@ -37,23 +37,52 @@ of the dvipdfm, a DVI to PDF translator developed by Mark A. Wicks.
 
 The primary goal of this project is to support multi-byte character
 encodings and large character sets such as for East Asian languages.
-The secondary goal is to support as many features as pdfTeX developed by
-Han The Thanh.
-
 This project started as a combined work of the dvipdfm-jpn project by
 Shunsaku Hirata and its modified one, dvipdfm-kor, by Jin-Hwan Cho.
 
+Extension to dvipdfm includes,
+
+* Support for OpenType and TrueType font including partial support
+  for OpenType Layout GSUB Feature for finding glyphs and vertical
+  writing support.
+* Advanced support for CJK-LaTeX and Subfont Definition Files.
+* Support for various legacy multi-byte encodings via PostScript CMap
+  Resources.
+* Unicode related features: Unicode as input encoding and
+  auto-creation of ToUnicode CMaps.
+* Support for pTeX (a Japanese localized variant of TeX).
+* Some pdfTeX compatible DVI specials.
+* Reduction of files size with on-the-fly Type1 to CFF (Type1C)
+  conversion and PDF object stream.
+* Advanced raster image support including alpha channels, embedded
+  ICC profiles, 16-bit colors, and so on.
+* Basic PDF password security support for PDF output.
+
+Missing features are
+
+* Linearization.
+* Color Management.
+* Resampling of images.
+* Selection of compression filters.
+* and many more...
 
 ## Installation
 
-Typical usage and installation steps are not different from the original
-dvipdfm. Please refer documents from dvipdfm distribution for detailed
-instruction on how to install and how to use dvipdfm. The
-libpaper library which is optional may be used to handle paper
-sizes.
+Typical usage and installation steps are not different from the
+original dvipdfm.
+Please refer documents from dvipdfm distribution for detailed
+instruction on how to install and how to use dvipdfm. The dvipdfm
+manual is available from CTAN site:
+
+https://www.ctan.org/tex-archive/dviware/dvipdfm
+
+Optionally the libpaper library may be used to handle paper sizes.
 
 
 ## Auxiliary Files
+
+This section is for supporting legacy encodings and legacy font format
+such as PostScript Type1 font. XeTeX users may skip this section.
 
 Dvipdfmx requires various auxiliary files.
 
@@ -117,23 +146,24 @@ Those files are not required for XeTeX users.
 
 ## CJK Support
 
-There are various extensions made for dvipdfmx to support CJK languages.
+There are various extensions made for dvipdfmx to support CJK
+languages.
 
 ### Legacy Multibyte Encodings
 
-Dvipdfmx has an extensible support for encoding by means of
+Dvipdfmx has an extensible support for encodings by means of
 The PostScript CMap Resource.
 Just like `enc` files for 8-bit encodings, one can write their
 own custom CMap files to support custom encodings.
-See, Adobe's technical note for details on CMap PostScript
-Resources.
+See, Adobe's technical note for details on CMap Resources.
 Adobe provides a set of CMap files necessary for processing various
 CJK encodings. See, section of "PostScript CMap Resources".
 
 ### Vertical Writing
 
 Dvipdfmx supports vertical writing extension used by pTeX and upTeX.
-A DVI instruction to set writing mode is supported.
+A DVI instruction to set writing mode is supported. OpenType Layout
+GSUB Feature is supported for selecting vertical version of glyphs.
 
 ## Unicode Support
 
@@ -157,33 +187,40 @@ List.
 ## Graphics and Image Format
 
 Dvipdfmx does not support various features common to graphics manipulation
-programs such as resampling, color conversion, and arbitrary recompression.
-Thus, it is recommended to use other programs for preparation of images.
+programs such as resampling, color conversion, and selection of
+compression filters.
+Thus, it is recommended to use other programs specialized for
+image manipulation for preparation of images.
 
 ### Supported Graphics File Format
 
-PNG, JPEG, JPEG2000, BMP, PDF, and MetaPost generated EPS are supported.
+Supported formats are, PNG, JPEG, JPEG2000, BMP, PDF,
+and MetaPost generated EPS. All other format images, such as SVG
+and PostScript, must be converted to other format supported by
+dvipdfmx before inclusion.
+The `-D` option, as in dvipdfm, can be used to filter images.
 
-PNG support includes nearly full features of PNG such as color palette,
-transparency, XMP metadata, ICC Profiles, and calibrated colors specified
-by gAMA and cHRM chunks. All bit-depth settings are supported.
+PNG support includes nearly all features of PNG such as color palette,
+transparency, XMP metadata, ICC Profiles, and calibrated colors
+specified by gAMA and cHRM chunks.
+All bit-depth are supported.
 Predictor filter may be applied for Flate compression which result in
 better compression for larger images.
 
-JPEG is relatively well supported. Dvipdfmx supports embedded ICC Profiles
-and CMYK color. Embedded XMP metadata is also supported. There is an issue
-regarding determination of image sizes when there is an inconsistency
-between JFIF and Exif data.
+JPEG is relatively well supported. Dvipdfmx supports embedded ICC
+Profiles and CMYK color. Embedded XMP metadata is also supported.
+There is an issue regarding determination of image sizes when there
+is an inconsistency between JFIF and Exif data.
 
-BMP support is limited to uncompressed or RLE-compressed raster images.
-Extensions are mostly unsupported.
+BMP support is limited to uncompressed or RLE-compressed raster
+images. Extensions are unsupported.
 
 JPEG2000 is also supported. It is restricted to JP2 and JPX baseline
 subset as required by PDF spec. It is not well supported and still in
 the experimental stage. J2C format and transparency are not supported.
 
-PDF inclusion is supported too. However, Tagged PDF may cause problems and
-annotations are not preserved.
+PDF inclusion is supported too. However, Tagged PDF may cause
+problems and annotations are not preserved.
 
 Dvipdfmx also supports MetaPost mode. When dvipdfmx is invoked with `-M`
 option, it enters in MetaPost mode and processes a MetaPost generated EPS
@@ -268,14 +305,15 @@ Use `pdf:encrypt` special
 ```
 pdf:encrypt userpw (user password) ownerpw (owner password)
             length number
-            perm number
+            perm   number
 ```
 
-to encrypt output PDF files. Where user-password and owner-password must
-be specified as PDF string objects. (which might be empty)
+to encrypt output PDF files. Where user-password and owner-password
+must be specified as PDF string objects. (which might be empty)
+Numbers here must be decimal numbers.
 
 
-### Dvipdfmx Extension
+### Dvipdfmx Extensions
 
 A new special `dvipdfmx:config` is added to make it possible to
 invoke a command line option. All command line options except `D` option
@@ -384,7 +422,18 @@ use JIS1990 form for Kanjis.
 
 ## Incompatible Changes From Dvipdfm
 
-There are various minor incompatibilities to dvipdfm.
+There are various minor incompatible changes to dvipdfm.
+
+The `-C` command line option flags may be used for compatibility to
+dvipdfm or older versions of dvipdfmx.
+
+* bit position 2: Use semi-transparent filling for tpic shading command, instead of opaque gray color. (requires PDF 1.4)
+* bit position 3: Treat all CIDFont as fixed-pitch font. This is only for backward compatibility.
+* bit position 4: Do not replace duplicate fontmap entries. Dvipdfm behavior.
+* bit position 5: Do not optimize PDF destinations. Use this if you want to refer from other files to destinations in the current file.
+* bit position 6: Do not use predictor filter for Flate compression.
+
+
 
 ## Other Improvement Over Dvipdfm
 
@@ -393,13 +442,22 @@ is hugely enhanced. Various legacy multi-byte encodings support is added.
 
 ### Encryption
 
-Dvipdfmx offers basic PDF security support including 256-bits AES
-encryption.
+Dvipdfmx offers basic PDF password security support including
+256-bits AES encryption.
 Use `-S` command line option to enable encryption and use `-P` option to set
 permission flags. Each bits of the integer number given to the `-P` option
-represents user access permissions, e.g., bit position 3 for allow "print",
-4 for "modify the contents", 5 for "copy or extract texts", and so on. See,
-Adobe's PDF spec. for full description of those permission flags.
+represents user access permissions; e.g., bit position 3 for allowing "print",
+4 for "modify the contents", 5 for "copy or extract texts", and so on.
+
+For examples,
+
+```
+-P 0x14
+```
+
+enables printing, copying and extraction of texts.
+ See, Adobe's PDF spec. for full description of those permission
+ flags.
 
 Use `-K` option to specify encryption key length. Key length must be
 multiple of 8 in the range 40 to 128, or 256 (for PDF version 1.7 plus
@@ -441,7 +499,7 @@ The fsType flag bits recognized by dvipdfmx is as follows:
    Dvipdfmx give the following warning message for fonts with this
    type of license:
 
-     This document contains `Preview & Print' only licensed font
+    `This document contains 'Preview & Print' only licensed font`
 
    For the font with this type of licensing, font embedding is allowed
    solely for the purpose of (on-screen) viewing and/or printing the
