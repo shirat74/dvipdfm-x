@@ -2,7 +2,7 @@
 
 ## The dvipdfmx Project
 
-Copyright (C) 2002-2014 by Jin-Hwan Cho, Shunsaku Hirata,
+Copyright (C) 2002-2016 by Jin-Hwan Cho, Shunsaku Hirata,
 Matthias Franz, and the dvipdfmx project team.  This package is released
 under the GNU GPL, version 2, or (at your option) any later version.
 
@@ -48,29 +48,30 @@ Shunsaku Hirata and its modified one, dvipdfm-kor, by Jin-Hwan Cho.
 
 Typical usage and installation steps are not different from the original
 dvipdfm. Please refer documents from dvipdfm distribution for detailed
-instruction on how to install and how to use dvipdfm. The libpaper library
-may be used to handle paper sizes which is optional.
+instruction on how to install and how to use dvipdfm. The
+libpaper library which is optional may be used to handle paper
+sizes.
 
 
 ## Auxiliary Files
 
-Dvipdfmx requires various auxiliary files in various situations.
+Dvipdfmx requires various auxiliary files.
 
-### CMap PostScript Resources
+### PostScript CMap Resources
 
 Those files are required only for supporting lagacy encodings such as
-Shif-JIS, EUC-JP and various other East Asian encodings.
+Shif-JIS, EUC-JP and other East Asian encodings.
 
 Dvipdfmx internally identifies glyphs in fonts with identifiers (CID)
 represented as an integer ranging from 0 to 65535.
-The CMap PostScript Resource defines how input character codes are
-translated to CIDs. Various CMap PostScript resources for Adobe's standard
-character collections for use with widely used encodings and their
-detailed description can be found at:
+The PostScript CMap Resource defines how input character codes are
+translated to CIDs. Various CMap resources for Adobe's standard
+character collections for use with widely used encodings can be
+found at:
 
 https://github.com/adobe-type-tools/cmap-resources
 
-CMap PostScript Resources are basically not required for use with XeTeX.
+CMap Resources are basically not required for use with XeTeX.
 
 ### SubFont Definition Files
 
@@ -82,7 +83,7 @@ into subfonts.
 
 Dvipdfmx uses SFD files to convert subfonts back to a single font. SFD files
 are not required for use with TeX variants which can handle multi-byte
-character encodings such as pTeX, upTeX and Omega.
+character encodings such as pTeX, upTeX, XeTeX, and Omega.
 
 HLaTeX and CJK-LaTeX users are required to have those files to be installed.
 
@@ -107,7 +108,7 @@ https://github.com/adobe-type-tools/agl-aglfn
 ToUnicode Mapping Files are similar to the Adobe glyph list file but they
 describe correspondence between CID numbers (instead of glyph names) and
 Unicode values. The content
-of those files are the same as CMap PostScript Resources. They are required
+of those files are the same as CMap Resources. They are required
 for when using TrueType fonts (including OpenType fonts with TrueType
 outline) emulated as CID-keyed fonts. They should be installed in the same
 directory as ordinary CMap files.
@@ -120,12 +121,14 @@ There are various extensions made for dvipdfmx to support CJK languages.
 
 ### Legacy Multibyte Encodings
 
-Dvipdfmx has an extendable encoding support by means of CMap PostScript
-Resource. Just like `enc` files for 8-bit encodings, one can even use their
-own custom CMap files to support custom encodings. See, Adobe's technical
-note for details on CMap PostScript Resource.  Adobe provides a set of
-CMap files necessary for processing various CJK encodings. See, section
-of "CMap PostScript Resources".
+Dvipdfmx has an extensible support for encoding by means of
+The PostScript CMap Resource.
+Just like `enc` files for 8-bit encodings, one can write their
+own custom CMap files to support custom encodings.
+See, Adobe's technical note for details on CMap PostScript
+Resources.
+Adobe provides a set of CMap files necessary for processing various
+CJK encodings. See, section of "PostScript CMap Resources".
 
 ### Vertical Writing
 
@@ -253,8 +256,12 @@ pdf:mapline foo unicode bar
 pdf:mapfile foo.map
 ```
 
-`pdf:majorversion` and `pdf:minorversion` specials can be used to specify
-major and minor version of output PDF.
+`pdf:majorversion` and `pdf:minorversion` specials can be used to
+specify major and minor version of output PDF.
+
+```
+pdf:minorversion 3
+```
 
 Use `pdf:encrypt` special
 
@@ -268,7 +275,7 @@ to encrypt output PDF files. Where user-password and owner-password must
 be specified as PDF string objects. (which might be empty)
 
 
-### Dvipdfmx extension
+### Dvipdfmx Extension
 
 A new special `dvipdfmx:config` is added to make it possible to
 invoke a command line option. All command line options except `D` option
@@ -282,45 +289,45 @@ sets PDF version to 1.7.
 
 ## Font Mapping
 
-Syntax of fontmap file is the same as dvipdfm. There are few extensions in
-dvipdfmx.
+Syntax of fontmap file is the same as dvipdfm. There are few
+extensions in dvipdfmx. In addition to 8-bit `enc` files and
+keyword `builtin` and `none`, dvipdfmx accepts CMap name and
+the keyword `unicode` in the encoding field.
 
 ### Options for CJK Font
 
-Few options are available in dvipdfmx in addition to the original dvipdfm's
-one. All options that makes dvipdfmx to use unembedded fonts are deprecated
-as by using them makes divpdfmx to create PDF files which are not compliant
-to "ISO" spec.
+Few options are available in dvipdfmx in addition to the original
+dvipdfm's one. All options that makes dvipdfmx to use unembedded
+fonts are deprecated as by using them makes divpdfmx to create PDF
+files which are not compliant to "ISO" spec.
 
 #### TTC Index
 
-TrueType Collection index number can be specified with `:n:` option in front
-of TrueType font name.
-
+TrueType Collection index number can be specified with `:n:`
+in front of TrueType font name:
 
 ```
 min10  H :1:mincho
 ```
 
-In this example, the option ``:1:`` tells dvipdfmx to select first TrueType
-font from TrueType collection font `mincho.ttc`. Alternatively, the `-i`
-option can be used in the option field to specify TTC index:
+In this example, the option ``:1:`` tells dvipdfmx to select first
+TrueType font from the TTC font `mincho.ttc`. Alternatively, the
+`-i` option can be used in the option field to specify TTC index:
 
 ```
 min10 H mincho -i 1
 ```
-
 
 #### No-embed Switch (deprecated)
 
 It is possible to block embedding glyph data with the character `!`
 in front of the font name in the font mapping file.
 
-This feature reduces the size of the final PDF output, but the PDF file
-may not be viewed exactly in other systems on which appropriate fonts
-are not installed.
+This feature reduces the size of the final PDF output, but the PDF
+file may not be viewed exactly in other systems on which
+appropriate fonts are not installed.
 
-Use of this option is deprecated.
+Use of this option is deprecated for TrueType fonts.
 
 #### Stylistic Variants (deprecated)
 
@@ -412,13 +419,14 @@ had been done.
 
 In OpenType format, information regarding how the font should be treated
 when creating documents can be recorded. Dvipdfmx uses this information
-to decide whether embedding font into the document is permitted.
+to decide whether embedding font is permitted.
 
-This font embedding information is indicated by a flag called as "fsType"
-flag; each bit representing different restrictions on font embedding.
-If multiple flag bits are set in fsType, the least restrictive license
-granted takes precedence in dvipdfmx. The fsType flag bits recognized by
-dvipdfmx is as follows:
+This font embedding information is indicated by a flag called
+"fsType"; each bit representing different restrictions on font
+embedding.
+If multiple flag bits are set in fsType, the least restrictive
+license granted takes precedence in dvipdfmx.
+The fsType flag bits recognized by dvipdfmx is as follows:
 
 * Installable embedding
 
