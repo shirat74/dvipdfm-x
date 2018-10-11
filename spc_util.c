@@ -1,6 +1,6 @@
 /* This is dvipdfmx, an eXtended version of dvipdfm by Mark A. Wicks.
 
-    Copyright (C) 2007-2015 by Jin-Hwan Cho and Shunsaku Hirata,
+    Copyright (C) 2007-2018 by Jin-Hwan Cho and Shunsaku Hirata,
     the dvipdfmx project team.
     
     Copyright (C) 1998, 1999 by Mark A. Wicks <mwicks@kettering.edu>
@@ -29,6 +29,7 @@
 #include "error.h"
 #include "dpxutil.h"
 
+#include "pdfdoc.h"
 #include "pdfdev.h"
 #include "pdfparse.h"
 #include "pdfcolor.h"
@@ -290,7 +291,11 @@ spc_util_read_length (struct spc_env *spe, double *vp /* ret. */, struct spc_arg
 #define K_UNIT__CM  2
 #define K_UNIT__MM  3
 #define K_UNIT__BP  4
-    "pt", "in", "cm", "mm", "bp", NULL
+#define K_UNIT__PC  5
+#define K_UNIT__DD  6
+#define K_UNIT__CC  7
+#define K_UNIT__SP  8
+    "pt", "in", "cm", "mm", "bp", "pc", "dd", "cc", "sp", NULL
   };
   int     k, error = 0;
 
@@ -325,6 +330,10 @@ spc_util_read_length (struct spc_env *spe, double *vp /* ret. */, struct spc_arg
       case K_UNIT__CM: u *= 72.0 / 2.54 ; break;
       case K_UNIT__MM: u *= 72.0 / 25.4 ; break;
       case K_UNIT__BP: u *= 1.0 ; break;
+      case K_UNIT__PC: u *= 12.0 * 72.0 / 72.27 ; break;
+      case K_UNIT__DD: u *= 1238.0 / 1157.0 * 72.0 / 72.27 ; break;
+      case K_UNIT__CC: u *= 12.0 * 1238.0 / 1157.0 * 72.0 / 72.27 ; break;
+      case K_UNIT__SP: u *= 72.0 / (72.27 * 65536) ; break;
       default:
         spc_warn(spe, "Unknown unit of measure: %s", q);
         error = -1;
@@ -710,7 +719,8 @@ spc_util_read_dimtrns (struct spc_env *spe,
 
 int
 spc_util_read_blahblah (struct spc_env *spe,
-                        transform_info *p, int *page_no, int *bbox_type,
+                        transform_info *p, int *page_no,
+                        enum pdf_page_boundary *bbox_type,
                         struct spc_arg *ap)
 {
   int     has_scale, has_xscale, has_yscale, has_rotate, has_matrix;
@@ -856,15 +866,15 @@ spc_util_read_blahblah (struct spc_env *spe,
         q = parse_c_ident (&ap->curptr, ap->endptr);
         if (q) {
           if (bbox_type) {
-            if (strcasecmp(q, "cropbox") == 0)       *bbox_type = 1;
-            else if (strcasecmp(q, "mediabox") == 0) *bbox_type = 2;
-            else if (strcasecmp(q, "artbox") == 0)   *bbox_type = 3;
-            else if (strcasecmp(q, "trimbox") == 0)  *bbox_type = 4;
-            else if (strcasecmp(q, "bleedbox") == 0) *bbox_type = 5;
+            if (strcasecmp(q, "cropbox") == 0)       *bbox_type = pdf_page_boundary_cropbox;
+            else if (strcasecmp(q, "mediabox") == 0) *bbox_type = pdf_page_boundary_mediabox;
+            else if (strcasecmp(q, "artbox") == 0)   *bbox_type = pdf_page_boundary_artbox;
+            else if (strcasecmp(q, "trimbox") == 0)  *bbox_type = pdf_page_boundary_trimbox;
+            else if (strcasecmp(q, "bleedbox") == 0) *bbox_type = pdf_page_boundary_bleedbox;
           }
           RELEASE(q);
         } else if (bbox_type) {
-          *bbox_type = 0;
+          *bbox_type = pdf_page_boundary__auto;
         }
       }
       break;

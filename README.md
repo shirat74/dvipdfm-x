@@ -16,7 +16,7 @@ Extensions to dvipdfm includes,
 * Support for OpenType and TrueType font including partial support
   for OpenType Layout GSUB Feature for finding glyphs and vertical
   writing.
-* Support for CJK-LaTeX and HLaTeX with Subfont Definition Files.
+* Support for CJK-LaTeX and HLaTeX with SubFont Definition Files.
 * Support for various legacy multi-byte encodings via PostScript CMap
   Resources.
 * Unicode related features: Unicode as an input encoding and
@@ -81,13 +81,17 @@ XeTeX users may skip this section.
 Dvipdfmx has a capability to handle various input encodings from
 classic 7-bit encodings to variable-width multi-byte encodings.
 It also has some sort of support for Unicode. Various auxiliary files
-which are not common to TeX users are needed to enable those features.
+which are not common to TeX users are needed to enable those
+features.
 This section shortly describes those auxiliary files.
 
 ### PostScript CMap Resources
 
+pTeX users should install PostScript CMap Resources. They are
+provided by `adobemapping` package.
+
 PostScript CMap Resources are required for supporting lagacy
-encodings such as Shif-JIS, EUC-JP, Big5,  and other East Asian
+encodings such as Shift-JIS, EUC-JP, Big5, and other East Asian
 encodings.
 Dvipdfmx internally identifies glyphs in fonts with identifiers (CID)
 represented as an integer ranging from 0 to 65535. The PostScript
@@ -97,7 +101,7 @@ multi-byte encodings via PostScript CMap Resources.
 
 CMap files for standard East Asian encodings for use with
 Adobe's character collections are included in `adobemapping`
-package in TeX Live.
+package.
 The latest version of those CMap files maintained by Adobe can be
 found at:
 
@@ -106,6 +110,9 @@ https://github.com/adobe-type-tools/cmap-resources
 Those files are required for supporting pTeX.
 
 ### SubFont Definition Files
+
+HLaTeX and CJK-LaTeX users are requied to install SubFont Definition
+Files. They are available as a part of `ttfutils` package.
 
 CJK fonts usually contain several thousand of glyphs.
 For using such fonts with (original) TeX, which can only handle 8-bit
@@ -118,14 +125,20 @@ SFD files are not required for use with TeX variants which can handle
 multi-byte character encodings such as pTeX, upTeX, XeTeX, and Omega.
 HLaTeX and CJK-LaTeX users are required to have those files to be
 installed.
-SubFont Definition Files are available as a part of `ttfutils` package
-for TeX Live users.
+SubFont Definition Files are available as a part of `ttfutils`
+package for TeX Live users.
 
 ### Adobe Glyph List and ToUnicode Mapping
 
-The Adobe Glyph List (AGL) describes correspondence between PostScript
-glyph names (e.g., AE, Aacute, ...) and it's Unicode character
-sequences. Some features described in the section "Unicode Support"
+Anyone who want to use Type1 font should install Adobe Glyph List
+which is provided by `glyphlist` package for TeX Live. pTeX users
+are usually required to install ToUnicode Mappings which is contained
+in `adobemapping` package.
+
+The Adobe Glyph List (AGL) describes correspondence between
+PostScript glyph names (e.g., AE, Aacute, ...) and it's Unicode
+character sequences.
+Some features described in the section "Unicode Support"
 requires this file.
 
 Dvipdfmx looks for the file `glyphlist.txt` when conversion from
@@ -134,21 +147,22 @@ This conversion is done in various situations;
 when creating ToUnicode CMaps for 8-bit encoding fonts, finding glyph
 descriptions from TrueType and OpenType fonts when the font itself
 does not provide a mapping from PostScript glyph names to glyph
-indices (version 2.0 "post" table), and when the encoding `unicode` is
-specified for Type1 font.
+indices (version 2.0 "post" table), and when the encoding `unicode`
+is specified for Type1 font.
 
 AGL files is included in `glyphlist` package for
 TeX Live. The latest version maintained by Adobe is found at:
 
 https://github.com/adobe-type-tools/agl-aglfn
 
-ToUnicode Mappings are similar to the AGL but they describe
+ToUnicode Mappings are similar to AGL but they describe
 correspondence between CID numbers (instead of glyph names) and
 Unicode values.
 The content of those files are the same as CMap Resources.
 They are required when using TrueType fonts (including OpenType fonts
 with TrueType outline) emulated as CID-keyed fonts.
-They should be installed in the same directory as ordinary CMap files.
+They should be installed in the same directory as ordinary CMap
+files.
 
 ToUnicode Mapping files are included in `adobemapping` package for
 TeX Live.
@@ -159,7 +173,7 @@ Those files are not required for XeTeX users.
 There are various extensions made for dvipdfmx to support CJK
 languages.
 
-### Legacy multi-byte Encodings
+### Legacy Multi-byte Encodings
 
 Dvipdfmx has an extensible support for multi-byte encodings by means of
 the PostScript CMap Resource.
@@ -443,7 +457,8 @@ non-compliant to ISO-32000.
 
 #### 'Standard' CJK Fonts (deprecated)
 
-*This feature is deprecated* and use of it is not recommended.
+*This feature is deprecated.*
+
 This feature should never be used for new documents. It is described
 here since it might still be useful for testing purpose.
 
@@ -506,6 +521,8 @@ and full widths)
 
 #### Stylistic Variants (deprecated)
 
+*Use of this option is deprecated.*
+
 Keywords `,Bold`, `,Italic`, and `,BoldItalic` can be used to create
 synthetic bold, italic, and bolditalic style variants from other font
 using PDF viewer's (or OS's) function.
@@ -520,7 +537,7 @@ PDF viewers. This feature is not supported for embedded fonts in the
 most of PDF viewers, like Adobe Acrobat and GNU Ghostscript.
 
 Notice that this option automatically disable font embedding thus
-*use of this option is deprecated.*
+use of this option is deprecated.
 
 #### Specifying the Unicode Plane
 
@@ -637,7 +654,7 @@ the `pdf:encrypt` special instead of command line options.
 
 ### Additional Extensions Related to Font
 
-Dvipdfmx accepts followings syntax for glyph names in `enc` files:
+Dvipdfmx accepts the following syntax for glyph names in `enc` files:
 `uni0130`, `zero.onum` and `T_h.liga`.
 Each represents a glyph accessed with Unicode value `U+0130`,
 oldstyle number for zero and "Th" ligature accessed via OpenType
@@ -654,33 +671,28 @@ when creating documents can be recorded. Dvipdfmx uses this
 information to decide whether embedding font is permitted.
 
 This font embedding information is indicated by a flag called
-"fsType"; each bit representing different restrictions on font
+`fsType`; each bit representing different restrictions on font
 embedding.
-If multiple flag bits are set in fsType, the least restrictive
+If multiple flag bits are set in `fsType`, the least restrictive
 license granted takes precedence in dvipdfmx.
-The fsType flag bits recognized by dvipdfmx is as follows:
+The `fsType` flag bits recognized by dvipdfmx is as follows:
 
 * Installable embedding
-
-  All font with this type of license can be embedded.
-
 * Editable embedding
-
-   All font with this type of license can be embedded.
-
 * Embedding for Preview & Print only
 
-   Dvipdfmx give the following warning message for fonts with this
-   type of license:
+Dvipdfmx give the following warning message for fonts with 'Preview &
+Print only' setting:
 
-    `This document contains 'Preview & Print' only licensed font`
+```
+This document contains 'Preview & Print' only licensed font
+```
 
-   For the font with this type of licensing, font embedding is allowed
-   solely for the purpose of (on-screen) viewing and/or printing the
-   document; further editing of the document or extracting an embedded
-   font data for other purpose is not allowed. To ensure this
-   condition, you must at least protect your document with non-empty
-   password.
+For fonts with this type of licensing, font embedding is allowed
+solely for the purpose of (on-screen) viewing and/or printing;
+further editing of the document or extracting embedded font data
+for other purpose is not allowed. To ensure this condition, you must
+at least protect your document with non-empty password.
 
 All other flags are treated as more restrictive license than any of
 the above flags and treated as "No embedding allowed"; e.g., if both

@@ -1,20 +1,20 @@
 /* This is dvipdfmx, an eXtended version of dvipdfm by Mark A. Wicks.
 
-    Copyright (C) 2002-2015 by Jin-Hwan Cho and Shunsaku Hirata,
+    Copyright (C) 2002-2018 by Jin-Hwan Cho and Shunsaku Hirata,
     the dvipdfmx project team.
-
+    
     Copyright (C) 1998, 1999 by Mark A. Wicks <mwicks@kettering.edu>
 
     This program is free software; you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
     the Free Software Foundation; either version 2 of the License, or
     (at your option) any later version.
-
+    
     This program is distributed in the hope that it will be useful,
     but WITHOUT ANY WARRANTY; without even the implied warranty of
     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
     GNU General Public License for more details.
-
+    
     You should have received a copy of the GNU General Public License
     along with this program; if not, write to the Free Software
     Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA.
@@ -49,8 +49,6 @@ typedef struct
   double values[PDF_COLOR_COMPONENT_MAX];
 } pdf_color;
 
-extern void       pdf_color_set_verbose   (void);
-
 extern int        pdf_color_rgbcolor      (pdf_color *color,
                                            double r, double g, double b);
 extern int        pdf_color_cmykcolor     (pdf_color *color,
@@ -82,7 +80,7 @@ extern int      iccp_check_colorspace     (int colortype,
 extern int      iccp_load_profile (const char *ident,
 				   const void *profile, int proflen);
 
-extern void     pdf_init_colors  (void *p); /* FIXME */
+extern void     pdf_init_colors  (void);
 extern void     pdf_close_colors (void);
 
 extern pdf_obj *pdf_get_colorspace_reference      (int cspc_id);

@@ -1,14 +1,14 @@
 /*  This is xdvipdfmx, an extended version of dvipdfmx,
     an eXtended version of dvipdfm by Mark A. Wicks.
 
-    Copyright (C) 2013-2015 by the dvipdfmx project team.
+    Copyright (C) 2013-2016 by the dvipdfmx project team.
 
     Copyright (c) 2006 SIL International
     Originally written by Jonathan Kew
 
     This file based on spc_pdfm.c, part of the dvipdfmx project:
 
-    Copyright (C) 2002 by Jin-Hwan Cho and Shunsaku Hirata.
+    Copyright (C) 2002 by Jin-Hwan Cho and Shunsaku Hirata.    
 
     Copyright (C) 1998, 1999 by Mark A. Wicks <mwicks@kettering.edu>
 
@@ -16,12 +16,12 @@
     it under the terms of the GNU General Public License as published by
     the Free Software Foundation; either version 2 of the License, or
     (at your option) any later version.
-
+    
     This program is distributed in the hope that it will be useful,
     but WITHOUT ANY WARRANTY; without even the implied warranty of
     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
     GNU General Public License for more details.
-
+    
     You should have received a copy of the GNU General Public License
     along with this program; if not, write to the Free Software
     Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA.
@@ -60,13 +60,10 @@
 
 
 int
-spc_handler_xtx_do_transform (pdf_doc *p,
-                              double x_user, double y_user,
-                              double a, double b, double c, double d,
-                              double e, double f)
+spc_handler_xtx_do_transform (double x_user, double y_user, double a, double b, double c, double d, double e, double f)
 {
-  pdf_tmatrix M = { 0, 0, 0, 0, 0, 0 };
-  double      x, y;
+  pdf_tmatrix     M = { 0, 0, 0, 0, 0, 0 };
+  pdf_coord       pt;
 
   /* Create transformation matrix */
   M.a = a;
@@ -76,9 +73,9 @@ spc_handler_xtx_do_transform (pdf_doc *p,
   M.e = ((1.0 - M.a) * x_user - M.c * y_user) + e;
   M.f = ((1.0 - M.d) * y_user - M.b * x_user) + f;
 
-  pdf_dev_concat(p, &M);
-  spc_get_fixed_point(&x, &y);
-  spc_set_fixed_point(x_user - x, y_user - y);
+  pdf_dev_concat(&M);
+  pdf_dev_get_fixed_point(&pt);
+  pdf_dev_set_fixed_point(x_user - pt.x, y_user - pt.y);
 
   return  0;
 }
@@ -93,7 +90,7 @@ spc_handler_xtx_scale (struct spc_env *spe, struct spc_arg *args)
   }
   args->curptr = args->endptr;
 
-  return spc_handler_xtx_do_transform(spe->pdf, spe->x_user, spe->y_user, values[0], 0, 0, values[1], 0, 0);
+  return spc_handler_xtx_do_transform(spe->x_user, spe->y_user, values[0], 0, 0, values[1], 0, 0);
 }
 
 /* Scaling without gsave/grestore. */
@@ -117,8 +114,7 @@ spc_handler_xtx_bscale (struct spc_env *spe, struct spc_arg *args)
   scaleFactors[scaleFactorCount].y = 1 / values[1];
   args->curptr = args->endptr;
 
-  return  spc_handler_xtx_do_transform (spe->pdf, spe->x_user, spe->y_user, values[0],
-                                        0, 0, values[1], 0, 0);
+  return  spc_handler_xtx_do_transform (spe->x_user, spe->y_user, values[0], 0, 0, values[1], 0, 0);
 }
 
 static int
@@ -128,7 +124,7 @@ spc_handler_xtx_escale (struct spc_env *spe, struct spc_arg *args)
 
   args->curptr = args->endptr;
 
-  return  spc_handler_xtx_do_transform (spe->pdf, spe->x_user, spe->y_user, factor.x, 0, 0, factor.y, 0, 0);
+  return  spc_handler_xtx_do_transform (spe->x_user, spe->y_user, factor.x, 0, 0, factor.y, 0, 0);
 }
 
 static int
@@ -141,17 +137,16 @@ spc_handler_xtx_rotate (struct spc_env *spe, struct spc_arg *args)
   }
   args->curptr = args->endptr;
 
-  return  spc_handler_xtx_do_transform (spe->pdf, spe->x_user, spe->y_user,
-                              cos(value * M_PI / 180), sin(value * M_PI / 180),
-                              -sin(value * M_PI / 180), cos(value * M_PI / 180),
-                              0, 0);
+  return  spc_handler_xtx_do_transform (spe->x_user, spe->y_user,
+      cos(value * M_PI / 180), sin(value * M_PI / 180),
+      -sin(value * M_PI / 180), cos(value * M_PI / 180),
+      0, 0);
 }
 
 int
 spc_handler_xtx_gsave (struct spc_env *spe, struct spc_arg *args)
 {
-  pdf_dev_gsave(spe->pdf);
-  spc_dup_fixed_point();
+  pdf_dev_gsave();
 
   return  0;
 }
@@ -159,8 +154,7 @@ spc_handler_xtx_gsave (struct spc_env *spe, struct spc_arg *args)
 int
 spc_handler_xtx_grestore (struct spc_env *spe, struct spc_arg *args)
 {
-  pdf_dev_grestore(spe->pdf);
-  spc_pop_fixed_point();
+  pdf_dev_grestore();
 
   /*
    * Unfortunately, the following line is necessary in case
@@ -169,8 +163,8 @@ spc_handler_xtx_grestore (struct spc_env *spe, struct spc_arg *args)
    * we make no assumptions about what fonts. We act like we are
    * starting a new page.
    */
-  pdf_dev_reset_fonts(spe->pdf, 0);
-  pdf_dev_reset_color(spe->pdf, 0);
+  pdf_dev_reset_fonts(0);
+  pdf_dev_reset_color(0);
 
   return  0;
 }
@@ -194,7 +188,7 @@ spc_handler_xtx_backgroundcolor (struct spc_env *spe, struct spc_arg *args)
   if (error)
     spc_warn(spe, "No valid color specified?");
   else {
-    pdf_doc_set_bgcolor(spe->pdf, &colorspec);
+    pdf_doc_set_bgcolor(&colorspec);
   }
 
   return  error;
@@ -315,11 +309,11 @@ spc_handler_xtx_clipoverlay (struct spc_env *spe, struct spc_arg *args)
   skip_white(&args->curptr, args->endptr);
   if (args->curptr >= args->endptr)
     return -1;
-  pdf_dev_grestore(spe->pdf);
-  pdf_dev_gsave(spe->pdf);
+  pdf_dev_grestore();
+  pdf_dev_gsave();
   if (strncmp(overlay_name, args->curptr, strlen(overlay_name)) != 0
    && strncmp("all", args->curptr, strlen("all")) != 0)
-    pdf_doc_add_page_content(spe->pdf, " 0 0 m W n", 10);
+    pdf_doc_add_page_content(" 0 0 m W n", 10);
 
   args->curptr = args->endptr;
   return 0;
@@ -338,11 +332,11 @@ spc_handler_xtx_renderingmode (struct spc_env *spe, struct spc_arg *args)
     return -1;
   }
   sprintf(work_buffer, " %d Tr", (int) value);
-  pdf_doc_add_page_content(spe->pdf,  work_buffer, strlen(work_buffer));
+  pdf_doc_add_page_content(work_buffer, strlen(work_buffer));
   skip_white(&args->curptr, args->endptr);
   if (args->curptr < args->endptr) {
-    pdf_doc_add_page_content(spe->pdf,  " ", 1);
-    pdf_doc_add_page_content(spe->pdf,  args->curptr, args->endptr - args->curptr);
+    pdf_doc_add_page_content(" ", 1);
+    pdf_doc_add_page_content(args->curptr, args->endptr - args->curptr);
   }
 
   args->curptr = args->endptr;
@@ -455,3 +449,4 @@ spc_xtx_setup_handler (struct spc_handler *sph,
 
   return  error;
 }
+

@@ -1,6 +1,6 @@
 /* This is dvipdfmx, an eXtended version of dvipdfm by Mark A. Wicks.
 
-    Copyright (C) 2002-2015 by Jin-Hwan Cho and Shunsaku Hirata,
+    Copyright (C) 2002-2018 by Jin-Hwan Cho and Shunsaku Hirata,
     the dvipdfmx project team.
 
     Copyright (C) 1998, 1999 by Mark A. Wicks <mwicks@kettering.edu>
@@ -23,12 +23,24 @@
 #ifndef _DPXUTIL_H_
 #define _DPXUTIL_H_
 
+#include <time.h>
+
 #undef  MIN
 #define MIN(a, b) (((a) < (b)) ? (a) : (b))
 #undef  MAX
 #define MAX(a, b) (((a) > (b)) ? (a) : (b))
 #undef  ABS
 #define ABS(a)    (((a) < 0) ? -(a) : (a))
+
+extern double min4(double v1, double v2, double v3, double v4);
+extern double max4(double v1, double v2, double v3, double v4);
+
+extern int dpx_util_read_length (double *vp, double mag,
+                                 const char **curptr, const char *endptr);
+
+#define INVALID_EPOCH_VALUE ((time_t)-1)
+extern time_t dpx_util_get_unique_time_if_given (void);
+extern int    dpx_util_format_asn_date (char *date_string, int need_timezone);
 
 #ifndef is_space
 #define is_space(c) ((c) == ' '  || (c) == '\t' || (c) == '\f' || \
@@ -89,14 +101,6 @@ extern void  ht_clear_iter  (struct ht_iter *iter);
 extern char *ht_iter_getkey (struct ht_iter *iter, int *keylen);
 extern void *ht_iter_getval (struct ht_iter *iter);
 extern int   ht_iter_next   (struct ht_iter *iter);
-
-typedef struct dpx_stack dpx_stack;
-extern dpx_stack *dpx_stack_new    (void);
-extern void       dpx_stack_delete (dpx_stack **st, void (free_fn) (void *d));
-extern void      *dpx_stack_pop    (dpx_stack *st);
-extern void       dpx_stack_push   (dpx_stack *st, void *data);
-extern int        dpx_stack_depth  (dpx_stack *st);
-extern void      *dpx_stack_top    (dpx_stack *st);
 
 extern char *parse_float_decimal (const char **pp, const char *endptr);
 extern char *parse_c_string      (const char **pp, const char *endptr);

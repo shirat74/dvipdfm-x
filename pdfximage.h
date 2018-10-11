@@ -1,6 +1,6 @@
 /* This is dvipdfmx, an eXtended version of dvipdfm by Mark A. Wicks.
 
-    Copyright (C) 2007-2015 by Jin-Hwan Cho and Shunsaku Hirata,
+    Copyright (C) 2007-2018 by Jin-Hwan Cho and Shunsaku Hirata,
     the dvipdfmx project team.
     
     Copyright (C) 1998, 1999 by Mark A. Wicks <mwicks@kettering.edu>
@@ -24,6 +24,7 @@
 #define _PDFXIMAGE_H_
 
 #include "pdfdev.h"
+#include "pdfdoc.h"
 
 #define PDF_XOBJECT_TYPE_FORM  0
 #define PDF_XOBJECT_TYPE_IMAGE 1
@@ -50,14 +51,12 @@ typedef struct {
 } xform_info;
 
 typedef struct {
-  int      page_no;
-  int      bbox_type;
+  int  page_no;
+  enum pdf_page_boundary bbox_type;
   pdf_obj *dict;
 } load_options;
 
 typedef struct pdf_ximage_ pdf_ximage;
-
-extern void     pdf_ximage_set_verbose    (void);
 
 extern void     pdf_init_images           (void);
 extern void     pdf_close_images          (void);
@@ -69,11 +68,9 @@ extern pdf_obj *pdf_ximage_get_reference  (int xobj_id);
  * This is not intended to be used for specifying page number and others.
  * Only pdf:image special in spc_pdfm.c want optinal dict!
  */
-extern int      pdf_ximage_findresource   (pdf_doc *pdf,
-                                           const char  *ident,
+extern int      pdf_ximage_findresource   (const char  *ident,
                                            load_options options);
-extern int      pdf_ximage_defineresource (pdf_doc *pdf,
-                                           const char *ident, int subtype,
+extern int      pdf_ximage_defineresource (const char *ident, int subtype,
                                            void *cdata, pdf_obj *resource);
 
 /* Called by pngimage, jpegimage, epdf, mpost, etc. */
@@ -104,6 +101,5 @@ pdf_ximage_set_attr (int xobj_id,
                      double llx, double lly, double urx, double ury);
 
 /* Migrated from pdfobj.h. Those are not PDF object related... */
-#define MAX_IMAGES 5000 /* This may be enough */
 
 #endif /* _PDFXIMAGE_H_ */

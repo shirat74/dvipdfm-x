@@ -1,20 +1,20 @@
 /* This is dvipdfmx, an eXtended version of dvipdfm by Mark A. Wicks.
 
-    Copyright (C) 2007-2016 by Jin-Hwan Cho and Shunsaku Hirata,
+    Copyright (C) 2007-2018 by Jin-Hwan Cho and Shunsaku Hirata,
     the dvipdfmx project team.
-
+    
     Copyright (C) 1998, 1999 by Mark A. Wicks <mwicks@kettering.edu>
 
     This program is free software; you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
     the Free Software Foundation; either version 2 of the License, or
     (at your option) any later version.
-
+    
     This program is distributed in the hope that it will be useful,
     but WITHOUT ANY WARRANTY; without even the implied warranty of
     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
     GNU General Public License for more details.
-
+    
     You should have received a copy of the GNU General Public License
     along with this program; if not, write to the Free Software
     Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA.
@@ -50,287 +50,8 @@
 
 #include "epdf.h"
 
-static int  rect_equal       (pdf_obj *rect1, pdf_obj *rect2);
-#if 0
-#if HAVE_ZLIB
-#include <zlib.h>
-static int  add_stream_flate (pdf_obj *dst, const void *data, int len);
-#endif
-static int  concat_stream    (pdf_obj *dst, pdf_obj *src);
-#endif
-/*
- * From PDFReference15_v6.pdf (p.119 and p.834)
- *
- * MediaBox rectangle (Required; inheritable)
- *
- * The media box defines the boundaries of the physical medium on which the
- * page is to be printed. It may include any extended area surrounding the
- * finished page for bleed, printing marks, or other such purposes. It may
- * also include areas close to the edges of the medium that cannot be marked
- * because of physical limitations of the output device. Content falling
- * outside this boundary can safely be discarded without affecting the
- * meaning of the PDF file.
- *
- * CropBox rectangle (Optional; inheritable)
- *
- * The crop box defines the region to which the contents of the page are to be
- * clipped (cropped) when displayed or printed. Unlike the other boxes, the
- * crop box has no defined meaning in terms of physical page geometry or
- * intended use; it merely imposes clipping on the page contents. However,
- * in the absence of additional information (such as imposition instructions
- * specified in a JDF or PJTF job ticket), the crop box will determine how
- * the pageâ€™s contents are to be positioned on the output medium. The default
- * value is the pageâ€™s media box.
- *
- * BleedBox rectangle (Optional; PDF 1.3)
- *
- * The bleed box (PDF 1.3) defines the region to which the contents of the
- * page should be clipped when output in a production environment. This may
- * include any extra â€œbleed areaâ€ needed to accommodate the physical
- * limitations of cutting, folding, and trimming equipment. The actual printed
- * page may include printing marks that fall outside the bleed box.
- * The default value is the pageâ€™s crop box.
- *
- * TrimBox rectangle (Optional; PDF 1.3)
- *
- * The trim box (PDF 1.3) defines the intended dimensions of the finished page
- * after trimming. It may be smaller than the media box, to allow for
- * production-related content such as printing instructions, cut marks, or
- * color bars. The default value is the pageâ€™s crop box.
- *
- * ArtBox rectangle (Optional; PDF 1.3)
- *
- * The art box (PDF 1.3) defines the extent of the pageâ€™s meaningful content
- * (including potential white space) as intended by the pageâ€™s creator.
- * The default value is the pageâ€™s crop box.
- *
- * Rotate integer (Optional; inheritable)
- *
- * The number of degrees by which the page should be rotated clockwise when
- * displayed or printed. The value must be a multiple of 90. Default value: 0.
- */
-
-static int
-rect_equal (pdf_obj *rect1, pdf_obj *rect2)
-{
-  int i;
-
-  if (!rect1 || !rect2)
-    return 0;
-  for (i = 0; i < 4; i++) {
-    if (pdf_number_value(pdf_get_array(rect1, i)) !=
-	pdf_number_value(pdf_get_array(rect2, i)))
-      return 0;
-  }
-
-  return 1;
-}
-
 static pdf_obj*
-pdf_get_page_obj (pdf_file *pf, int page_no,
-                  pdf_obj **ret_bbox, pdf_obj **ret_resources)
-{
-  pdf_obj *page_tree;
-  pdf_obj *bbox = NULL, *resources = NULL, *rotate = NULL;
-  int page_idx;
-
-  /*
-   * Get Page Tree.
-   */
-  page_tree = NULL;
-  {
-    pdf_obj *trailer, *catalog;
-    pdf_obj *markinfo, *tmp;
-
-    trailer = pdf_file_get_trailer(pf);
-
-    if (pdf_lookup_dict(trailer, "Encrypt")) {
-      WARN("This PDF document is encrypted.");
-      pdf_release_obj(trailer);
-      return NULL;
-    }
-
-    catalog = pdf_deref_obj(pdf_lookup_dict(trailer, "Root"));
-    if (!PDF_OBJ_DICTTYPE(catalog)) {
-      WARN("Can't read document catalog.");
-      pdf_release_obj(trailer);
-      if (catalog)
-	pdf_release_obj(catalog);
-      return NULL;
-    }
-    pdf_release_obj(trailer);
-
-    markinfo = pdf_deref_obj(pdf_lookup_dict(catalog, "MarkInfo"));
-    if (markinfo) {
-      tmp = pdf_lookup_dict(markinfo, "Marked");
-      if (PDF_OBJ_BOOLEANTYPE(tmp) && pdf_boolean_value(tmp))
-        WARN("PDF file is tagged... Ignoring tags.");
-      pdf_release_obj(markinfo);
-    }
-
-    page_tree = pdf_deref_obj(pdf_lookup_dict(catalog, "Pages"));
-    pdf_release_obj(catalog);
-  }
-  if (!page_tree) {
-    WARN("Page tree not found.");
-    return NULL;
-  }
-
-  /*
-   * Negative page numbers are counted from the back.
-   */
-  {
-    int count = pdf_number_value(pdf_lookup_dict(page_tree, "Count"));
-    page_idx = page_no + (page_no >= 0 ? -1 : count);
-    if (page_idx < 0 || page_idx >= count) {
-	WARN("Page %ld does not exist.", page_no);
-	pdf_release_obj(page_tree);
-	return NULL;
-      }
-    page_no = page_idx+1;
-  }
-
-  /*
-   * Seek correct page. Get Media/Crop Box.
-   * Media box and resources can be inherited.
-   */
-  {
-    pdf_obj *kids_ref, *kids;
-    pdf_obj *crop_box = NULL;
-    pdf_obj *tmp;
-
-    tmp = pdf_lookup_dict(page_tree, "Resources");
-    resources = tmp ? pdf_deref_obj(tmp) : pdf_new_dict();
-
-    while (1) {
-      int kids_length, i;
-
-      if ((tmp = pdf_deref_obj(pdf_lookup_dict(page_tree, "MediaBox")))) {
-	if (bbox)
-	  pdf_release_obj(bbox);
-	bbox = tmp;
-      }
-      if ((tmp = pdf_deref_obj(pdf_lookup_dict(page_tree, "BleedBox")))) {
-        if (!rect_equal(tmp, bbox)) {
-	  if (bbox)
-	    pdf_release_obj(bbox);
-	  bbox = tmp;
-        } else {
-          pdf_release_obj(tmp);
-      }
-      }
-      if ((tmp = pdf_deref_obj(pdf_lookup_dict(page_tree, "TrimBox")))) {
-        if (!rect_equal(tmp, bbox)) {
-	  if (bbox)
-	    pdf_release_obj(bbox);
-	  bbox = tmp;
-        } else {
-          pdf_release_obj(tmp);
-      }
-      }
-      if ((tmp = pdf_deref_obj(pdf_lookup_dict(page_tree, "ArtBox")))) {
-        if (!rect_equal(tmp, bbox)) {
-	  if (bbox)
-	    pdf_release_obj(bbox);
-	  bbox = tmp;
-        } else {
-          pdf_release_obj(tmp);
-      }
-      }
-      if ((tmp = pdf_deref_obj(pdf_lookup_dict(page_tree, "CropBox")))) {
-	if (crop_box)
-	  pdf_release_obj(crop_box);
-	crop_box = tmp;
-      }
-      if ((tmp = pdf_deref_obj(pdf_lookup_dict(page_tree, "Rotate")))) {
-	if (rotate)
-	  pdf_release_obj(rotate);
-	rotate = tmp;
-      }
-      if ((tmp = pdf_deref_obj(pdf_lookup_dict(page_tree, "Resources")))) {
-#if 0
-	pdf_merge_dict(tmp, resources);
-#endif
-	if (resources)
-	  pdf_release_obj(resources);
-	resources = tmp;
-      }
-
-      kids_ref = pdf_lookup_dict(page_tree, "Kids");
-      if (!kids_ref)
-	break;
-      kids = pdf_deref_obj(kids_ref);
-      kids_length = pdf_array_length(kids);
-
-      for (i = 0; i < kids_length; i++) {
-	int count;
-
-	pdf_release_obj(page_tree);
-	page_tree = pdf_deref_obj(pdf_get_array(kids, i));
-
-	tmp = pdf_deref_obj(pdf_lookup_dict(page_tree, "Count"));
-	if (tmp) {
-	  /* Pages object */
-	  count = pdf_number_value(tmp);
-	  pdf_release_obj(tmp);
-        } else {
-	  /* Page object */
-	  count = 1;
-        }
-	if (page_idx < count)
-	  break;
-
-	page_idx -= count;
-      }
-
-      pdf_release_obj(kids);
-
-      if (i == kids_length) {
-	WARN("Page %ld not found! Broken PDF file?", page_no);
-	if (bbox)
-	  pdf_release_obj(bbox);
-	if (crop_box)
-	  pdf_release_obj(crop_box);
-	if (rotate)
-	  pdf_release_obj(rotate);
-	pdf_release_obj(resources);
-	pdf_release_obj(page_tree);
-	return NULL;
-      }
-    }
-    if (crop_box) {
-      pdf_release_obj(bbox);
-      bbox = crop_box;
-    }
-  }
-
-  if (!bbox) {
-    WARN("No BoundingBox information available.");
-    pdf_release_obj(page_tree);
-    pdf_release_obj(resources);
-    if (rotate)
-      pdf_release_obj(rotate);
-    return NULL;
-  }
-
-  if (rotate) {
-    if (pdf_number_value(rotate) != 0.0)
-      WARN("<< /Rotate %d >> found. (Not supported yet)",
-            (int)pdf_number_value(rotate));
-    pdf_release_obj(rotate);
-    rotate = NULL;
-  }
-
-  if (ret_bbox != NULL)
-    *ret_bbox = bbox;
-  if (ret_resources != NULL)
-    *ret_resources = resources;
-
-  return page_tree;
-}
-
-static pdf_obj*
-pdf_get_page_content (pdf_obj* page)
+get_page_content (pdf_file *pf, pdf_obj* page)
 {
   pdf_obj *contents, *content_new;
 
@@ -338,7 +59,7 @@ pdf_get_page_content (pdf_obj* page)
   if (!contents)
     return NULL;
 
-  if (pdf_obj_typeof(contents) == PDF_NULL) {
+  if (PDF_OBJ_NULLTYPE(contents)) {
     /* empty page */
     pdf_release_obj(contents);
     /* TODO: better don't include anything if the page is empty */
@@ -348,29 +69,26 @@ pdf_get_page_content (pdf_obj* page)
      * Concatenate all content streams.
      */
     pdf_obj *content_seg;
-    int      idx = 0;
+    int      i;
     content_new = pdf_new_stream(STREAM_COMPRESS);
-    for (;;) {
-      content_seg = pdf_deref_obj(pdf_get_array(contents, idx));
-      if (!content_seg)
-	break;
-      else if (PDF_OBJ_NULLTYPE(content_seg)) {
-	/* Silently ignore. */
-      }  else if (!PDF_OBJ_STREAMTYPE(content_seg)) {
-	WARN("Page content not a stream object. Broken PDF file?");
-        pdf_release_obj(content_seg);
-	pdf_release_obj(content_new);
+    for (i = 0; i < pdf_array_length(contents); i++) {
+      content_seg = pdf_deref_obj(pdf_get_array(contents, i));
+      if (!content_seg) {
+        WARN("Could not read page content stream.");
+	      pdf_release_obj(content_new);
         pdf_release_obj(contents);
-	return NULL;
-      } else if (pdf_concat_stream(content_new, content_seg) < 0) {
-	WARN("Could not handle content stream with multiple segments.");
+        return NULL;
+      }
+      if (PDF_OBJ_STREAMTYPE(content_seg)) {
+        pdf_concat_stream(content_new, content_seg);
+      } else if (!PDF_OBJ_NULLTYPE(content_seg)) {
+	      WARN("Page content not a stream object. Broken PDF file?");
         pdf_release_obj(content_seg);
-	pdf_release_obj(content_new);
+	      pdf_release_obj(content_new);
         pdf_release_obj(contents);
-	return NULL;
+	      return NULL;
       }
       pdf_release_obj(content_seg);
-      idx++;
     }
     pdf_release_obj(contents);
     contents = content_new;
@@ -382,12 +100,7 @@ pdf_get_page_content (pdf_obj* page)
     }
     /* Flate the contents if necessary. */
     content_new = pdf_new_stream(STREAM_COMPRESS);
-    if (pdf_concat_stream(content_new, contents) < 0) {
-      WARN("Could not handle a content stream.");
-      pdf_release_obj(contents);
-      pdf_release_obj(content_new);
-      return NULL;
-    }
+    pdf_concat_stream(content_new, contents);
     pdf_release_obj(contents);
     contents = content_new;
   }
@@ -411,18 +124,13 @@ pdf_include_page (pdf_ximage        *ximage,
   if (!pf)
     return -1;
 
-  if (pdf_file_get_version(pf) > pdf_get_version()) {
-    WARN("Trying to include PDF file which has newer version number " \
-         "than output PDF: 1.%d.", pdf_get_version());
-  }
-
   pdf_ximage_init_form_info(&info);
 
   if (options.page_no == 0)
     options.page_no = 1;
   page = pdf_doc_get_page(pf,
                           options.page_no, options.bbox_type,
-                          &info.bbox, &resources);
+                          &info.bbox, &info.matrix, &resources);
 
   if(!page)
     goto error_silent;
@@ -434,7 +142,7 @@ pdf_include_page (pdf_ximage        *ximage,
     pdf_release_obj(markinfo);
     if (!PDF_OBJ_BOOLEANTYPE(tmp)) {
       if (tmp)
-	pdf_release_obj(tmp);
+        pdf_release_obj(tmp);
       goto error;
     } else if (pdf_boolean_value(tmp)) {
       WARN("PDF file is tagged... Ignoring tags.");
@@ -442,52 +150,12 @@ pdf_include_page (pdf_ximage        *ximage,
     pdf_release_obj(tmp);
   }
 
-  contents = pdf_deref_obj(pdf_lookup_dict(page, "Contents"));
-  pdf_release_obj(page);
-  page = NULL;
-
   /*
    * Handle page content stream.
    */
-  {
-    pdf_obj *content_new;
-
-    if (!contents) {
-      /*
-       * Empty page
-       */
-      content_new = pdf_new_stream(0);
-      /* TODO: better don't include anything if the page is empty */
-    } else if (PDF_OBJ_STREAMTYPE(contents)) {
-      /*
-       * We must import the stream because its dictionary
-       * may contain indirect references.
-       */
-      content_new = pdf_import_object(contents);
-    } else if (PDF_OBJ_ARRAYTYPE(contents)) {
-      /*
-       * Concatenate all content streams.
-       */
-      int idx, len = pdf_array_length(contents);
-      content_new = pdf_new_stream(STREAM_COMPRESS);
-      for (idx = 0; idx < len; idx++) {
-	pdf_obj *content_seg = pdf_deref_obj(pdf_get_array(contents, idx));
-	if (!PDF_OBJ_STREAMTYPE(content_seg) ||
-	    pdf_concat_stream(content_new, content_seg) < 0) {
-	  pdf_release_obj(content_seg);
-	  pdf_release_obj(content_new);
-	  goto error;
-	}
-	pdf_release_obj(content_seg);
-      }
-    } else {
-      goto error;
-    }
-
-    if (contents)
-      pdf_release_obj(contents);
-    contents = content_new;
-  }
+  contents = get_page_content(pf, page);
+  pdf_release_obj(page);
+  page = NULL;
 
   /*
    * Add entries to contents stream dictionary.
@@ -512,12 +180,12 @@ pdf_include_page (pdf_ximage        *ximage,
     pdf_add_dict(contents_dict, pdf_new_name("BBox"), bbox);
 
     matrix = pdf_new_array();
-    pdf_add_array(matrix, pdf_new_number(1.0));
-    pdf_add_array(matrix, pdf_new_number(0.0));
-    pdf_add_array(matrix, pdf_new_number(0.0));
-    pdf_add_array(matrix, pdf_new_number(1.0));
-    pdf_add_array(matrix, pdf_new_number(0.0));
-    pdf_add_array(matrix, pdf_new_number(0.0));
+    pdf_add_array(matrix, pdf_new_number(info.matrix.a));
+    pdf_add_array(matrix, pdf_new_number(info.matrix.b));
+    pdf_add_array(matrix, pdf_new_number(info.matrix.c));
+    pdf_add_array(matrix, pdf_new_number(info.matrix.d));
+    pdf_add_array(matrix, pdf_new_number(info.matrix.e));
+    pdf_add_array(matrix, pdf_new_number(info.matrix.f));
 
     pdf_add_dict(contents_dict, pdf_new_name("Matrix"), matrix);
 
@@ -547,42 +215,6 @@ pdf_include_page (pdf_ximage        *ximage,
   pdf_close(pf);
 
   return -1;
-}
-
-/* for parse_pdf_object_ext */
-static pdf_obj *
-parse_pdf_indirect (const char **pp, const char *endptr, void *user_data)
-{
-  pdf_file *pf;
-  uint32_t  id  = 0;
-  uint16_t  gen = 0;
-  char     *vp;
-
-  if (!user_data || !pp || !*pp || !endptr)
-    return NULL;
-
-  pf = (pdf_file *) user_data;
-
-  skip_white(pp, endptr);
-  vp = parse_unsigned(pp, endptr);
-  if (!vp)
-    return NULL;
-  id  = strtoul(vp, NULL, 10);
-  RELEASE(vp);
-
-  skip_white(pp, endptr);
-  vp = parse_unsigned(pp, endptr);
-  if (!vp)
-    return NULL;
-  gen = strtoul(vp, NULL, 10);
-  RELEASE(vp);
-
-  skip_white(pp, endptr);
-  if (*pp >= endptr || *pp[0] != 'R')
-    return NULL;
-  (*pp)++;
-
-  return pdf_new_indirect(pf, id, gen);
 }
 
 typedef enum {
@@ -652,40 +284,41 @@ static struct operator
 
 
 int
-pdf_copy_clip (pdf_doc *p, FILE *image_file, int pageNo,
-               double x_user, double y_user)
+pdf_copy_clip (FILE *image_file, int pageNo, double x_user, double y_user)
 {
-  pdf_obj *page_tree, *contents;
-  int depth = 0, top = -1;
-  const char *clip_path, *end_path;
-  char *save_path, *temp;
-  pdf_tmatrix M;
-  double stack[6];
-  pdf_file *pf;
-
+  pdf_obj     *page_tree, *contents;
+  int          depth = 0, top = -1;
+  const char  *clip_path, *end_path;
+  char        *save_path, *temp;
+  pdf_tmatrix  M;
+  double       stack[6];
+  pdf_rect     bbox;
+  pdf_tmatrix  mtrx;
+  pdf_file    *pf;
+  
   pf = pdf_open(NULL, image_file);
   if (!pf)
     return -1;
 
-  pdf_dev_currentmatrix(p, &M);
+  pdf_dev_currentmatrix(&M);
   pdf_invertmatrix(&M);
   M.e += x_user; M.f += y_user;
-  page_tree = pdf_get_page_obj (pf, pageNo, NULL, NULL);
+
+  page_tree = pdf_doc_get_page(pf, pageNo, 0, &bbox, &mtrx, NULL);
   if (!page_tree) {
     pdf_close(pf);
     return -1;
   }
-
-  contents = pdf_get_page_content(page_tree);
+  contents = get_page_content(pf, page_tree);
   pdf_release_obj(page_tree);
   if (!contents) {
     pdf_close(pf);
     return -1;
   }
 
-  pdf_doc_add_page_content(p, " ", 1);
+  pdf_doc_add_page_content(" ", 1);
 
-  save_path = malloc(pdf_stream_length(contents) + 1);
+  save_path = NEW(pdf_stream_length(contents) + 1, char);
   strncpy(save_path, (const char *) pdf_stream_dataptr(contents),  pdf_stream_length(contents));
   clip_path = save_path;
   end_path = clip_path + pdf_stream_length(contents);
@@ -712,8 +345,7 @@ pdf_copy_clip (pdf_doc *p, FILE *image_file, int pageNo,
       clip_path = temp;
     } else if (*clip_path == '[') {
       /* Ignore, but put a dummy value on the stack (in case of d operator) */
-      parse_pdf_object_ext(&clip_path, end_path,
-                           parse_pdf_indirect, pf, NULL, NULL);
+      parse_pdf_array(&clip_path, end_path, pf);
       stack[++top] = 0;
     } else if (*clip_path == '/') {
       if  (strncmp("/DeviceGray",	clip_path, 11) == 0
@@ -771,12 +403,12 @@ pdf_copy_clip (pdf_doc *p, FILE *image_file, int pageNo,
 	    return -1;
 	  break;
 	case OP_CLOSEandCLIP:
-	  pdf_dev_closepath(p);
+	  pdf_dev_closepath();
 	case OP_CLIP:
 #if 0
-	  pdf_dev_clip(p);
+	  pdf_dev_clip();
 #else
-	  pdf_dev_flushpath(p, 'W', PDF_FILL_RULE_NONZERO);
+	  pdf_dev_flushpath('W', PDF_FILL_RULE_NONZERO);
 #endif
 	  break;
 	case OP_CONCATMATRIX:
@@ -794,28 +426,32 @@ pdf_copy_clip (pdf_doc *p, FILE *image_file, int pageNo,
 	  /* Do nothing. */
 	  break;
 	case OP_RECTANGLE:
-          if (top < 3)
-            return -1;
-          /* rectadd() removed since it completely spoils things */
-          {
-            double w, h;
-
-            h = stack[top--];
-            w = stack[top--];
-            p0.y = stack[top--];
-            p0.x = stack[top--];
-            p1.x = p0.x + w; p1.y = p0.y;
-            p2.x = p0.x + w; p2.y = p0.y + h;
-            p3.x = p0.x;     p3.y = p0.y + h;
-            pdf_dev_transform(p, &p0, &M);
-            pdf_dev_transform(p, &p1, &M);
-            pdf_dev_transform(p, &p2, &M);
-            pdf_dev_transform(p, &p3, &M);
-            pdf_dev_moveto(p, p0.x, p0.y);
-            pdf_dev_lineto(p, p1.x, p1.y);
-            pdf_dev_lineto(p, p2.x, p2.y);
-            pdf_dev_lineto(p, p3.x, p3.y);
-            pdf_dev_lineto(p, p0.x, p0.y);
+	  if (top < 3)
+	    return -1;
+	  p1.y = stack[top--];
+	  p1.x = stack[top--];
+	  p0.y = stack[top--];
+	  p0.x = stack[top--];
+	  if (M.b == 0 && M.c == 0) {
+	    pdf_tmatrix M0;
+	    M0.a = M.a; M0.b = M.b; M0.c = M.c; M0.d = M.d;
+	    M0.e = 0; M0.f = 0;
+	    pdf_dev_transform(&p0, &M);
+	    pdf_dev_transform(&p1, &M0);
+	    pdf_dev_rectadd(p0.x, p0.y, p1.x, p1.y);
+	  } else {
+	    p2.x = p0.x + p1.x; p2.y = p0.y + p1.y;
+	    p3.x = p0.x; p3.y = p0.y + p1.y;
+	    p1.x += p0.x; p1.y = p0.y;
+	    pdf_dev_transform(&p0, &M);
+	    pdf_dev_transform(&p1, &M);
+	    pdf_dev_transform(&p2, &M);
+	    pdf_dev_transform(&p3, &M);
+	    pdf_dev_moveto(p0.x, p0.y);
+	    pdf_dev_lineto(p1.x, p1.y);
+	    pdf_dev_lineto(p2.x, p2.y);
+	    pdf_dev_lineto(p3.x, p3.y);
+	    pdf_dev_closepath();
 	  }
 	  break;
 	case OP_CURVETO:
@@ -823,36 +459,36 @@ pdf_copy_clip (pdf_doc *p, FILE *image_file, int pageNo,
 	    return -1;
 	  p0.y = stack[top--];
 	  p0.x = stack[top--];
-	  pdf_dev_transform(p, &p0, &M);
+	  pdf_dev_transform(&p0, &M);
 	  p1.y = stack[top--];
 	  p1.x = stack[top--];
-	  pdf_dev_transform(p, &p1, &M);
+	  pdf_dev_transform(&p1, &M);
 	  p2.y = stack[top--];
 	  p2.x = stack[top--];
-	  pdf_dev_transform(p, &p2, &M);
-	  pdf_dev_curveto(p, p2.x, p2.y, p1.x, p1.y, p0.x, p0.y);
+	  pdf_dev_transform(&p2, &M);
+	  pdf_dev_curveto(p2.x, p2.y, p1.x, p1.y, p0.x, p0.y);
 	  break;
 	case OP_CLOSEPATH:
-	  pdf_dev_closepath(p);
+	  pdf_dev_closepath();
 	  break;
 	case OP_LINETO:
 	  if (top < 1)
 	    return -1;
 	  p0.y = stack[top--];
 	  p0.x = stack[top--];
-	  pdf_dev_transform(p, &p0, &M);
-	  pdf_dev_lineto(p, p0.x, p0.y);
+	  pdf_dev_transform(&p0, &M);
+	  pdf_dev_lineto(p0.x, p0.y);
 	  break;
 	case OP_MOVETO:
 	  if (top < 1)
 	    return -1;
 	  p0.y = stack[top--];
 	  p0.x = stack[top--];
-	  pdf_dev_transform(p, &p0, &M);
-	  pdf_dev_moveto(p, p0.x, p0.y);
+	  pdf_dev_transform(&p0, &M);
+	  pdf_dev_moveto(p0.x, p0.y);
 	  break;
 	case OP_NOOP:
-	  pdf_doc_add_page_content(p, " n", 2);
+	  pdf_doc_add_page_content(" n", 2);
 	  break;
 	case OP_GSAVE:
 	  depth++;
@@ -865,29 +501,29 @@ pdf_copy_clip (pdf_doc *p, FILE *image_file, int pageNo,
 	    return -1;
 	  p0.y = stack[top--];
 	  p0.x = stack[top--];
-	  pdf_dev_transform(p, &p0, &M);
+	  pdf_dev_transform(&p0, &M);
 	  p1.y = stack[top--];
 	  p1.x = stack[top--];
-	  pdf_dev_transform(p, &p1, &M);
-	  pdf_dev_vcurveto(p, p1.x, p1.y, p0.x, p0.y);
+	  pdf_dev_transform(&p1, &M);
+	  pdf_dev_vcurveto(p1.x, p1.y, p0.x, p0.y);
 	  break;
 	case OP_CURVETO2:
 	  if (top < 3)
 	    return -1;
 	  p0.y = stack[top--];
 	  p0.x = stack[top--];
-	  pdf_dev_transform(p, &p0, &M);
+	  pdf_dev_transform(&p0, &M);
 	  p1.y = stack[top--];
 	  p1.x = stack[top--];
-	  pdf_dev_transform(p, &p1, &M);
-	  pdf_dev_ycurveto(p, p1.x, p1.y, p0.x, p0.y);
+	  pdf_dev_transform(&p1, &M);
+	  pdf_dev_ycurveto(p1.x, p1.y, p0.x, p0.y);
 	  break;
 	default:
 	  return -1;
       }
     }
   }
-  free(save_path);
+  RELEASE(save_path);
 
   pdf_release_obj(contents);
   pdf_close(pf);

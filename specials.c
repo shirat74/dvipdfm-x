@@ -1,20 +1,20 @@
 /* This is dvipdfmx, an eXtended version of dvipdfm by Mark A. Wicks.
 
-    Copyright (C) 2002-2015 by Jin-Hwan Cho and Shunsaku Hirata,
+    Copyright (C) 2002-2018 by Jin-Hwan Cho and Shunsaku Hirata,
     the dvipdfmx project team.
-
+    
     Copyright (C) 1998, 1999 by Mark A. Wicks <mwicks@kettering.edu>
 
     This program is free software; you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
     the Free Software Foundation; either version 2 of the License, or
     (at your option) any later version.
-
+    
     This program is distributed in the hope that it will be useful,
     but WITHOUT ANY WARRANTY; without even the implied warranty of
     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
     GNU General Public License for more details.
-
+    
     You should have received a copy of the GNU General Public License
     along with this program; if not, write to the Free Software
     Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA.
@@ -30,6 +30,7 @@
 #include "mem.h"
 #include "error.h"
 #include "numbers.h"
+#include "dpxconf.h"
 
 #include "dvi.h"
 
@@ -47,17 +48,10 @@
 #include "spc_misc.h"
 #include "spc_color.h"
 #include "spc_dvips.h"
+#include "spc_dvipdfmx.h"
 #include "spc_xtx.h"
 
 #include "specials.h"
-
-static int verbose = 0;
-void
-spc_set_verbose (void)
-{
-  verbose++;
-}
-
 
 void
 spc_warn (struct spc_env *spe, const char *fmt, ...)
@@ -82,7 +76,7 @@ spc_warn (struct spc_env *spe, const char *fmt, ...)
 int
 spc_begin_annot (struct spc_env *spe, pdf_obj *dict)
 {
-  pdf_doc_begin_annot(spe->pdf, dict);
+  pdf_doc_begin_annot(dict);
   dvi_tag_depth(); /* Tell dvi interpreter to handle line-break. */
   return  0;
 }
@@ -91,7 +85,7 @@ int
 spc_end_annot (struct spc_env *spe)
 {
   dvi_untag_depth();
-  pdf_doc_end_annot(spe->pdf);
+  pdf_doc_end_annot();
   return  0;
 }
 
@@ -109,143 +103,7 @@ spc_suspend_annot (struct spc_env *spe)
   return  0;
 }
 
-/* Migrated form pdf_dev.c
- * No need to palce this into pdfdev.c at all.
- */
-static dpx_stack *coords = NULL;
 
-static void
-release_coord (void *p)
-{
-   if (p)
-     RELEASE(p);
-}
-
-void
-spc_get_coord (double *x, double *y)
-{
-  ASSERT(x && y );
-
-  if (coords && dpx_stack_depth(coords) > 0) {
-    pdf_coord *p = dpx_stack_top(coords);
-    *x = p->x;
-    *y = p->y;
-  } else {
-    *x = *y = 0.0;
-  }
-}
-
-void
-spc_push_coord (double x, double y)
-{
-  pdf_coord *p;
-  if (!coords)
-    coords = dpx_stack_new();
-  p = NEW(1, pdf_coord);
-  p->x = x; p->y = y;
-  dpx_stack_push(coords, p);
-}
-
-void
-spc_pop_coord (void)
-{
-  pdf_coord *p;
-  if (coords) {
-    p = dpx_stack_pop(coords);
-    RELEASE(p);
-  }
-}
-
-/* Migrated from pdfdraw.c.
- *
- * pt_fixee is obviously not a PDF graphics state parameter.
- *
- * Someone added pt_fixee into pdf_gstate in pdfdraw.c.
- * However, pdf_gstate is intended to be a representation of PDF graphics
- * state parameters and thus it is not appropriate to store artitary values
- * there.
- *
- * And xdvipdfmx does its own extension independent of dvipdfmx freely...
- * I can't handle this chaotic situation.
- */
-
-static dpx_stack *pt_fixee = NULL;
-
-void
-spc_set_fixed_point (double x, double y)
-{
-  pdf_coord *p;
-
-  ASSERT(pt_fixee);
-
-  p = dpx_stack_top(pt_fixee);
-  if (p) {
-    p->x = x;
-    p->y = y;
-  }
-}
-
-void
-spc_get_fixed_point (double *x, double *y)
-{
-  pdf_coord *p;
-
-  ASSERT(pt_fixee);
-  ASSERT(x && y);
-
-  p = dpx_stack_top(pt_fixee);
-  if (p) {
-    *x = p->x;
-    *y = p->y;
-  }
-}
-
-void
-spc_put_fixed_point (double x, double y)
-{
-  pdf_coord *p;
-
-  if (!pt_fixee)
-    pt_fixee = dpx_stack_new();
-  p = NEW(1, pdf_coord);
-  p->x = x;
-  p->y = y;
-  dpx_stack_push(pt_fixee, p);
-}
-
-void
-spc_dup_fixed_point (void)
-{
-  pdf_coord *p1, *p2;
-
-  p1 = dpx_stack_top(pt_fixee);
-  p2 = NEW(1, pdf_coord);
-  p2->x = p1->x; p2->y = p1->y;
-  dpx_stack_push(pt_fixee, p2);
-}
-
-void
-spc_pop_fixed_point (void)
-{
-  pdf_coord *p;
-  p = dpx_stack_pop(pt_fixee);
-  if (p)
-    RELEASE(p);
-}
-
-void
-spc_clear_fixed_point (void)
-{
-  pdf_coord *p;
-
-  for (;;) {
-    p = dpx_stack_pop(pt_fixee);
-    if (!p)
-      break;
-    else
-      RELEASE(p);
-  }
-}
 
 static struct ht_table *named_objects = NULL;
 
@@ -295,7 +153,7 @@ ispageref (const char *key)
  * The following routine returns copies, not the original object.
  */
 pdf_obj *
-spc_lookup_reference (struct spc_env *spe, const char *key)
+spc_lookup_reference (const char *key)
 {
   pdf_obj    *value = NULL;
   pdf_coord   cp;
@@ -303,7 +161,7 @@ spc_lookup_reference (struct spc_env *spe, const char *key)
 
   ASSERT(named_objects);
 
-  if (!key || !spe || !spe->pdf)
+  if (!key)
     return  NULL;
 
   for (k = 0; _rkeys[k] && strcmp(key, _rkeys[k]); k++);
@@ -311,41 +169,41 @@ spc_lookup_reference (struct spc_env *spe, const char *key)
   /* xpos and ypos must be position in device space here. */
   case  K_OBJ__XPOS:
     cp.x = dvi_dev_xpos(); cp.y = 0.0;
-    pdf_dev_transform(spe->pdf, &cp, NULL);
+    pdf_dev_transform(&cp, NULL);
     value = pdf_new_number(ROUND(cp.x, .01));
     break;
   case  K_OBJ__YPOS:
     cp.x = 0.0; cp.y = dvi_dev_ypos();
-    pdf_dev_transform(spe->pdf, &cp, NULL);
+    pdf_dev_transform(&cp, NULL);
     value = pdf_new_number(ROUND(cp.y, .01));
     break;
   case  K_OBJ__THISPAGE:
-    value = pdf_doc_this_page_ref(spe->pdf);
+    value = pdf_doc_this_page_ref();
     break;
   case  K_OBJ__PREVPAGE:
-    value = pdf_doc_prev_page_ref(spe->pdf);
+    value = pdf_doc_prev_page_ref();
     break;
   case  K_OBJ__NEXTPAGE:
-    value = pdf_doc_next_page_ref(spe->pdf);
+    value = pdf_doc_next_page_ref();
     break;
   case  K_OBJ__PAGES:
-    value = pdf_ref_obj(pdf_doc_page_tree(spe->pdf));
+    value = pdf_ref_obj(pdf_doc_page_tree());
     break;
   case  K_OBJ__NAMES:
-    value = pdf_ref_obj(pdf_doc_names(spe->pdf));
+    value = pdf_ref_obj(pdf_doc_names());
     break;
   case  K_OBJ__RESOURCES:
-    value = pdf_ref_obj(pdf_doc_current_page_resources(spe->pdf));
+    value = pdf_ref_obj(pdf_doc_current_page_resources());
     break;
   case  K_OBJ__CATALOG:
-    value = pdf_ref_obj(pdf_doc_catalog(spe->pdf));
+    value = pdf_ref_obj(pdf_doc_catalog());
     break;
   case  K_OBJ__DOCINFO:
-    value = pdf_ref_obj(pdf_doc_docinfo(spe->pdf));
+    value = pdf_ref_obj(pdf_doc_docinfo());
     break;
   default:
     if (ispageref(key))
-      value = pdf_doc_ref_page(spe->pdf, atoi(key + 4));
+      value = pdf_doc_ref_page(atoi(key + 4));
     else {
       value = pdf_names_lookup_reference(named_objects, key, strlen(key));
     }
@@ -360,7 +218,7 @@ spc_lookup_reference (struct spc_env *spe, const char *key)
 }
 
 pdf_obj *
-spc_lookup_object (struct spc_env *spe, const char *key)
+spc_lookup_object (const char *key)
 {
   pdf_obj    *value = NULL;
   pdf_coord   cp;
@@ -368,38 +226,38 @@ spc_lookup_object (struct spc_env *spe, const char *key)
 
   ASSERT(named_objects);
 
-  if (!key || !spe || !spe->pdf)
+  if (!key)
     return  NULL;
 
   for (k = 0; _rkeys[k] && strcmp(key, _rkeys[k]); k++);
   switch (k) {
   case  K_OBJ__XPOS:
     cp.x = dvi_dev_xpos(); cp.y = 0.0;
-    pdf_dev_transform(spe->pdf, &cp, NULL);
+    pdf_dev_transform(&cp, NULL);
     value = pdf_new_number(ROUND(cp.x, .01));
     break;
   case  K_OBJ__YPOS:
     cp.x = 0.0; cp.y = dvi_dev_ypos();
-    pdf_dev_transform(spe->pdf, &cp, NULL);
+    pdf_dev_transform(&cp, NULL);
     value = pdf_new_number(ROUND(cp.y, .01));
     break;
   case  K_OBJ__THISPAGE:
-    value = pdf_doc_this_page(spe->pdf);
+    value = pdf_doc_this_page();
     break;
   case  K_OBJ__PAGES:
-    value = pdf_doc_page_tree(spe->pdf);
+    value = pdf_doc_page_tree();
     break;
   case  K_OBJ__NAMES:
-    value = pdf_doc_names(spe->pdf);
+    value = pdf_doc_names();
     break;
   case  K_OBJ__RESOURCES:
-    value = pdf_doc_current_page_resources(spe->pdf);
+    value = pdf_doc_current_page_resources();
     break;
   case  K_OBJ__CATALOG:
-    value = pdf_doc_catalog(spe->pdf);
+    value = pdf_doc_catalog();
     break;
   case  K_OBJ__DOCINFO:
-    value = pdf_doc_docinfo(spe->pdf);
+    value = pdf_doc_docinfo();
     break;
   default:
     value = pdf_names_lookup_object(named_objects, key, strlen(key));
@@ -456,19 +314,16 @@ init_special (struct spc_handler *special,
 	      struct spc_env *spe,
 	      struct spc_arg *args,
 	      const char *p, uint32_t size,
-              pdf_doc *pdf,
 	      double x_user, double y_user, double mag)
 {
 
   special->key  = NULL;
   special->exec = (spc_handler_fn_ptr) &spc_handler_unknown;
 
-  spe->pdf    = pdf;
   spe->x_user = x_user;
   spe->y_user = y_user;
   spe->mag    = mag;
-  spe->pg     = pdf_doc_current_page_number(pdf);
-  spe->info.is_drawable = 0;
+  spe->pg     = pdf_doc_current_page_number(); /* _FIXME_ */
 
   args->curptr = p;
   args->endptr = args->curptr + size;
@@ -509,7 +364,7 @@ static struct {
    spc_pdfm_at_begin_document,
    spc_pdfm_at_end_document,
    NULL,
-   NULL,
+   spc_pdfm_at_end_page,
    spc_pdfm_check_special,
    spc_pdfm_setup_handler
   },
@@ -521,6 +376,15 @@ static struct {
    NULL,
    spc_xtx_check_special,
    spc_xtx_setup_handler
+  },
+
+  {"dvipdfmx:",
+   NULL,
+   NULL,
+   NULL,
+   NULL,
+   spc_dvipdfmx_check_special,
+   spc_dvipdfmx_setup_handler
   },
 
   {"ps:",
@@ -610,8 +474,6 @@ spc_exec_at_begin_document (void)
   ASSERT(!named_objects);
 
   named_objects = pdf_new_name_tree();
-  pt_fixee      = dpx_stack_new();
-  coords        = dpx_stack_new();
 
   for (i = 0; known_specials[i].key != NULL; i++) {
     if (known_specials[i].bodhk_func) {
@@ -634,12 +496,9 @@ spc_exec_at_end_document (void)
     }
   }
 
-  if (named_objects)
+  if (named_objects) {
     pdf_delete_name_tree(&named_objects);
-  if (pt_fixee)
-    dpx_stack_delete(&pt_fixee, release_coord);
-  if (coords)
-    dpx_stack_delete(&coords, release_coord);
+  }
 
   return error;
 }
@@ -654,7 +513,7 @@ print_error (const char *name, struct spc_env *spe, struct spc_arg *ap)
   pdf_coord c;
 
   c.x = spe->x_user; c.y = spe->y_user;
-  pdf_dev_transform(spe->pdf, &c, NULL);
+  pdf_dev_transform(&c, NULL);
 
   if (ap->command && name) {
     WARN("Interpreting special command %s (%s) failed.", ap->command, name);
@@ -668,7 +527,7 @@ print_error (const char *name, struct spc_env *spe, struct spc_arg *ap)
     else
       break;
   }
-  ebuf[i] = '\0';
+  ebuf[i] = '\0'; 
   if (ap->curptr < ap->endptr) {
     while (i-- > 60)
       ebuf[i] = '.';
@@ -684,7 +543,7 @@ print_error (const char *name, struct spc_env *spe, struct spc_arg *ap)
       else
         break;
     }
-    ebuf[i] = '\0';
+    ebuf[i] = '\0'; 
     if (ap->curptr < ap->endptr) {
       while (i-- > 60)
         ebuf[i] = '.';
@@ -697,9 +556,7 @@ print_error (const char *name, struct spc_env *spe, struct spc_arg *ap)
 
 int
 spc_exec_special (const char *buffer, int32_t size,
-                  pdf_doc *pdf,
-                  double x_user, double y_user, double mag,
-                  int *is_drawable, pdf_rect *rect)
+		  double x_user, double y_user, double mag)
 {
   int    error = -1;
   int    i, found;
@@ -707,35 +564,26 @@ spc_exec_special (const char *buffer, int32_t size,
   struct spc_arg     args;
   struct spc_handler special;
 
-  if (verbose > 3) {
+  if (dpx_conf.verbose_level > 3) {
+    MESG("Executing special command: ");
     dump(buffer, buffer + size);
   }
 
-  init_special(&special, &spe, &args, buffer, size,
-               pdf,  x_user, y_user, mag);
+  init_special(&special, &spe, &args, buffer, size, x_user, y_user, mag);
 
   for (i = 0; known_specials[i].key != NULL; i++) {
     found = known_specials[i].check_func(buffer, size);
     if (found) {
       error = known_specials[i].setup_func(&special, &spe, &args);
       if (!error) {
-        error = special.exec(&spe, &args);
+	error = special.exec(&spe, &args);
       }
       if (error) {
-        print_error(known_specials[i].key, &spe, &args);
-      } else {
-        if (is_drawable)
-          *is_drawable = spe.info.is_drawable;
-        if (rect) {
-          rect->llx = spe.info.rect.llx;
-          rect->lly = spe.info.rect.lly;
-          rect->urx = spe.info.rect.urx;
-          rect->ury = spe.info.rect.ury;
-        }
+	print_error(known_specials[i].key, &spe, &args);
       }
       break;
     }
-  }
+  } 
 
   check_garbage(&args);
 

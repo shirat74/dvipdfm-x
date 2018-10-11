@@ -1,20 +1,20 @@
 /* This is dvipdfmx, an eXtended version of dvipdfm by Mark A. Wicks.
 
-    Copyright (C) 2002-2015 by Jin-Hwan Cho and Shunsaku Hirata,
+    Copyright (C) 2002-2017 by Jin-Hwan Cho and Shunsaku Hirata,
     the dvipdfmx project team.
-
+    
     Copyright (C) 1998, 1999 by Mark A. Wicks <mwicks@kettering.edu>
 
     This program is free software; you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
     the Free Software Foundation; either version 2 of the License, or
     (at your option) any later version.
-
+    
     This program is distributed in the hope that it will be useful,
     but WITHOUT ANY WARRANTY; without even the implied warranty of
     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
     GNU General Public License for more details.
-
+    
     You should have received a copy of the GNU General Public License
     along with this program; if not, write to the Free Software
     Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA.
@@ -176,7 +176,7 @@ read_html_tag (char *name, pdf_obj *attr, int *type, const char **pp, const char
 #define ISDELIM(c) ((c) == '>' || (c) == '/' || isspace((unsigned char)c))
   for (n = 0; p < endptr && n < HTML_TAG_NAME_MAX && !ISDELIM(*p); n++, p++) {
     name[n] = *p;
-  }
+  } 
   name[n] = '\0';
   if (n == 0 || p == endptr || !ISDELIM(*p)) {
     *pp = p;
@@ -363,9 +363,9 @@ html_open_dest (struct spc_env *spe, const char *name, struct spc_html_ *sd)
   pdf_coord  cp;
 
   cp.x = spe->x_user; cp.y = spe->y_user;
-  pdf_dev_transform(spe->pdf, &cp, NULL);
+  pdf_dev_transform(&cp, NULL);
 
-  page_ref = pdf_doc_this_page_ref(spe->pdf);
+  page_ref = pdf_doc_this_page_ref();
   ASSERT( page_ref ); /* Otherwise must be bug */
 
   array = pdf_new_array();
@@ -375,10 +375,9 @@ html_open_dest (struct spc_env *spe, const char *name, struct spc_html_ *sd)
   pdf_add_array(array, pdf_new_number(cp.y + 24.0));
   pdf_add_array(array, pdf_new_null());
 
-  error = pdf_doc_add_names(spe->pdf,
-                            "Dests",
-                            name, strlen(name),
-                            array);
+  error = pdf_doc_add_names("Dests",
+			    name, strlen(name),
+			    array);
 
   if (error)
     spc_warn(spe, "Failed to add named destination: %s", name);
@@ -487,8 +486,12 @@ atopt (const char *a)
 #define K_UNIT__CM  2
 #define K_UNIT__MM  3
 #define K_UNIT__BP  4
-    "pt", "in", "cm", "mm", "bp",
-#define K_UNIT__PX  5
+#define K_UNIT__PC  5
+#define K_UNIT__DD  6
+#define K_UNIT__CC  7
+#define K_UNIT__SP  8
+    "pt", "in", "cm", "mm", "bp", "pc", "dd", "cc", "sp",
+#define K_UNIT__PX  9
     "px",
      NULL
   };
@@ -512,6 +515,10 @@ atopt (const char *a)
     case K_UNIT__CM: u *= 72.0 / 2.54 ; break;
     case K_UNIT__MM: u *= 72.0 / 25.4 ; break;
     case K_UNIT__BP: u *= 1.0 ; break;
+    case K_UNIT__PC: u *= 12.0 * 72.0 / 72.27 ; break;
+    case K_UNIT__DD: u *= 1238.0 / 1157.0 * 72.0 / 72.27 ; break;
+    case K_UNIT__CC: u *= 12.0 * 1238.0 / 1157.0 * 72.0 / 72.27 ; break;
+    case K_UNIT__SP: u *= 72.0 / (72.27 * 65536) ; break;
     case K_UNIT__PX: u *= 1.0 ; break; /* 72dpi */
     default:
       WARN("Unknown unit of measure: %s", q);
@@ -548,12 +555,11 @@ create_xgstate (double a /* alpha */, int f_ais /* alpha is shape */)
 }
 
 static int
-check_resourcestatus (pdf_doc *pdf,
-                      const char *category, const char *resname)
+check_resourcestatus (const char *category, const char *resname)
 {
   pdf_obj  *dict1, *dict2;
 
-  dict1 = pdf_doc_current_page_resources(pdf);
+  dict1 = pdf_doc_current_page_resources();
   if (!dict1)
     return  0;
 
@@ -639,9 +645,9 @@ spc_html__img_empty (struct spc_env *spe, pdf_obj *attr)
     return  error;
   }
 
-  id = pdf_ximage_findresource(spe->pdf, pdf_string_value(src), options);
+  id = pdf_ximage_findresource(pdf_string_value(src), options);
   if (id < 0) {
-    spc_warn(spe, "Could not find/load image: %s", pdf_string_value(src));
+    spc_warn(spe, "Could not find/load image: %s", pdf_string_value(src)); 
     error = -1;
   } else {
 #if defined(ENABLE_HTML_SVG_TRANSFORM) || defined(ENABLE_HTML_SVG_OPACITY)
@@ -649,9 +655,9 @@ spc_html__img_empty (struct spc_env *spe, pdf_obj *attr)
       char     *res_name;
       pdf_rect  r;
 
-      pdf_dev_graphics_mode(spe->pdf);
+      graphics_mode();
 
-      pdf_dev_gsave(spe->pdf);
+      pdf_dev_gsave();
 
 #ifdef  ENABLE_HTML_SVG_OPACITY
       {
@@ -660,15 +666,15 @@ spc_html__img_empty (struct spc_env *spe, pdf_obj *attr)
         if (a != 0) {
           res_name = NEW(strlen("_Tps_a100_") + 1, char);
           sprintf(res_name, "_Tps_a%03d_", a); /* Not Tps prefix but... */
-          if (!check_resourcestatus(spe->pdf, "ExtGState", res_name)) {
+          if (!check_resourcestatus("ExtGState", res_name)) {
             dict = create_xgstate(round_at(0.01 * a, 0.01), 0);
-            pdf_doc_add_page_resource(spe->pdf, "ExtGState",
+            pdf_doc_add_page_resource("ExtGState",
                                       res_name, pdf_ref_obj(dict));
             pdf_release_obj(dict);
           }
-          pdf_doc_add_page_content(spe->pdf, " /", 2);  /* op: */
-          pdf_doc_add_page_content(spe->pdf, res_name, strlen(res_name));
-          pdf_doc_add_page_content(spe->pdf, " gs", 3);  /* op: gs */
+          pdf_doc_add_page_content(" /", 2);  /* op: */
+          pdf_doc_add_page_content(res_name, strlen(res_name));  /* op: */
+          pdf_doc_add_page_content(" gs", 3);  /* op: gs */
           RELEASE(res_name);
         }
       }
@@ -676,28 +682,23 @@ spc_html__img_empty (struct spc_env *spe, pdf_obj *attr)
 
       pdf_ximage_scale_image(id, &M1, &r, &ti);
       pdf_concatmatrix(&M, &M1);
-      pdf_dev_concat(spe->pdf, &M);
+      pdf_dev_concat(&M);
 
-      pdf_dev_rectclip(spe->pdf, r.llx, r.lly, r.urx - r.llx, r.ury - r.lly);
+      pdf_dev_rectclip(r.llx, r.lly, r.urx - r.llx, r.ury - r.lly);
 
       res_name = pdf_ximage_get_resname(id);
-      pdf_doc_add_page_content(spe->pdf, " /", 2);  /* op: */
-      pdf_doc_add_page_content(spe->pdf, res_name, strlen(res_name));  /* op: */
-      pdf_doc_add_page_content(spe->pdf, " Do", 3);  /* op: Do */
+      pdf_doc_add_page_content(" /", 2);  /* op: */
+      pdf_doc_add_page_content(res_name, strlen(res_name));  /* op: */
+      pdf_doc_add_page_content(" Do", 3);  /* op: Do */
 
-      pdf_dev_grestore(spe->pdf);
+      pdf_dev_grestore();
 
-      pdf_doc_add_page_resource(spe->pdf, "XObject",
+      pdf_doc_add_page_resource("XObject",
                                 res_name,
                                 pdf_ximage_get_reference(id));
-      /* FIXME: */
-      /* spe->info.is_drawable = 1 */
-
     }
 #else
-    pdf_dev_put_image(id, &ti,
-                      spe->x_user, spe->y_user, &spe->info.rect);
-    spe->info.is_drawable = 1;
+    pdf_dev_put_image(id, &ti, spe->x_user, spe->y_user);
 #endif /* ENABLE_HTML_SVG_XXX */
   }
 
@@ -874,7 +875,7 @@ cvt_a_to_tmatrix (pdf_tmatrix *M, const char *ptr, const char **nextptr)
   if (nextptr)
     *nextptr = p;
   return  0;
-}
+}    
 #endif /* ENABLE_HTML_SVG_TRANSFORM */
 
 int

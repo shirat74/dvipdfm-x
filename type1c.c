@@ -1,6 +1,6 @@
 /* This is dvipdfmx, an eXtended version of dvipdfm by Mark A. Wicks.
 
-    Copyright (C) 2008-2015 by Jin-Hwan Cho, Matthias Franz, and Shunsaku Hirata,
+    Copyright (C) 2008-2018 by Jin-Hwan Cho, Matthias Franz, and Shunsaku Hirata,
     the dvipdfmx project team.
 
     Copyright (C) 1998, 1999 by Mark A. Wicks <mwicks@kettering.edu>
@@ -41,7 +41,7 @@
 #include "system.h"
 #include "mem.h"
 #include "error.h"
-
+#include "dpxconf.h"
 #include "dpxfile.h"
 
 #include "pdfobj.h"
@@ -201,10 +201,18 @@ add_SimpleMetrics (pdf_font *font, cff_font *cffont,
         double width;
         if (tfm_id < 0) /* tfm is not found */
           width = scaling * widths[code];
-        else
+        else {
+          double diff;
           width = 1000. * tfm_get_width(tfm_id, code);
+          diff  = width - scaling * widths[code];
+          if (fabs(diff) > 1.) {
+            WARN("Glyph width mismatch for TFM and font (%s)",
+                 pdf_font_get_mapname(font));
+            WARN("TFM: %g vs. CFF font: %g", width, widths[code]);
+            }
 	pdf_add_array(tmp_array,
 		      pdf_new_number(ROUND(width, 0.1)));
+        }
       } else {
 	pdf_add_array(tmp_array, pdf_new_number(0.0));
       }
@@ -229,6 +237,7 @@ int
 pdf_font_load_type1c (pdf_font *font)
 {
   pdf_obj      *fontdict, *descriptor;
+  pdf_obj      *pdfcharset; /* Actually string object */
   char         *usedchars;
   char         *fontname, *uniqueTag, *ident, *fullname;
   FILE         *fp = NULL;
@@ -249,11 +258,8 @@ pdf_font_load_type1c (pdf_font *font)
   cs_ginfo      ginfo;
   double        nominal_width, default_width, notdef_width;
   double        widths[256];
-  int           verbose;
 
   ASSERT(font);
-
-  verbose = pdf_font_get_verbose();
 
   if (!pdf_font_is_in_use(font)) {
     return 0;
@@ -428,7 +434,7 @@ pdf_font_load_type1c (pdf_font *font)
   /* First we add .notdef glyph.
    * All Type 1 font requires .notdef glyph to be present.
    */
-  if (verbose > 2) {
+  if (dpx_conf.verbose_level > 2) {
     MESG("[glyphs:/.notdef");
   }
   size = cs_idx->offset[1] - cs_idx->offset[0];
@@ -449,6 +455,7 @@ pdf_font_load_type1c (pdf_font *font)
    * Subset font
    */
   num_glyphs = 1;
+  pdfcharset = pdf_new_stream(0);
   for (code = 0; code < 256; code++) {
     card16 gid, j;
     s_SID  sid_orig, sid;
@@ -498,7 +505,10 @@ pdf_font_load_type1c (pdf_font *font)
       usedchars[code] = 0; /* Set unused for writing correct encoding */
       continue;
     }
-    if (verbose > 2) {
+    pdf_add_stream(pdfcharset, "/", 1);
+    pdf_add_stream(pdfcharset, enc_vec[code], strlen(enc_vec[code]));
+
+    if (dpx_conf.verbose_level > 2) {
       MESG("/%s", enc_vec[code]);
     }
 
@@ -524,7 +534,7 @@ pdf_font_load_type1c (pdf_font *font)
     charset->num_entries  += 1;
     num_glyphs++;
   }
-  if (verbose > 2) {
+  if (dpx_conf.verbose_level > 2) {
     MESG("]");
   }
   RELEASE(data);
@@ -712,15 +722,18 @@ pdf_font_load_type1c (pdf_font *font)
   if (fp)
     DPXFCLOSE(fp);
 
-  if (verbose > 1) {
+  if (dpx_conf.verbose_level > 1) {
     MESG("[%u/%u glyphs][%ld bytes]", num_glyphs, cs_count, offset);
   }
 
   /*
-   * CharSet might be recommended for subsetted font, but it is meaningful
-   * only for Type 1 font...
+   * CharSet
    */
-
+  pdf_add_dict(descriptor,
+               pdf_new_name("CharSet"),
+               pdf_new_string(pdf_stream_dataptr(pdfcharset),
+                              pdf_stream_length(pdfcharset)));
+  pdf_release_obj(pdfcharset);
   /*
    * Write PDF FontFile data.
    */

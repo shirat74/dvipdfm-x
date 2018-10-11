@@ -1,6 +1,6 @@
 /* This is dvipdfmx, an eXtended version of dvipdfm by Mark A. Wicks.
 
-    Copyright (C) 2002-2015 by Jin-Hwan Cho and Shunsaku Hirata,
+    Copyright (C) 2002-2018 by Jin-Hwan Cho and Shunsaku Hirata,
     the dvipdfmx project team.
     
     Copyright (C) 1998, 1999 by Mark A. Wicks <mwicks@kettering.edu>
@@ -28,6 +28,7 @@
 #include "mem.h"
 #include "error.h"
 
+#include "dpxconf.h"
 #include "dpxfile.h"
 #include "dpxutil.h"
 
@@ -37,14 +38,6 @@
 
 /* CIDFont */
 static char *strip_options (const char *map_name, fontmap_opt *opt);
-
-static int verbose = 0;
-void
-pdf_fontmap_set_verbose (void)
-{
-  verbose++;
-}
-
 
 void
 pdf_init_fontmap_record (fontmap_rec *mrec) 
@@ -71,13 +64,12 @@ pdf_init_fontmap_record (fontmap_rec *mrec)
   mrec->opt.design_size = -1.0;
 
   mrec->opt.tounicode = NULL;
-  mrec->opt.otl_tags  = NULL; /* deactivated */
+  mrec->opt.otl_tags  = NULL;
   mrec->opt.index     = 0;
   mrec->opt.charcoll  = NULL;
   mrec->opt.style     = FONTMAP_STYLE_NONE;
   mrec->opt.stemv     = -1; /* not given explicitly by an option */
-
-  mrec->opt.cff_charsets = NULL;
+  mrec->opt.use_glyph_encoding = 0;
 }
 
 void
@@ -143,8 +135,7 @@ pdf_copy_fontmap_record (fontmap_rec *dst, const fontmap_rec *src)
   dst->opt.charcoll  = mstrdup(src->opt.charcoll);
   dst->opt.style     = src->opt.style;
   dst->opt.stemv     = src->opt.stemv;
-
-  dst->opt.cff_charsets = src->opt.cff_charsets;
+  dst->opt.use_glyph_encoding = src->opt.use_glyph_encoding;
 }
 
 
@@ -453,6 +444,17 @@ fontmap_parse_mapdef_dpm (fontmap_rec *mrec,
       RELEASE(q);
       break;
 
+    /* 2017.4.15 back again */
+    case 'l':
+      q = parse_string_value(&p, endptr);
+      if (q)
+        mrec->opt.otl_tags = q;
+      else {
+        WARN("Missing string value for option 'l'.");
+        return -1;
+      }
+      break;
+
     /* Omega uses both single-byte and double-byte set_char command
      * even for double-byte OFMs. This confuses CMap decoder.
      */
@@ -728,7 +730,7 @@ pdf_append_fontmap_record (const char *kp, const fontmap_rec *vp)
     return -1;
   }
 
-  if (verbose > 3)
+  if (dpx_conf.verbose_level > 3)
     MESG("fontmap>> append key=\"%s\"...", kp);
 
   fnt_name = chop_sfd_name(kp, &sfd_name);
@@ -768,7 +770,7 @@ pdf_append_fontmap_record (const char *kp, const fontmap_rec *vp)
     }
     ht_insert_table(fontmap, kp, strlen(kp), mrec);
   }
-  if (verbose > 3)
+  if (dpx_conf.verbose_level > 3)
     MESG("\n");
 
   return  0;
@@ -782,7 +784,7 @@ pdf_remove_fontmap_record (const char *kp)
   if (!kp)
     return  -1;
 
-  if (verbose > 3)
+  if (dpx_conf.verbose_level > 3)
     MESG("fontmap>> remove key=\"%s\"...", kp);
 
   fnt_name = chop_sfd_name(kp, &sfd_name);
@@ -793,13 +795,13 @@ pdf_remove_fontmap_record (const char *kp)
     subfont_ids = sfd_get_subfont_ids(sfd_name, &n);
     if (!subfont_ids)
       return  -1;
-    if (verbose > 3)
+    if (dpx_conf.verbose_level > 3)
       MESG("\nfontmap>> Expand @%s@:", sfd_name);
     while (n-- > 0) {
       tfm_name = make_subfont_name(kp, sfd_name, subfont_ids[n]);
       if (!tfm_name)
         continue;
-      if (verbose > 3)
+      if (dpx_conf.verbose_level > 3)
         MESG(" %s", tfm_name);
       ht_remove_table(fontmap, tfm_name, strlen(tfm_name));
       RELEASE(tfm_name);
@@ -810,7 +812,7 @@ pdf_remove_fontmap_record (const char *kp)
 
   ht_remove_table(fontmap, kp, strlen(kp));
 
-  if (verbose > 3)
+  if (dpx_conf.verbose_level > 3)
     MESG("\n");
 
   return  0;
@@ -827,7 +829,7 @@ pdf_insert_fontmap_record (const char *kp, const fontmap_rec *vp)
     return NULL;
   }
 
-  if (verbose > 3)
+  if (dpx_conf.verbose_level > 3)
     MESG("fontmap>> insert key=\"%s\"...", kp);
 
   fnt_name = chop_sfd_name(kp, &sfd_name);
@@ -842,13 +844,13 @@ pdf_insert_fontmap_record (const char *kp, const fontmap_rec *vp)
       WARN("Could not open SFD file: %s", sfd_name);
       return NULL;
     }
-    if (verbose > 3)
+    if (dpx_conf.verbose_level > 3)
       MESG("\nfontmap>> Expand @%s@:", sfd_name);
     while (n-- > 0) {
       tfm_name = make_subfont_name(kp, sfd_name, subfont_ids[n]);
       if (!tfm_name)
         continue;
-      if (verbose > 3)
+      if (dpx_conf.verbose_level > 3)
         MESG(" %s", tfm_name);
       mrec = NEW(1, fontmap_rec);
       pdf_init_fontmap_record(mrec);
@@ -870,7 +872,7 @@ pdf_insert_fontmap_record (const char *kp, const fontmap_rec *vp)
   }
   ht_insert_table(fontmap, kp, strlen(kp), mrec);
 
-  if (verbose > 3)
+  if (dpx_conf.verbose_level > 3)
     MESG("\n");
 
   return mrec;
@@ -971,7 +973,7 @@ pdf_load_fontmap_file (const char *filename, int mode)
   ASSERT(filename);
   ASSERT(fontmap) ;
 
-  if (verbose)
+  if (dpx_conf.verbose_level > 0)
     MESG("<FONTMAP:");
   fp = DPXFOPEN(filename, DPX_RES_TYPE_FONTMAP); /* outputs path if verbose */
   if (!fp) {
@@ -1029,7 +1031,7 @@ pdf_load_fontmap_file (const char *filename, int mode)
   }
   DPXFCLOSE(fp);
 
-  if (verbose)
+  if (dpx_conf.verbose_level > 0)
     MESG(">");
 
   return  error;
@@ -1048,7 +1050,7 @@ pdf_insert_native_fontmap_record (const char *path, uint32_t index,
   fontmap_key = malloc(strlen(path) + 40);	// CHECK
   sprintf(fontmap_key, "%s/%d/%c/%d/%d/%d", path, index, layout_dir == 0 ? 'H' : 'V', extend, slant, embolden);
 
-  if (verbose)
+  if (dpx_conf.verbose_level > 0)
     MESG("<NATIVE-FONTMAP:%s", fontmap_key);
 
   mrec  = NEW(1, fontmap_rec);
@@ -1066,12 +1068,13 @@ pdf_insert_native_fontmap_record (const char *path, uint32_t index,
   mrec->opt.extend = extend   / 65536.0;
   mrec->opt.slant  = slant    / 65536.0;
   mrec->opt.bold   = embolden / 65536.0;
-  
+  mrec->opt.use_glyph_encoding = 1;
+
   ret = pdf_insert_fontmap_record(mrec->map_name, mrec);
   pdf_clear_fontmap_record(mrec);
   RELEASE(mrec);
 
-  if (verbose)
+  if (dpx_conf.verbose_level > 0)
     MESG(">");
 
   return ret;

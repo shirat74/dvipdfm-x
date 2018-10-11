@@ -1,6 +1,6 @@
 /* This is dvipdfmx, an eXtended version of dvipdfm by Mark A. Wicks.
 
-    Copyright (C) 2002-2015 by Jin-Hwan Cho and Shunsaku Hirata,
+    Copyright (C) 2002-2018 by Jin-Hwan Cho and Shunsaku Hirata,
     the dvipdfmx project team.
     
     Copyright (C) 1998, 1999 by Mark A. Wicks <mwicks@kettering.edu>
@@ -23,18 +23,23 @@
 #ifndef _MPOST_H_
 #define _MPOST_H_
 
+#include  "mfileio.h"
+#include  "pdfximage.h"
+#include  "pdfdev.h"
+
+extern void mps_set_translate_origin (int boolean_value);
+
 extern int  mps_scan_bbox    (const char **pp, const char *endptr, pdf_rect *bbox);
 
 /* returns xobj_id */
-extern int  mps_include_page (const char *ident, FILE *fp, pdf_doc *pdf);
+extern int  mps_include_page (const char *ident, FILE *fp);
 
 extern int  mps_exec_inline  (const char **buffer, const char *endptr,
-                              pdf_doc *pdf,
 			      double x_user, double y_user);
 extern int  mps_stack_depth  (void);
 
 extern void mps_eop_cleanup  (void);
 
-extern int  mps_do_page      (FILE *fp, pdf_doc *pdf);
+extern int  mps_do_page      (FILE *fp);
 
 #endif /* _MPOST_H_ */

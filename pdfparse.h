@@ -1,6 +1,6 @@
 /* This is dvipdfmx, an eXtended version of dvipdfm by Mark A. Wicks.
 
-    Copyright (C) 2002-2014 by Jin-Hwan Cho and Shunsaku Hirata,
+    Copyright (C) 2002-2016 by Jin-Hwan Cho and Shunsaku Hirata,
     the dvipdfmx project team.
     
     Copyright (C) 1998, 1999 by Mark A. Wicks <mwicks@kettering.edu>
@@ -29,7 +29,7 @@
 /* Please remove this */
 extern void dump (const char *start, const char *end);
 
-extern void skip_line  (const char **start, const char *end);
+extern void pdfparse_skip_line (const char **start, const char *end);
 extern void skip_white (const char **start, const char *end);
 
 extern char *parse_number   (const char **start, const char *end);
@@ -44,19 +44,19 @@ extern pdf_obj *parse_pdf_boolean (const char **pp, const char *endptr);
 extern pdf_obj *parse_pdf_number  (const char **pp, const char *endptr);
 extern pdf_obj *parse_pdf_null    (const char **pp, const char *endptr);
 extern pdf_obj *parse_pdf_string  (const char **pp, const char *endptr);
-extern pdf_obj *parse_pdf_dict    (const char **pp, const char *endptr);
-extern pdf_obj *parse_pdf_array   (const char **pp, const char *endptr);
-extern pdf_obj *parse_pdf_object  (const char **pp, const char *endptr);
+extern pdf_obj *parse_pdf_dict    (const char **pp, const char *endptr, pdf_file *pf);
+extern pdf_obj *parse_pdf_array   (const char **pp, const char *endptr, pdf_file *pf);
+extern pdf_obj *parse_pdf_object  (const char **pp, const char *endptr, pdf_file *pf);
 
-extern pdf_obj *parse_pdf_tainted_dict (const char **pp, const char *endptr);
-extern pdf_obj *parse_pdf_object_ext (const char **pp, const char *endptr,
-                              pdf_obj* (*resolver) (const char **pp,
-                                                    const char *endptr,
-                                                    void *user_data),
-                              void *user_data1,
-                              pdf_obj* (*unknown_handler) (const char **pp,
-                                                           const char *endptr,
-                                                           void *user_data),
-                              void *user_data2);
+extern pdf_obj *parse_pdf_object_extended (const char **pp, const char *endptr, pdf_file *pf,
+                                           pdf_obj* (*unknown_handler) (const char **pp,
+                                                                        const char *endptr,
+                                                                        void *user_data),
+                                           void *user_data);
+extern pdf_obj *parse_pdf_tainted_dict (const char **pp, const char *endptr,
+                                        pdf_obj* (*unknown_handler) (const char **pp,
+                                                                     const char *endptr,
+                                                                     void *user_data),
+                                        void *user_data);
 
 #endif /* _PDFPARSE_H_ */

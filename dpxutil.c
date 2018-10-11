@@ -1,6 +1,6 @@
 /* This is dvipdfmx, an eXtended version of dvipdfm by Mark A. Wicks.
 
-    Copyright (C) 2002-2015 by Jin-Hwan Cho and Shunsaku Hirata,
+    Copyright (C) 2002-2018 by Jin-Hwan Cho and Shunsaku Hirata,
     the dvipdfmx project team.
 
     Copyright (C) 1998, 1999 by Mark A. Wicks <mwicks@kettering.edu>
@@ -34,6 +34,9 @@
 #include "mem.h"
 #include "error.h"
 
+/* Only for skip_white()... */
+#include "pdfparse.h"
+
 #include "dpxutil.h"
 
 int
@@ -47,6 +50,210 @@ xtoi (char c)
     return (c - '7');
   else
     return -1;
+}
+
+double
+min4 (double x1, double x2, double x3, double x4)
+{
+  double v = x1;
+  if (x2 < v) v = x2;
+  if (x3 < v) v = x3;
+  if (x4 < v) v = x4;
+  return v;
+}
+
+double
+max4 (double x1, double x2, double x3, double x4)
+{
+  double v = x1;
+  if (x2 > v) v = x2;
+  if (x3 > v) v = x3;
+  if (x4 > v) v = x4;
+  return v;
+}
+
+
+/* This need to allow 'true' prefix for unit and length value must be divided
+ * by current magnification.
+ */
+int
+dpx_util_read_length (double *vp, double mag, const char **pp, const char *endptr)
+{
+  char   *q;
+  const char *p = *pp;
+  double  v, u = 1.0;
+  const char *_ukeys[] = {
+#define K_UNIT__PT  0
+#define K_UNIT__IN  1
+#define K_UNIT__CM  2
+#define K_UNIT__MM  3
+#define K_UNIT__BP  4
+#define K_UNIT__PC  5
+#define K_UNIT__DD  6
+#define K_UNIT__CC  7
+#define K_UNIT__SP  8
+    "pt", "in", "cm", "mm", "bp", "pc", "dd", "cc", "sp",
+     NULL
+  };
+  int     k, error = 0;
+
+  q = parse_float_decimal(&p, endptr);
+  if (!q) {
+    *vp = 0.0; *pp = p;
+    return  -1;
+  }
+
+  v = atof(q);
+  RELEASE(q);
+
+  skip_white(&p, endptr);
+  q = parse_c_ident(&p, endptr);
+  if (q) {
+    char *qq = q; /* remember this for RELEASE, because q may be advanced */
+    if (strlen(q) >= strlen("true") &&
+        !memcmp(q, "true", strlen("true"))) {
+      u /= mag != 0.0 ? mag : 1.0; /* inverse magnify */
+      q += strlen("true");
+    }
+    if (strlen(q) == 0) { /* "true" was a separate word from the units */
+      RELEASE(qq);
+      skip_white(&p, endptr);
+      qq = q = parse_c_ident(&p, endptr);
+    }
+    if (q) {
+      for (k = 0; _ukeys[k] && strcmp(_ukeys[k], q); k++);
+      switch (k) {
+      case K_UNIT__PT: u *= 72.0 / 72.27; break;
+      case K_UNIT__IN: u *= 72.0; break;
+      case K_UNIT__CM: u *= 72.0 / 2.54 ; break;
+      case K_UNIT__MM: u *= 72.0 / 25.4 ; break;
+      case K_UNIT__BP: u *= 1.0 ; break;
+      case K_UNIT__PC: u *= 12.0 * 72.0 / 72.27 ; break;
+      case K_UNIT__DD: u *= 1238.0 / 1157.0 * 72.0 / 72.27 ; break;
+      case K_UNIT__CC: u *= 12.0 * 1238.0 / 1157.0 * 72.0 / 72.27 ; break;
+      case K_UNIT__SP: u *= 72.0 / (72.27 * 65536) ; break;
+      default:
+        WARN("Unknown unit of measure: %s", q);
+        error = -1;
+        break;
+      }
+      RELEASE(qq);
+    }
+    else {
+      WARN("Missing unit of measure after \"true\"");
+      error = -1;
+    }
+  }
+
+  *vp = v * u; *pp = p;
+  return  error;
+}
+
+#if defined(_MSC_VER)
+#define strtoll _strtoi64
+#endif
+
+/* If an environment variable SOURCE_DATE_EPOCH is correctly defined like
+ * SOURCE_DATE_EPOCH=1456304492, then returns this value, to be used as the
+ * 'current time', otherwise returns INVALID_EPOCH_VALUE (= (time_t)-1).
+ * In the case of Microsoft Visual Studio 2010, the value should be less
+ * than 32535291600.
+ */
+
+time_t
+dpx_util_get_unique_time_if_given(void)
+{
+  const char *source_date_epoch;
+  int64_t epoch;
+  char *endptr;
+  time_t ret = INVALID_EPOCH_VALUE;
+
+  source_date_epoch = getenv("SOURCE_DATE_EPOCH");
+  if (source_date_epoch) {
+    errno = 0;
+    epoch = strtoll(source_date_epoch, &endptr, 10);
+    if (!(epoch < 0 || *endptr != '\0' || errno != 0)) {
+      ret = (time_t) epoch;
+#if defined(_MSC_VER)
+      if (ret > 32535291599ULL)
+        ret = 32535291599ULL;
+#endif
+    }
+  }
+  return ret;
+}
+
+
+#ifndef HAVE_TM_GMTOFF
+#ifndef HAVE_TIMEZONE
+
+/* auxiliary function to compute timezone offset on
+   systems that do not support the tm_gmtoff in struct tm,
+   or have a timezone variable.  Such as i386-solaris.  */
+
+static int32_t
+compute_timezone_offset()
+{
+  time_t now;
+  struct tm tm;
+  struct tm local;
+  time_t gmtoff;
+
+  now = get_unique_time_if_given();
+  if (now == INVALID_EPOCH_VALUE) {
+    now = time(NULL);
+    localtime_r(&now, &local);
+    gmtime_r(&now, &tm);
+    return (mktime(&local) - mktime(&tm));
+  } else {
+    return(0);
+  }
+}
+
+#endif /* HAVE_TIMEZONE */
+#endif /* HAVE_TM_GMTOFF */
+
+/*
+ * Docinfo
+ */
+int
+dpx_util_format_asn_date (char *date_string, int need_timezone)
+{
+  int32_t     tz_offset;
+  time_t      current_time;
+  struct tm  *bd_time;
+
+  current_time = dpx_util_get_unique_time_if_given();
+  if (current_time == INVALID_EPOCH_VALUE) {
+    time(&current_time);
+    bd_time = localtime(&current_time);
+
+#ifdef HAVE_TM_GMTOFF
+    tz_offset = bd_time->tm_gmtoff;
+#else
+#  ifdef HAVE_TIMEZONE
+    tz_offset = -timezone;
+#  else
+    tz_offset = compute_timezone_offset();
+#  endif /* HAVE_TIMEZONE */
+#endif /* HAVE_TM_GMTOFF */
+  } else {
+    bd_time = gmtime(&current_time);
+    tz_offset = 0;
+  }
+  if (need_timezone) {
+    sprintf(date_string, "D:%04d%02d%02d%02d%02d%02d%c%02d'%02d'",
+            bd_time->tm_year + 1900, bd_time->tm_mon + 1, bd_time->tm_mday,
+            bd_time->tm_hour, bd_time->tm_min, bd_time->tm_sec,
+            (tz_offset > 0) ? '+' : '-', abs(tz_offset) / 3600,
+                                        (abs(tz_offset) / 60) % 60);
+  } else {
+    sprintf(date_string, "D:%04d%02d%02d%02d%02d%02d",
+            bd_time->tm_year + 1900, bd_time->tm_mon + 1, bd_time->tm_mday,
+            bd_time->tm_hour, bd_time->tm_min, bd_time->tm_sec);
+  }
+
+  return strlen(date_string);
 }
 
 void
@@ -86,11 +293,11 @@ ht_clear_table (struct ht_table *ht)
     hent = ht->table[i];
     while (hent) {
       if (hent->value && ht->hval_free_fn) {
-        ht->hval_free_fn(hent->value);
+	ht->hval_free_fn(hent->value);
       }
       hent->value  = NULL;
       if (hent->key) {
-        RELEASE(hent->key);
+	RELEASE(hent->key);
       }
       hent->key = NULL;
       next = hent->next;
@@ -229,7 +436,7 @@ ht_insert_table (struct ht_table *ht,
 
 void
 ht_append_table (struct ht_table *ht,
-		 const void *key, int keylen, void *value)
+		 const void *key, int keylen, void *value) 
 {
   struct ht_entry *hent, *last;
   unsigned int hkey;
@@ -261,7 +468,7 @@ ht_set_iter (struct ht_table *ht, struct ht_iter *iter)
 {
   int    i;
 
-  ASSERT(ht && ht->table && iter);
+  ASSERT(ht && iter);
 
   for (i = 0; i < HASH_TABLE_SIZE; i++) {
     if (ht->table[i]) {
@@ -333,115 +540,6 @@ ht_iter_next (struct ht_iter *iter)
   return (hent ? 0 : -1);
 }
 
-
-typedef struct stack_elem
-{
-  void              *data;
-  struct stack_elem *prev;
-} stack_elem;
-
-struct dpx_stack
-{
-  int         size;
-  stack_elem *top;
-  stack_elem *bottom;
-};
-
-dpx_stack *
-dpx_stack_new (void)
-{
-  dpx_stack *stack;
-
-  stack = NEW(1, dpx_stack);
-
-  stack->size   = 0;
-  stack->top    = NULL;
-  stack->bottom = NULL;
-
-  return stack;
-}
-
-void
-dpx_stack_delete (dpx_stack **stack, void (free_fn) (void *data))
-{
-  void *p;
-
-  ASSERT(stack && *stack);
-  while ((p = dpx_stack_pop(*stack)) != NULL) {
-    if (free_fn)
-      free_fn(p);
-  }
-
-  RELEASE(*stack);
-
-  *stack = NULL;
-}
-
-void
-dpx_stack_push (dpx_stack *stack, void *data)
-{
-  stack_elem  *elem;
-
-  ASSERT(stack);
-
-  elem = NEW(1, stack_elem);
-  elem->prev = stack->top;
-  elem->data = data;
-
-  stack->top = elem;
-  if (stack->size == 0)
-    stack->bottom = elem;
-
-  stack->size++;
-
-  return;
-}
-
-void *
-dpx_stack_pop (dpx_stack *stack)
-{
-  stack_elem *elem;
-  void       *data;
-
-  ASSERT(stack);
-
-  if (stack->size == 0)
-    return NULL;
-
-  data = stack->top->data;
-  elem = stack->top;
-  stack->top = elem->prev;
-  if (stack->size == 1)
-    stack->bottom = NULL;
-  RELEASE(elem);
-
-  stack->size--;
-
-  return data;
-}
-
-void *
-dpx_stack_top (dpx_stack *stack)
-{
-  void  *data;
-
-  ASSERT(stack);
-
-  if (stack->size == 0)
-    return NULL;
-
-  data = stack->top->data;
-
-  return data;
-}
-
-int
-dpx_stack_depth (dpx_stack *stack)
-{
-  ASSERT(stack);
-
-  return stack->size;
-}
 
 static int
 read_c_escchar (char *r, const char **pp, const char *endptr)

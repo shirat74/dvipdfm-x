@@ -1,3 +1,438 @@
+2018-09-16  Shunsaku Hirata  <shunsaku.hirata74@gmail.com>
+
+	* dvi.[ch], dvipdfmx.c: Fixed a bug that papersize special does
+	not work. (introduced in the previous change) Command line
+	options other than papersize now take precedence over special
+	command options.
+	* dpxconf.[ch], tt_aux.c: Moved always_embed flag to dpx_conf.
+	* pdfencrypt.c: Fixed a bug that calculation of encryption key
+	was not done properly for RC4 and revision 2-3 AES security.
+
+2018-09-16  Shunsaku Hirata  <shunsaku.hirata74@gmail.com>
+
+	* dpxutil.[ch], dvi.[ch], dvipdfmx.c, pdfdoc.[ch], pdfencrypt.[ch],
+	pdffont.[ch], xbb.c: Remove duplicated code. Reorganize
+	initialization process. Use struct for passing options.
+	* configure.ac: Version 20180916.
+
+2018-09-14  Shunsaku Hirata  <shunsaku.hirata74@gmail.com>
+
+	* agl.[ch], bmpimage.c, cid.[ch], cidtype0.[ch], cidtype2.[ch],
+	cmap.[ch], cmap_read.c, dpxconf.[ch], dpxfile.[ch], dvi.[ch],
+	dvipdfmx.[ch], epdf.c, fontmap.[ch], jp2image.c, jpegimage.c,
+	mpost.[ch], pdfcolor.[ch], pdfdev.[ch], pdfdoc.[ch], pdfdraw.c,
+	pdfencoding.[ch], pdfencrypt.[ch], pdffont.[ch], pdfobj.[ch],
+	pdfximage.[ch], pngimage.c, spc_pdfm.c, spc_util.[ch],
+	specials.[ch], subfont.[ch], t1_char.c, tfm.[ch], truetype.c,
+	tt_aux.[ch], tt_cmap.[ch], tt_gsub.[ch], type0.[ch], type1.c,
+	type1c.c, vf.[ch], xbb.c: Cleanup. Remove duplicated code.
+	Reorganize global variables.
+	* configure.ac: Version 20180914.
+
+2018-09-09  Karl Berry  <karl@tug.org>
+
+	* xdvipfm-bb.test: LC_ALL=LANGUAGE=C.
+
+2018-09-06  Shunsaku Hirata  <shunsaku.hirata74@gmail.com>
+
+	* pdfencoding.c: Reverted change made for 20071115.
+	ToUnicode creation for simple font was broken. Not working
+	as intended at all.
+	* pdfdoc.c, epdf.c, pdffont.c: Rearranged code.
+	* pdfobj.c: Added some debugging code.
+	* configure.ac: Version 20180906.
+
+2018-09-04  Shunsaku Hirata  <shunsaku.hirata74@gmail.com>
+
+	* pdfobj.c: More fix on circular reference issue.
+	* configure.ac: Version 20180904.
+
+2018-09-02  Shunsaku Hirata  <shunsaku.hirata74@gmail.com>
+
+	* dvi.c: Experimental support for XeTeX transparency font feature.
+	* cid.c, cid_p.h, cidtype0.c, cmap.[ch], cmap_p.h, fontmap.[ch],
+	pdfdev.c, pdffont.c, tt_cmap.[ch], type0.c:
+	Removed reverse CMap mappings. Do not use cff charset data
+	directly in pdfdev. Using reverse CMap for ToUnicode creation
+	causes problems since input CMap can not be assumed to be
+	always Unicode. Also, current implementation is imcomplete.
+	* configure.ac: Version 20180902.
+
+2018-08-28  Shunsaku Hirata  <shunsaku.hirata74@gmail.com>
+
+	* otl_conf.[ch]: Removed. This undocumented feature is no
+	longer used.
+	* Makefile.am: Update for otl_conf.[ch] removal.
+
+2018-08-27  Shunsaku Hirata  <shunsaku.hirata74@gmail.com>
+
+	* jpegimage.c: Do not write application specific markers which
+	are not necessary for displaying images.
+	* pdfencrypt.c: Set a compatibility flag bit for PDF 2.0.
+	* spc_pdfm.c: Fixed a bug that string objects are not handled
+	properly in pdf:stream special. Additional dictionay keys can
+	be specified for tounicode conversion.
+	* configure.ac: Version 20180827.
+
+2018-08-23  Shunsaku Hirata  <shunsaku.hirata74@gmail.com>
+
+	* type1.c: Add glyph names of component glyphs used by seac
+	operator to CharSet string.
+	* configure.ac: Version 20180823.
+
+2018-08-21  Shunsaku Hirata  <shunsaku.hirata74@gmail.com>
+
+	* pdfobj.c: Fix for "infinite loop" detection. Now handles the
+	case of circular reference properly.
+	* pdfencrypt.c: Fixed bug that key size is not adjusted
+	correctly.
+	* configure.ac: Version 20180821.
+
+2018-08-18  Shunsaku Hirata  <shunsaku.hirata74@gmail.com>
+
+	* cidtype2.c: Workaround for CIDSet issue. All glyphs
+	including component glyphs and dummy glyphs except .notdef
+	should be listed in CIDSet.
+
+2018-08-17  Shunsaku Hirata  <shunsaku.hirata74@gmail.com>
+
+	* cmap_write.c, tt_cmap.[ch], type0.c: Fixed a bug that
+	CMapName in CMap resource is not properly written.
+	Not correctly handles PostScript name and string objects.
+	Use CMapName constructed from font's BaseFont entry.
+	* spc_pdfm.c, spc_pdfm.h, specials.c: Added new special command
+	pdf:pageresources similar to pdfTeX \pdfpageresources
+	primitive.
+	* pdfencrypt.c: Adobe extension for AES 256-bit encryption is
+	not necessary for PDF version 2.0.
+
+2018-05-23  Akira Kakuto  <kakuto@fuk.kindai.ac.jp>
+
+	* dvi.c: First search for an input file with a suffix .xdv
+	or .dvi. Report from Andreas Scherer:
+	http://tug.org/pipermail/tex-k/2018-May/002882.html.
+
+2018-05-16  Akira Kakuto  <kakuto@fuk.kindai.ac.jp>
+
+	* pdfparse.c: Revert. The changes on 2018-05-14 must be
+	problematic. Again, kanji characters including 0x5c can't be
+	used as names of image files in (e)-pTeX.
+
+2018-05-14  Akira Kakuto  <kakuto@fuk.kindai.ac.jp>
+
+	* pdfparse.c: Allow image file names including 0x5c for
+	(e)-pTeX in CP932-like system (Windows only).
+
+2018-05-06  Akira Kakuto  <kakuto@fuk.kindai.ac.jp>
+
+	* tt_cmap.c: Revert a part of changes in 2017-12-09,
+	which breaks to give tounicode entries for ligatures.
+	http://tug.org/pipermail/tex-live/2018-May/041608.html.
+	* configure.ac: Version 20180506.
+
+2018-04-28  Stefan Br\"uns  <stefan.bruens@rwth-aachen.de>
+
+	* pngimage.c: Fix a bug which causes a segfault with 1/2/4-bit
+	transparent indexed PNGs.
+	* configure.ac: Version 20180428.
+
+2018-03-03  Akira Kakuto  <kakuto@fuk.kindai.ac.jp>
+
+	* xbb.c: Remove unused lines.
+
+2018-03-02  Akira Kakuto  <kakuto@fuk.kindai.ac.jp>
+
+	* epdf.c, pdfobj.c, pdfobj.h: Remove multiple warnings.
+
+2018-03-01  Hironobu Yamashita  <h.y.acetaminophen@gmail.com>
+
+	* pdfobj.c: Fix typo and improve a warning (incomplete fix).
+
+2018-02-17  Shunsaku Hirata  <shunsaku.hirata74@gmail.com>
+
+	* cid.c, dpxfile.[ch], dvipdfmx.c, epdf.c, jp2image.c,
+	jpegimage.c, pdfcolor.c, pdfencoding.c, pdfencrypt.c,
+	pdflimits.h, pdfobj.[ch], pdfximage.c, pngimage.c,
+	spc_dvips.c, spc_pdfm.c, spc_tpic.c, type0.c, xbb.c:
+	Accept PDF version tag 2.0.
+	* numbers.[ch], tfm.c: Remove format specific number
+	representation from numbers.[ch].
+	* configure.ac: Version 20180217.
+
+2018-01-27  Hironobu Yamashita  <h.y.acetaminophen@gmail.com>
+
+	* tfm.c, number.[ch]: Support new JFM spec (3-byte characters
+	in TYPE > 0).
+
+2017-12-21  Akira Kakuto  <kakuto@fuk.kindai.ac.jp>
+
+	* jpegimage.c: If j_info->xdpi and j_info->ydpi are not
+	determined in JPEG_scan_file(), they are assumed to be 72.0.
+
+2017-12-09  Jiang Jiang  <gzjjgod@gmail.com>
+
+	* tt_cmap.c (is_PUA_or_presentation, add_to_cmap_if_used):
+	Skip KANGXI RADICALs which are commonly double encoded.
+	http://tug.org/pipermail/xetex/2017-June/027147.html
+
+2017-10-02  Hironori Kitagawa  <h_kitagawa2001@yahoo.co.jp>
+
+	* dvi.c: Initialize direction mode in clear_state(). See
+	https://github.com/texjporg/tex-jp-build/issues/30
+
+2017-09-18  Shunsaku Hirata  <shunsaku.hirata74@gmail.com>
+
+	* tt_gsub.c: Fixed a bug that only last specified OTL GSUB
+	feature was enabled.
+	* configure.ac: Version 20170918.
+
+2017-08-25  Akira Kakuto  <kakuto@fuk.kindai.ac.jp>
+
+	* pdfximage.h, spc_pdfm.c: Remove MAX_IMAGES which is not
+	needed.
+
+2017-08-06  Shunsaku Hirata  <shunsaku.hirata74@gmail.com>
+
+	* dpxutil.[ch], epdf.c, pdfdoc.[ch], pdfximage.c, xbb.c:
+	Support for /Rotate page attribute in PDF inclusion.
+	* configure.ac: Version 20170806.
+
+2017-06-27  Akira Kakuto  <kakuto@fuk.kindai.ac.jp>
+
+	* pdfdoc.c: Simplify the change in pdf_doc_get_page().
+	* configure.ac: Change version number to distinguish from TL 2017.
+
+2017-06-25  Akira Kakuto  <kakuto@fuk.kindai.ac.jp>
+
+	* pdfdoc.c: Discard the backward compatibility for pdf BoundingBox
+	in pdf_doc_get_page(), to be consistent with the latex
+	driver dvipdfmx.def.
+
+2017-06-25  Shunsaku Hirata  <shunsaku.hirata74@gmail.com>
+
+	* tt_cmap.c: Fix a bug that different CMaps are not attached
+	to each instances of font using different OpenType layout features.
+	Fix a bug that ToUnicode support for substituted glyph was incomplete.
+
+2017-06-24  Shunsaku Hirata  <shunsaku.hirata74@gmail.com>
+
+	* spc_pdfm.c: Remove unused variable attr in spc_handler_pdfm_image().
+
+2017-05-19  Karl Berry  <karl@tug.org>
+
+	* Version 20170318 for TeX Live 2017 release.
+
+2017-05-08  Akira Kakuto  <kakuto@fuk.kindai.ac.jp>
+
+	* pdfdraw.c: Replace a small number 1.0e-8 by OUR_EPSILON = 2.5e-16,
+	responding incompletely to
+	http://tug.org/pipermail/tex-live/2017-May/040090.html.
+
+2017-04-26  Paul Vojta  <vojta@math.berkeley.edu>
+
+	* dvi.c, dvipdfmx.c, spc_html.c, spc_util.c: Support additional
+	length units.
+
+2017-04-16  Shunsaku Hirata  <shunsaku.hirata74@gmail.com>
+
+	* tt_cmap.c: Fix a bug that generation of GID to CID mapping for
+	format 2 CFF charsets was wrong. "unicode" encoding support was
+	broken for fonts using this format.
+
+2017-04-15  Shunsaku Hirata  <shunsaku.hirata74@gmail.com>
+
+	* fontmap.c, tt_cmap.c, tt_gsub.c, tt_gsub.h, pdffont.c: Removed
+	undocumented OpenType Layout GSUB support.  Added simplified version of
+	OpenType Layout GSUB support. Fontmap option "-l otl_tags" enables
+	OpenType GSUB features specified by otl_tags, where otl_tags is a ":"
+	separated list of OpenType Layout feature tags
+	(or strings of script.language.feature form).
+	
+2017-04-12  Akira Kakuto  <kakuto@fuk.kindai.ac.jp>
+
+	* dvipdfmx.c: Fix a bug in static const char *optstrig.
+	
+2017-04-09  Shunsaku Hirata  <shunsaku.hirata74@gmail.com>
+
+	* tt_cmap.c: Vertical writing support had been broken since at some
+	point of xdvipdfmx merge for "unicode" encoding. Apply vert/vrt2 GSUB
+	feature when generating Unicode mapping.
+	
+2017-03-18  Karl Berry  <karl@tug.org>
+
+	* xbb.c: update copyright years.
+	
+	* xdvipdfm-bb.test: remove any ^%%Creat line, not just %%CreationDate.
+	* tests/*.[x]bb: remove %%Creator: lines since they embed version.
+
+2017-03-18  Akira Kakuto  <kakuto@fuk.kindai.ac.jp>
+
+	Bump version to 20170318 for TeX Live 2017.
+
+2017-03-01  Akira Kakuto  <kakuto@fuk.kindai.ac.jp>
+
+	* dvipdfmx.c: Command line -p option wins papersize and pagesize
+	specials, as dvips.
+
+2017-02-17  Akira Kakuto  <kakuto@fuk.kindai.ac.jp>
+
+	* dvi.c: Add possibly forgotten braces.
+
+2017-01-24  Akira Kakuto  <kakuto@fuk.kindai.ac.jp>
+
+	* jpegimage.c: Support Exif tags 0x5110, 0x5111, and 0x5112 in order to
+	avoid warnings for some kind of jpeg images. Changes are borrowed from
+	writejpg.w by Luigi in the recent LuaTeX.
+
+2016-12-29  Hironobu Yamashita  <h.y.acetaminophen@gmail.com>
+
+	* cid_basefont.h: Add data for STHeiti-Regular-Acro, and correct
+	several data.
+
+2016-12-18  Akira Kakuto  <kakuto@fuk.kindai.ac.jp>
+
+	* dvi.c, dvi.h, dvipdfmx.c, mpost.c, pdfencoding.c, pdfobj.c,
+	pdfparse.c, pdfparse.h, tt_cmap.c, type0.c, type1.c, vf.c, xbb.c:
+	Merge libdpx by Clerk Ma at https://github.com/clerkma/ptex-ng.
+
+2016-10-30  Akira Kakuto  <kakuto@fuk.kindai.ac.jp>
+
+	* pdffont.c, pdfobj.h: Use (time_t)-1 for INVALID_EPOCH_VALUE.
+
+2016-10-05  Akira Kakuto  <kakuto@fuk.kindai.ac.jp>
+
+	* dpxfile.c: Use PATH_MAX instead of _MAX_PATH.
+
+2016-10-03  Akira Kakuto  <kakuto@fuk.kindai.ac.jp>
+
+	* dpxfile.c: Sync with MikTeX.
+
+2016-06-25  Shunsaku Hirata  <shunsaku.hirata74@gmail.com>
+
+	Modify to make PDF/A generation a bit easier.
+	* pdfobj.c: Do not compress XMP Metadata.
+	* cidtype2.c, type1.c, type1c.c: Always write CIDSet for CIDType2 and
+	CharSet for Type1 font. Check consistency of glyph width.
+
+2016-06-19  Shunsaku Hirata  <shunsaku.hirata74@gmail.com>
+
+	* dvipdfmx.c: Disable overriding "D" option setting from
+	dvipdfmx:config special.
+	* configure.ac: Change version from 20160307 to 20160619 in order to
+	distinguish the new one from that in TeX Live 2016.
+
+2016-05-20  Karl Berry  <karl@tug.org>
+
+	* Version 20160307 for TeX Live 2016.
+
+2016-05-10  Hironori Kitagawa  <h_kitagawa2001@yahoo.co.jp>
+
+	* cidtype2.c: Fix bugs in horizontal-vertical mixed scripts by
+	TrueType fonts.
+
+2016-05-08  Masamichi HOSODA  <trueroad@trueroad.jp>
+
+	* dvi.c, dvipdfmx.c, dvipdfmx.h, special.c: Add new specials to handle
+	command line options.
+	* spc_dvipdfmx.c, spc_dvipdfmx.h: Add for the new specials.
+	* Makefile.am, Makefile.in: Change for the added spc_dvipdfmx.c,
+	and spc_dvipdfmx.h.
+
+2016-05-06  Akira Kakuto  <kakuto@fuk.kindai.ac.jp>
+
+	* pdffont.c: Avoid to crash for too large a value of SOURCE_DATE_EPOCH.
+	(w32 only).
+
+2016-05-04  Akira Kakuto  <kakuto@fuk.kindai.ac.jp>
+
+	* pdfdoc.c, pdfencrypt.c, pdffont.c, pdfobj.h, xbb.c: Improve the
+	support of SOURCE_DATE_EPOCH.
+
+2016-05-02  Akira Kakuto  <kakuto@fuk.kindai.ac.jp>
+
+	* pdfdoc.c, xbb.c: Apply the patch by Alexis,
+	http://tug.org/pipermail/tex-live/2016-May/038339.html
+	for the support of SOURCE_DATE_EPOCH.
+	* pdfencrypt.c: Use gmtime instead of localtime if SOURCE_DATE_EPOCH
+	is given, to be consistent with the patch by Alexis.
+
+2016-03-07  Karl Berry  <karl@tug.org>
+
+	* man/dvipdfmx.1: .B not .b.
+	Report on tex-k from esr, 29 Feb 2016 12:30:31.
+
+2016-03-07  Akira Kakuto  <kakuto@fuk.kindai.ac.jp>
+
+	* configure.ac, tests/*.[bb,xbb]: Update version number to 20160307
+	for TeX Live 2016.
+
+2016-03-01  Akira Kakuto  <kakuto@fuk.kindai.ac.jp>
+
+	* dvipdfmx.c, dvipdfmx.h, mpost.c: Introduce a new option --mvorigin.
+	The translation of the origin in MP inclusion by using dvipdfmx.def
+	or xdvipdfmx.def is enabled only if the option --mvorigin is set.
+
+2016-02-25  Akira Kakuto  <kakuto@fuk.kindai.ac.jp>
+
+	* dvipdfmx.c: Change the default value of pdfdecimaldigits from 2
+	to 3, to be consistent with pdfTeX.
+
+2016-02-24  Akira Kakuto  <kakuto@fuk.kindai.ac.jp>
+
+	* pdfdoc.c, pdfencrypt.c, pdffont.c, pdfobj.h, xbb.c: Support to output
+	a unique pdf file from a unique xdv/dvi file. If an environment
+	variable SOURCE_DATE_EPOCH is defined correctly like
+	SOURCE_DATE_EPOCH=1456304783, the value is used as the current time,
+	and if the name of the output pdf file is the same, its content is
+	exactly unique.
+
+2016-02-23  Masamichi HOSODA  <trueroad@trueroad.jp>
+
+	* pdfdoc.c: Support UTF-16 with null bytes as labels.
+
+2016-02-23  Jonathan Kew  <jfkthame@gmail.com>
+
+	* dvicodes.h, dvi.c, pdfdev.[ch]: Support xetex 0.99995 output
+	(dvi format 7) that includes ActualText content.
+
+2016-02-17  Akira Kakuto  <kakuto@fuk.kindai.ac.jp>
+
+	* spc_pdfm.c: Remaining fix for that on 2016-02-13.
+
+2016-02-13  Akira Kakuto  <kakuto@fuk.kindai.ac.jp>
+
+	* spc_pdfm.c: Remove maybe-redundant code to obtain consistency
+	between dvi (dvipdfmx) and xdv (xdvipdfmx) with respect to
+	\special{pdf:dest...}.
+
+2016-02-09  Jiang Jiang  <gzjjgod@gmail.com>
+
+	* dvi.c: Tweak skip_native_font_def() to make it handle more
+	flags.
+	* dpxutil.c: Remove a redundant check found by -Wall.
+
+2016-02-09  Akira Kakuto  <kakuto@fuk.kindai.ac.jp>
+
+	* dvi.c: disable check_postamble() introduced by Peter, because
+	features embolden != 0, slant != 0, and extend != 1 do not work.
+
+2016-01-30  Akira Kakuto  <kakuto@fuk.kindai.ac.jp>
+
+	* tt_post.c: Check post->glyphNamePtr[gid] before an access
+	in tt_get_glyphname(). Reported by Werner LEMBERG:
+	http://tug.org/pipermail/tex-live/2016-January/037696.html.
+
+2016-01-19  Akira Kakuto  <kakuto@fuk.kindai.ac.jp>
+
+	* dpxfile.c: Remove trailing directory separators if any in
+	dpx_get_tmpdir().
+
+2016-01-11  Shunsaku Hirata  <shunsaku.hirata74@gmail.com>
+
+	* pdfobj.c, mfileio.[ch]: Modification on handling of xref table.
+	More permissive on treating white-spaces but more strict on
+	handling tokens.
+
 2016-01-07  Akira Kakuto  <kakuto@fuk.kindai.ac.jp>
 
 	* epdf.c: A typo in a message.

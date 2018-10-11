@@ -1,20 +1,20 @@
 /* This is dvipdfmx, an eXtended version of dvipdfm by Mark A. Wicks.
 
-    Copyright (C) 2002-2015 by Jin-Hwan Cho and Shunsaku Hirata,
+    Copyright (C) 2002-2018 by Jin-Hwan Cho and Shunsaku Hirata,
     the dvipdfmx project team.
-
+    
     Copyright (C) 1998, 1999 by Mark A. Wicks <mwicks@kettering.edu>
 
     This program is free software; you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
     the Free Software Foundation; either version 2 of the License, or
     (at your option) any later version.
-
+    
     This program is distributed in the hope that it will be useful,
     but WITHOUT ANY WARRANTY; without even the implied warranty of
     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
     GNU General Public License for more details.
-
+    
     You should have received a copy of the GNU General Public License
     along with this program; if not, write to the Free Software
     Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA.
@@ -164,7 +164,7 @@ spc_handler_ps_file (struct spc_env *spe, struct spc_arg *args)
     return  -1;
   }
 
-  form_id = pdf_ximage_findresource(spe->pdf, filename, options);
+  form_id = pdf_ximage_findresource(filename, options);
   if (form_id < 0) {
     spc_warn(spe, "Failed to read image file: %s", filename);
     RELEASE(filename);
@@ -172,16 +172,7 @@ spc_handler_ps_file (struct spc_env *spe, struct spc_arg *args)
   }
   RELEASE(filename);
 
-  {
-    /* All those things makes things unclear...
-     * I want to get rid of them but it's too late.
-     */
-    double x, y;
-    spc_get_coord(&x, &y);
-    pdf_dev_put_image(spe->pdf, form_id,
-                      &ti, spe->x_user - x, spe->y_user - y, &spe->info.rect);
-    spe->info.is_drawable = 1;
-  }
+  pdf_dev_put_image(form_id, &ti, spe->x_user, spe->y_user);
 
   return  0;
 }
@@ -207,7 +198,7 @@ spc_handler_ps_plotfile (struct spc_env *spe, struct spc_arg *args)
     return -1;
   }
 
-  form_id = pdf_ximage_findresource(spe->pdf, filename, options);
+  form_id = pdf_ximage_findresource(filename, options);
   if (form_id < 0) {
     spc_warn(spe, "Could not open PS file: %s", filename);
     error = -1;
@@ -216,13 +207,11 @@ spc_handler_ps_plotfile (struct spc_env *spe, struct spc_arg *args)
     p.matrix.d = -1.0; /* xscale = 1.0, yscale = -1.0 */
 #if 0
     /* I don't know how to treat this... */
-    pdf_dev_put_image(spe->pdf, form_id, &p,
+    pdf_dev_put_image(form_id, &p,
 		      block_pending ? pending_x : spe->x_user,
-		      block_pending ? pending_y : spe->y_user,
-                      &spe->info.rect);
+		      block_pending ? pending_y : spe->y_user);
 #endif
-    pdf_dev_put_image(spe->pdf, form_id, &p, 0, 0, &spe->info.rect);
-    spe->info.is_drawable = 1;
+    pdf_dev_put_image(form_id, &p, 0, 0);
   }
   RELEASE(filename);
 
@@ -274,15 +263,14 @@ spc_handler_ps_literal (struct spc_env *spe, struct spc_arg *args)
   if (args->curptr < args->endptr) {
 
     st_depth = mps_stack_depth();
-    gs_depth = pdf_dev_current_depth(spe->pdf);
+    gs_depth = pdf_dev_current_depth();
 
     error = mps_exec_inline(&args->curptr,
-                            args->endptr,
-                            spe->pdf,
-                            x_user, y_user);
+			    args->endptr,
+			    x_user, y_user);
     if (error) {
       spc_warn(spe, "Interpreting PS code failed!!! Output might be broken!!!");
-      pdf_dev_grestore_to(spe->pdf, gs_depth);
+      pdf_dev_grestore_to(gs_depth);
     } else if (st_depth != mps_stack_depth()) {
       spc_warn(spe, "Stack not empty after execution of inline PostScript code.");
       spc_warn(spe, ">> Your macro package makes some assumption on internal behaviour of DVI drivers.");
@@ -322,25 +310,23 @@ spc_handler_ps_tricks_pdef (struct spc_env *spe, struct spc_arg *args)
 {
   FILE* fp;
   pdf_tmatrix M, T = { 1, 0, 0, 1, 0, 0 };
-  double x, y;
+  pdf_coord pt;
 
-  pdf_dev_currentmatrix(spe->pdf, &M);
-  spc_get_fixed_point(&x, &y);
-  T.e = x;
-  T.f = y;
+  pdf_dev_currentmatrix(&M);
+  pdf_dev_get_fixed_point(&pt);
+  T.e = pt.x;
+  T.f = pt.y;
   pdf_concatmatrix(&M, &T);
 
   if (!page_defs)
     page_defs = dpx_create_temp_file();
   if (!page_defs) {
-    WARN("Failed to create temporary input file for PSTricks image " \
-         "conversion.");
+    WARN("Failed to create temporary input file for PSTricks image conversion.");
     return  -1;
   }
 
   fp = fopen(page_defs, "ab");
-  fprintf(fp, "gsave initmatrix [%f %f %f %f %f %f] concat %f %f moveto\n",
-          M.a, M.b, M.c, M.d, M.e, M.f, spe->x_user - x, spe->y_user - y);
+  fprintf(fp, "gsave initmatrix [%f %f %f %f %f %f] concat %f %f moveto\n", M.a, M.b, M.c, M.d, M.e, M.f, spe->x_user - pt.x, spe->y_user - pt.y);
   fwrite(args->curptr, 1, args->endptr - args->curptr, fp);
   fprintf(fp, "\ngrestore\n");
   fclose(fp);
@@ -391,7 +377,7 @@ spc_handler_ps_tricks_bput (struct spc_env *spe, struct spc_arg *args, int must_
     temporary_defs = 0;
   }
 
-  pdf_dev_currentmatrix(spe->pdf, &M);
+  pdf_dev_currentmatrix(&M);
   formula = malloc(args->endptr - args->curptr + 120);
   if (label != 0) {
     sprintf(formula, "[%f %f %f %f %f %f] concat %f %f moveto\n", M.a, M.b, M.c, M.d, M.e, M.f, spe->x_user + get_origin(1), spe->y_user + get_origin(0));
@@ -408,7 +394,7 @@ spc_handler_ps_tricks_bput (struct spc_env *spe, struct spc_arg *args, int must_
   }
   T.e = tr.x; T.f = tr.y;
 
-  pdf_dev_concat(spe->pdf, &T);
+  pdf_dev_concat(&T);
 
   if (must_def != 0) {
     FILE* fp;
@@ -438,7 +424,7 @@ spc_handler_ps_tricks_eput (struct spc_env *spe, struct spc_arg *args)
   pdf_coord tr = put_stack[put_stack_depth--];
   pdf_tmatrix M = { 1, 0, 0, 1, -tr.x, -tr.y };
 
-  pdf_dev_concat(spe->pdf, &M);
+  pdf_dev_concat(&M);
 
   return 0;
 }
@@ -470,10 +456,10 @@ spc_handler_ps_tricks_brotate (struct spc_env *spe, struct spc_arg *args)
     return -1;
   RAngles[RAngleCount] = value;
 
-  return  spc_handler_xtx_do_transform (spe->pdf, spe->x_user, spe->y_user,
-                              cos(value * M_PI / 180), sin(value * M_PI / 180),
-                              -sin(value * M_PI / 180), cos(value * M_PI / 180),
-                              0, 0);
+  return  spc_handler_xtx_do_transform (spe->x_user, spe->y_user,
+      cos(value * M_PI / 180), sin(value * M_PI / 180),
+      -sin(value * M_PI / 180), cos(value * M_PI / 180),
+      0, 0);
 }
 
 static int
@@ -481,7 +467,7 @@ spc_handler_ps_tricks_erotate (struct spc_env *spe, struct spc_arg *args)
 {
   double value = RAngles[RAngleCount--];
 
-  return  spc_handler_xtx_do_transform (spe->pdf, spe->x_user, spe->y_user,
+  return  spc_handler_xtx_do_transform (spe->x_user, spe->y_user,
       cos(value * M_PI / 180), -sin(value * M_PI / 180),
       sin(value * M_PI / 180), cos(value * M_PI / 180),
       0, 0);
@@ -507,13 +493,11 @@ spc_handler_ps_tricks_transform (struct spc_env *spe, struct spc_arg *args)
     *concat = ' ';
     if (calculate_PS(cmd, strlen(cmd), &d1, &d2, &d3, &d4, &d5, &d6) != 0)
       return -1;
-    if (spc_handler_xtx_gsave (spe, 0) != 0)
+    if (spc_handler_xtx_gsave (0, 0) != 0)
       return -1;
-    return spc_handler_xtx_do_transform (spe->pdf,
-                                         spe->x_user, spe->y_user,
-                                         d1, d2, d3, d4, d5, d6);
+    return spc_handler_xtx_do_transform (spe->x_user, spe->y_user, d1, d2, d3, d4, d5, d6);
   }
-  return  spc_handler_xtx_grestore (spe, 0);
+  return  spc_handler_xtx_grestore (0, 0);
 }
 
 static int
@@ -556,7 +540,7 @@ spc_handler_ps_tricks_parse_path (struct spc_env *spe, struct spc_arg *args)
   if (!distiller_template)
     distiller_template = get_distiller_template();
 
-  pdf_dev_currentmatrix(spe->pdf, &M);
+  pdf_dev_currentmatrix(&M);
   if (!gs_in) {
     gs_in = dpx_create_temp_file();
     if (!gs_in) {
@@ -622,7 +606,7 @@ spc_handler_ps_tricks_parse_path (struct spc_env *spe, struct spc_arg *args)
   fclose(fp);
 
   error = dpx_file_apply_filter(distiller_template, gs_in, gs_out,
-                               (unsigned char) pdf_get_version());
+    pdf_get_version());
   if (error) {
     WARN("Image format conversion for PSTricks failed.");
     RELEASE(gs_in);
@@ -631,7 +615,7 @@ spc_handler_ps_tricks_parse_path (struct spc_env *spe, struct spc_arg *args)
   }
 
   fp = fopen(gs_out, "rb");
-   if (pdf_copy_clip(spe->pdf, fp, 1, 0, 0) != 0) {
+   if (pdf_copy_clip(fp, 1, 0, 0) != 0) {
     spc_warn(spe, "Failed to parse the clipping path.");
     RELEASE(gs_in);
     gs_in = 0;
@@ -658,7 +642,7 @@ spc_handler_ps_tricks_render (struct spc_env *spe, struct spc_arg *args)
   if (!distiller_template)
     distiller_template = get_distiller_template();
 
-  pdf_dev_currentmatrix(spe->pdf, &M);
+  pdf_dev_currentmatrix(&M);
   if (!gs_in) {
     gs_in = dpx_create_temp_file();
     if (!gs_in) {
@@ -717,7 +701,7 @@ spc_handler_ps_tricks_render (struct spc_env *spe, struct spc_arg *args)
     fclose(fp);
 
     error = dpx_file_apply_filter(distiller_template, gs_in, gs_out,
-                                 (unsigned char) pdf_get_version());
+      pdf_get_version());
     if (error) {
       WARN("Image format conversion for PSTricks failed.");
       RELEASE(gs_in);
@@ -725,7 +709,7 @@ spc_handler_ps_tricks_render (struct spc_env *spe, struct spc_arg *args)
       return error;
     }
 
-    form_id = pdf_ximage_findresource(spe->pdf, gs_out, options);
+    form_id = pdf_ximage_findresource(gs_out, options);
     if (form_id < 0) {
       spc_warn(spe, "Failed to read converted PSTricks image file.");
       RELEASE(gs_in);
@@ -733,8 +717,7 @@ spc_handler_ps_tricks_render (struct spc_env *spe, struct spc_arg *args)
       RELEASE(gs_out);
       return  -1;
     }
-    pdf_dev_put_image(spe->pdf, form_id, &p, 0, 0, &spe->info.rect);
-    spe->info.is_drawable = 1;
+    pdf_dev_put_image(form_id, &p, 0, 0);
 
     dpx_delete_temp_file(gs_out, true);
     dpx_delete_temp_file(gs_in, true);
@@ -853,21 +836,20 @@ spc_handler_ps_default (struct spc_env *spe, struct spc_arg *args)
 
   ASSERT(spe && args);
 
-  pdf_dev_gsave(spe->pdf);
+  pdf_dev_gsave();
 
   st_depth = mps_stack_depth();
-  gs_depth = pdf_dev_current_depth(spe->pdf);
+  gs_depth = pdf_dev_current_depth();
 
   {
     pdf_tmatrix M;
     M.a = M.d = 1.0; M.b = M.c = 0.0; M.e = spe->x_user; M.f = spe->y_user;
-    pdf_dev_concat(spe->pdf, &M);
-    error = mps_exec_inline(&args->curptr,
-                            args->endptr,
-                            spe->pdf,
-                            spe->x_user, spe->y_user);
+    pdf_dev_concat(&M);
+  error = mps_exec_inline(&args->curptr,
+			  args->endptr,
+			  spe->x_user, spe->y_user);
     M.e = -spe->x_user; M.f = -spe->y_user;
-    pdf_dev_concat(spe->pdf, &M);
+    pdf_dev_concat(&M);
   }
   if (error)
     spc_warn(spe, "Interpreting PS code failed!!! Output might be broken!!!");
@@ -879,8 +861,8 @@ spc_handler_ps_default (struct spc_env *spe, struct spc_arg *args)
     }
   }
 
-  pdf_dev_grestore_to(spe->pdf, gs_depth);
-  pdf_dev_grestore(spe->pdf);
+  pdf_dev_grestore_to(gs_depth);
+  pdf_dev_grestore();
 
   return  error;
 }
@@ -903,21 +885,16 @@ spc_dvips_at_begin_document (void)
 {
   FILE* fp;
 
-  /* This, together with \pscharpath support code, must be moved to xtex.pro
-   * header.
-   */
+  /* This, together with \pscharpath support code, must be moved to xtex.pro header. */
   global_defs = dpx_create_temp_file();
   if (!global_defs) {
-    WARN("Failed to create temporary input file for" \
-         " PSTricks image conversion.");
+    WARN("Failed to create temporary input file for PSTricks image conversion.");
     return  -1;
   }
 
   fp = fopen(global_defs, "wb");
   fprintf(fp, "tx@Dict begin /STV {} def end\n");
   fclose(fp);
-
-  spc_put_fixed_point(0, 0);
 
   return  0;
 }
@@ -933,8 +910,6 @@ spc_dvips_at_end_document (void)
   }
   dpx_delete_temp_file(global_defs, true);
   dpx_delete_temp_file(page_defs, true);
-
-  spc_clear_fixed_point();
 
   return  0;
 }
@@ -989,9 +964,9 @@ spc_dvips_check_special (const char *buf, int len)
   return  0;
 }
 
-int
+int 
 spc_dvips_setup_handler (struct spc_handler *handle,
-                         struct spc_env *spe, struct spc_arg *args)
+			 struct spc_env *spe, struct spc_arg *args)
 {
   const char *key;
   int   i, keylen;
@@ -1027,7 +1002,7 @@ spc_dvips_setup_handler (struct spc_handler *handle,
   for (i = 0;
        i < sizeof(dvips_handlers) / sizeof(struct spc_handler); i++) {
     if (keylen == strlen(dvips_handlers[i].key) &&
-        !strncmp(key, dvips_handlers[i].key, keylen)) {
+	!strncmp(key, dvips_handlers[i].key, keylen)) {
 
       skip_white(&args->curptr, args->endptr);
 

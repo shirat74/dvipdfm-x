@@ -1,6 +1,6 @@
 /* This is dvipdfmx, an eXtended version of dvipdfm by Mark A. Wicks.
 
-    Copyright (C) 2002-2015 by Jin-Hwan Cho and Shunsaku Hirata,
+    Copyright (C) 2002-2018 by Jin-Hwan Cho and Shunsaku Hirata,
     the dvipdfmx project team.
 
     Copyright (C) 1998, 1999 by Mark A. Wicks <mwicks@kettering.edu>
@@ -59,7 +59,7 @@
 #include "mfileio.h"
 #include "numbers.h"
 
-#include "dvipdfmx.h"
+#include "dpxconf.h"
 
 #include "pdfobj.h"
 
@@ -273,7 +273,7 @@ jpeg_include_image (pdf_ximage *ximage, FILE *fp)
   pdf_add_dict(stream_dict, pdf_new_name("Filter"), pdf_new_name("DCTDecode"));
 
   /* XMP Metadata */
-  if (pdf_get_version() >= 4) {
+  if (pdf_check_version(1, 4) >= 0) {
     if (j_info.flags & HAVE_APPn_XMP) {
       pdf_obj *XMP_stream;
 
@@ -363,16 +363,21 @@ jpeg_include_image (pdf_ximage *ximage, FILE *fp)
 static void
 jpeg_get_density (struct JPEG_info *j_info, double *xdensity, double *ydensity)
 {
-  if (compat_mode) {
+  if (dpx_conf.compat_mode == dpx_mode_compat_mode) {
     *xdensity = *ydensity = 72.0 / 100.0;
     return;
   }
 
 /*
- * j_info->xdpi and j_info->ydpi are already determined
- * because jpeg_get_density() is always called after
- * JPEG_scan_file().
+ * j_info->xdpi and j_info->ydpi are determined in most cases
+ * in JPEG_scan_file(). FIXME: However, in some kinds of JPEG files,
+ * j_info->xdpi, and j_info->ydpi are not determined in
+ * JPEG_scan_file(). In this case we assume
+ * that j_info->xdpi = j_info->ydpi = 72.0.
  */
+  if (j_info->xdpi < 0.1 && j_info->ydpi < 0.1) {
+    j_info->xdpi = j_info->ydpi = 72.0;
+  }
   *xdensity = 72.0 / j_info->xdpi;
   *ydensity = 72.0 / j_info->ydpi;
 
@@ -608,6 +613,9 @@ read_exif_bytes (unsigned char **pp, int n, int endian)
 #define JPEG_EXIF_TAG_XRESOLUTION     282
 #define JPEG_EXIF_TAG_YRESOLUTION     283
 #define JPEG_EXIF_TAG_RESOLUTIONUNIT  296
+#define JPEG_EXIF_TAG_RESUNIT_MS      0x5110
+#define JPEG_EXIF_TAG_XRES_MS         0x5111
+#define JPEG_EXIF_TAG_YRES_MS         0x5112
 static size_t
 read_APP1_Exif (struct JPEG_info *j_info, FILE *fp, size_t length)
 {
@@ -619,8 +627,12 @@ read_APP1_Exif (struct JPEG_info *j_info, FILE *fp, size_t length)
   int            endian;
   int            num_fields;
   int            value = 0, offset;
-  double         xres = 72.0, yres = 72.0;
+  double         xres = 0.0, yres = 0.0;
   double         res_unit = 1.0;
+  unsigned int   xres_ms = 0;
+  unsigned int   yres_ms = 0;
+  double         res_unit_ms = 0.0;
+  double         exifxdpi = 0.0, exifydpi = 0.0;
 
   fread(buffer, length, 1, fp);
   if (length < 10)
@@ -715,6 +727,34 @@ read_APP1_Exif (struct JPEG_info *j_info, FILE *fp, size_t length)
       else if (value == 3)
         res_unit = 2.54; /* cm */
       break;
+    case JPEG_EXIF_TAG_RESUNIT_MS: /* PixelUnit */
+      if (type != JPEG_EXIF_TYPE_BYTE || count != 1) {
+        WARN("%s: Invalid data for ResolutionUnit in Exif chunk.", JPEG_DEBUG_STR);
+        goto err;
+      }
+      value = read_exif_bytes(&p, 1, endian);
+      p += 3;
+      if (value == 1)
+        res_unit_ms = 0.0254; /* Unit is meter */
+      else
+        res_unit_ms = 0.0;
+      break;
+    case JPEG_EXIF_TAG_XRES_MS: /* PixelPerUnitX */
+      if (type != JPEG_EXIF_TYPE_LONG || count != 1) {
+        WARN("%s: Invalid data for PixelPerUnitX in Exif chunk.", JPEG_DEBUG_STR);
+        goto err;
+      }
+      value = read_exif_bytes(&p, 4, endian);
+      xres_ms = value;
+      break;
+    case JPEG_EXIF_TAG_YRES_MS: /* PixelPerUnitY */
+      if (type != JPEG_EXIF_TYPE_LONG || count != 1) {
+        WARN("%s: Invalid data for PixelPerUnitY in Exif chunk.", JPEG_DEBUG_STR);
+        goto err;
+      }
+      value = read_exif_bytes(&p, 4, endian);
+      yres_ms = value;
+      break;
     default:
       /* 40901 ColorSpace and 42240 Gamma unsupported... */
       p += 4;
@@ -726,18 +766,35 @@ read_APP1_Exif (struct JPEG_info *j_info, FILE *fp, size_t length)
     goto err; 
   }
 
+/* Calculate Exif resolution, if given.
+ */
+  if (xres > 0.0 && yres > 0.0) {
+    exifxdpi = xres * res_unit;
+    exifydpi = yres * res_unit;
+  } else if (xres_ms > 0 && yres_ms > 0 && res_unit_ms > 0.0) {
+    exifxdpi = xres_ms * res_unit_ms;
+    exifydpi = yres_ms * res_unit_ms;
+  } else {
+    exifxdpi = 72.0 * res_unit;
+    exifydpi = 72.0 * res_unit;
+  }
+
 /* Do not overwrite j_info->xdpi and j_info->ydpi if they are
  * already determined in JFIF.
  */
   if (j_info->xdpi < 0.1 && j_info->ydpi < 0.1) {
-    j_info->xdpi = xres * res_unit;
-    j_info->ydpi = yres * res_unit;
+    j_info->xdpi = exifxdpi;
+    j_info->ydpi = exifydpi;
   } else {
-    if (j_info->xdpi != xres * res_unit ||
-        j_info->ydpi != yres * res_unit) {
+    double xxx1 = floor(exifxdpi+0.5);
+    double xxx2 = floor(j_info->xdpi+0.5);
+    double yyy1 = floor(exifydpi+0.5);
+    double yyy2 = floor(j_info->ydpi+0.5);
+
+    if (xxx1 != xxx2 || yyy1 != yyy2) {
       WARN("%s: Inconsistent resolution may have " \
            "specified in Exif and JFIF: %gx%g - %gx%g", JPEG_DEBUG_STR,
-           xres * res_unit, yres * res_unit, j_info->xdpi, j_info->ydpi);
+           xxx1, yyy1, xxx2, yyy2);
     }
   }
 
@@ -898,6 +955,12 @@ JPEG_copy_stream (struct JPEG_info *j_info, pdf_obj *stream, FILE *fp)
   return (found_SOFn ? 0 : -1);
 }
 
+/* Adobe Technical Note #5116 "Supporting the DCT Filters in PostScript Level 2" 
+ * 6. "DCTDecode Filter Summary"
+ *    ... APPn (application-specific) markers are skipped over harmlessly except
+ *   for the Adobe reserved marker described later.
+ *
+ */
 #define SET_SKIP(j,c) if ((c) < MAX_COUNT) { \
   (j)->skipbits[(c) / 8] |= (1 << (7 - ((c) % 8))); \
 }
@@ -933,11 +996,17 @@ JPEG_scan_file (struct JPEG_info *j_info, FILE *fp)
             return -1;
           length -= 5;
           if (!memcmp(app_sig, "JFIF\000", 5)) {
+            /* APP0 JFIF marker preserved */
             j_info->flags |= HAVE_APPn_JFIF;
             length -= read_APP0_JFIF(j_info, fp);
           } else if (!memcmp(app_sig, "JFXX", 5)) {
             length -= read_APP0_JFXX(fp, length);
+            SET_SKIP(j_info, count);
+          } else {
+            SET_SKIP(j_info, count);
           }
+        } else {
+          SET_SKIP(j_info, count);
         }
         seek_relative(fp, length);
         break;
@@ -947,6 +1016,7 @@ JPEG_scan_file (struct JPEG_info *j_info, FILE *fp)
             return -1;
           length -= 5;
           if (!memcmp(app_sig, "Exif\000", 5)) {
+            /* APP1 Exif marker preserved */
             j_info->flags |= HAVE_APPn_Exif;
             length -= read_APP1_Exif(j_info, fp, length);
           } else if (!memcmp(app_sig, "http:", 5) && length > 24) {
@@ -956,9 +1026,11 @@ JPEG_scan_file (struct JPEG_info *j_info, FILE *fp)
             if (!memcmp(app_sig, "//ns.adobe.com/xap/1.0/\000", 24)) {
               j_info->flags |= HAVE_APPn_XMP;
               length -= read_APP1_XMP(j_info, fp, length);
-              SET_SKIP(j_info, count);
             }
+            SET_SKIP(j_info, count);
           }
+        } else {
+          SET_SKIP(j_info, count);
         }
         seek_relative(fp, length);
         break;
@@ -970,10 +1042,10 @@ JPEG_scan_file (struct JPEG_info *j_info, FILE *fp)
           if (!memcmp(app_sig, "ICC_PROFILE\000", 12)) {
             j_info->flags |= HAVE_APPn_ICC;
             length -= read_APP2_ICC(j_info, fp, length);
-            SET_SKIP(j_info, count);
           }
         }
         seek_relative(fp, length);
+        SET_SKIP(j_info, count);
         break;
       case JM_APP14:
         if (length > 5) {
@@ -981,11 +1053,14 @@ JPEG_scan_file (struct JPEG_info *j_info, FILE *fp)
             return -1;
           length -= 5;
           if (!memcmp(app_sig, "Adobe", 5)) {
+            /* APP14 Adobe marker preserved */
             j_info->flags |= HAVE_APPn_ADOBE;
             length -= read_APP14_Adobe(j_info, fp);
           } else {
             SET_SKIP(j_info, count);
           }
+        } else {
+          SET_SKIP(j_info, count);
         }
         seek_relative(fp, length);
         break;

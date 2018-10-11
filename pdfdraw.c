@@ -1,20 +1,20 @@
 /* This is dvipdfmx, an eXtended version of dvipdfm by Mark A. Wicks.
 
-    Copyright (C) 2002-2015 by Jin-Hwan Cho and Shunsaku Hirata,
+    Copyright (C) 2002-2018 by Jin-Hwan Cho and Shunsaku Hirata,
     the dvipdfmx project team.
-
+    
     Copyright (C) 1998, 1999 by Mark A. Wicks <mwicks@kettering.edu>
 
     This program is free software; you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
     the Free Software Foundation; either version 2 of the License, or
     (at your option) any later version.
-
+    
     This program is distributed in the hope that it will be useful,
     but WITHOUT ANY WARRANTY; without even the implied warranty of
     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
     GNU General Public License for more details.
-
+    
     You should have received a copy of the GNU General Public License
     along with this program; if not, write to the Free Software
     Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA.
@@ -30,6 +30,7 @@
 #include "error.h"
 #include "mem.h"
 #include "mfileio.h"
+#include "dpxconf.h"
 #include "dpxutil.h"
 #include "numbers.h"
 
@@ -39,10 +40,11 @@
 
 #include "pdfdraw.h"
 
+#define OUR_EPSILON 2.5e-16
 
 /*
  * Numbers are rounding to 0-5 fractional digits
- * in output routine.
+ * in output routine. 
  */
 #define detM(M) ((M).a * (M).d - (M).b * (M).c)
 #define detP(M) ((M)->a * (M)->d - (M)->b * (M)->c)
@@ -54,7 +56,7 @@ inversematrix (pdf_tmatrix *W, const pdf_tmatrix *M)
   double  det;
 
   det = detP(M);
-  if (fabs(det) < 1.e-8) {
+  if (fabs(det) < OUR_EPSILON) {
     WARN("Inverting matrix with zero determinant...");
     return -1; /* result is undefined. */
   }
@@ -98,7 +100,7 @@ pdf_coord__sort_compar_X (const void *pp1, const void *pp2)
     return 0;
   else
     return (int) dsign(p1->x - p2->x);
-
+ 
   return 1;
 }
 
@@ -112,7 +114,7 @@ pdf_coord__sort_compar_Y (const void *pp1, const void *pp2)
     return 0;
   else
     return (int) dsign(p1->y - p2->y);
-
+ 
   return 1;
 }
 #endif
@@ -130,23 +132,25 @@ pdf_coord__transform (pdf_coord *p, const pdf_tmatrix *M)
   return 0;
 }
 
+#if 0
 static /* __inline__ */ int
 pdf_coord__itransform (pdf_coord *p, const pdf_tmatrix *M)
 {
-  pdf_tmatrix W;
+  pdf_tmatrix W;  
   double      x, y;
   int         error;
 
   error = inversematrix(&W, M);
-  if (error)
+  if (error) 
     return error;
 
   x = p->x;  y = p->y;
   p->x = x * W.a + y * W.c + W.e;
-  p->y = x * W.b + y * W.d + W.f;
+  p->y = x * W.b + y * W.d + W.f;  
 
   return 0;
 }
+#endif
 
 static /* __inline__ */ int
 pdf_coord__dtransform (pdf_coord *p, const pdf_tmatrix *M)
@@ -163,12 +167,12 @@ pdf_coord__dtransform (pdf_coord *p, const pdf_tmatrix *M)
 static /* __inline__ */ int
 pdf_coord__idtransform (pdf_coord *p, const pdf_tmatrix *M)
 {
-  pdf_tmatrix W;
+  pdf_tmatrix W;  
   double      x, y;
   int         error;
 
   error = inversematrix(&W, M);
-  if (error)
+  if (error) 
     return error;
 
   x = p->x;  y = p->y;
@@ -183,13 +187,13 @@ pdf_coord__idtransform (pdf_coord *p, const pdf_tmatrix *M)
 void
 pdf_invertmatrix (pdf_tmatrix *M)
 {
-  pdf_tmatrix W;
+  pdf_tmatrix W;  
   double      det;
 
   ASSERT(M);
 
   det = detP(M);
-  if (fabs(det) < 1.e-8) {
+  if (fabs(det) < OUR_EPSILON) {
     WARN("Inverting matrix with zero determinant...");
     W.a = 1.0; W.c = 0.0;
     W.b = 0.0; W.d = 1.0;
@@ -230,17 +234,17 @@ static const struct {
 #define PE_TYPE__INVALID  -1
 #define PE_TYPE__MOVETO    0
   {'m', 1, "moveto"  },
-#define PE_TYPE__LINETO    1
+#define PE_TYPE__LINETO    1 
   {'l', 1, "lineto"  },
-#define PE_TYPE__CURVETO   2
+#define PE_TYPE__CURVETO   2 
   {'c', 3, "curveto" },
   /* no PS correspondence for v and y */
-#define PE_TYPE__CURVETO_V 3
+#define PE_TYPE__CURVETO_V 3 
   {'v', 2, "vcurveto"}, /* current point replicated */
-#define PE_TYPE__CURVETO_Y 4
+#define PE_TYPE__CURVETO_Y 4 
   {'y', 2, "ycurveto"}, /* last point replicated */
 #define PE_TYPE__CLOSEPATH 5
-  {'h', 0, "closepath"},
+  {'h', 0, "closepath"}, 
 #define PE_TYPE__TERMINATE 6
   {' ', 0,  NULL}
 };
@@ -276,7 +280,7 @@ pdf_path__clearpath (pdf_path *p)
   ASSERT(p);
 
   p->num_paths = 0;
-
+  
   return;
 }
 
@@ -291,7 +295,7 @@ pdf_path__growpath  (pdf_path *p, int max_pe)
 
   return 0;
 }
-
+    
 static void
 clear_a_path (pdf_path *p)
 {
@@ -338,7 +342,7 @@ pdf_path__moveto  (pdf_path        *pa,
                    const pdf_coord *p0)
 {
   pa_elem  *pe;
-
+  
   pdf_path__growpath(pa, PA_LENGTH(pa) + 1);
   if (PA_LENGTH(pa) > 0) {
     pe = &pa->path[pa->num_paths-1];
@@ -353,16 +357,16 @@ pdf_path__moveto  (pdf_path        *pa,
   pe->p[0].x = cp->x = p0->x;
   pe->p[0].y = cp->y = p0->y;
 
-  return 0;
+  return 0;  
 }
 
 /* Do 'compression' of path while adding new path elements.
  * Sequantial moveto command will be replaced with a
  * single moveto. If cp is not equal to the last point in pa,
  * then moveto is inserted (starting new subpath).
- * FIXME:
+ * FIXME: 
  * 'moveto' must be used to enforce starting new path.
- * This affects how 'closepath' is treated.
+ * This affects how 'closepath' is treated.     
  */
 static pa_elem *
 pdf_path__next_pe (pdf_path *pa, const pdf_coord *cp)
@@ -378,7 +382,7 @@ pdf_path__next_pe (pdf_path *pa, const pdf_coord *cp)
 
     return &pa->path[pa->num_paths++];
   }
-
+    
   pe = &pa->path[pa->num_paths-1];
   switch (pe->type) {
   case PE_TYPE__MOVETO:
@@ -510,7 +514,7 @@ pdf_path__curveto_QB (pdf_path        *pa,
   q1.x = p0->x + QB_ONE_THIRD * (p1->x - p0->x);
   q1.y = p0->y + QB_ONE_THIRD * (p1->y - p0->y);
   /* q2 == p1 */
-
+ 
   return pdf_path__curveto(pa, cp, &q0, &q1, p1);
 }
 #endif
@@ -537,8 +541,8 @@ pdf_path__elliptarc (pdf_path         *pa,
   int         n_c; /* number of segments */
   int         i, error = 0;
 
-  if (fabs(r_x) < 1.e-8 ||
-      fabs(r_y) < 1.e-8)
+  if (fabs(r_x) < OUR_EPSILON ||
+      fabs(r_y) < OUR_EPSILON)
     return -1;
 
   if (a_d < 0) {
@@ -550,7 +554,7 @@ pdf_path__elliptarc (pdf_path         *pa,
   d_a  = a_1 - a_0;
   for (n_c = 1; fabs(d_a) > 90.0 * n_c; n_c++);
   d_a /= n_c;
-  if (fabs(d_a) < 1.e-8)
+  if (fabs(d_a) < OUR_EPSILON)
     return -1;
 
   a_0 *= M_PI / 180.0;
@@ -574,7 +578,7 @@ pdf_path__elliptarc (pdf_path         *pa,
     pdf_path__moveto(pa, cp, &p0);
   } else if (!COORD_EQUAL(cp, &p0)) {
     pdf_path__lineto(pa, cp, &p0); /* add line seg */
-  }
+  } 
   for (i = 0; !error && i < n_c; i++) {
     q = a_0 + i * d_a;
     e0.x = cos(q); e0.y = sin(q);
@@ -585,7 +589,7 @@ pdf_path__elliptarc (pdf_path         *pa,
     *  d2 = p2 - p3 = g ( sin b, -cos b)
     * and from symmetry
     *  g^2 = f^2
-    */
+    */ 
     p0.x = r_x * e0.x; /* s.p. */
     p0.y = r_y * e0.y;
     p3.x = r_x * e1.x; /* e.p. */
@@ -647,7 +651,7 @@ pdf_path__closepath (pdf_path *pa, pdf_coord *cp /* no arg */)
 
 /*
  *  x y width height re
- *
+ * 
  * is equivalent to
  *
  *  x y m
@@ -656,7 +660,7 @@ pdf_path__closepath (pdf_path *pa, pdf_coord *cp /* no arg */)
  *  x (y + height) l
  *  h
  */
-/* Just for quick test */
+/* Just for quick test */ 
 static /* __inline__ */ int
 pdf_path__isarect (pdf_path *pa,
                    int       f_ir /* fill-rule is ignorable */
@@ -710,7 +714,7 @@ pdf_path__isarect (pdf_path *pa,
 static /* __inline__ */ int
 INVERTIBLE_MATRIX (const pdf_tmatrix *M)
 {
-  if (fabs(detP(M)) < 1.e-8) {
+  if (fabs(detP(M)) < OUR_EPSILON) {
     WARN("Transformation matrix not invertible.");
     WARN("--- M = [%g %g %g %g %g %g]",
          M->a, M->b, M->c, M->d, M->e, M->f);
@@ -723,17 +727,16 @@ INVERTIBLE_MATRIX (const pdf_tmatrix *M)
  *
  * Draw isolated rectangle without actually doing
  * gsave/grestore operation.
- *
+ * 
  * TODO:
  *  linestyle, fill-opacity, stroke-opacity,....
  *  As this routine draw a single graphics object
  *  each time, there should be options for specifying
  *  various drawing styles, which might inherite
  *  current graphcs state parameter.
- */
+ */ 
 static int
-pdf_dev__rectshape (pdf_doc           *p,
-                    const pdf_rect    *r,
+pdf_dev__rectshape (const pdf_rect    *r,
                     const pdf_tmatrix *M,
                     char               opchr
                    )
@@ -741,12 +744,12 @@ pdf_dev__rectshape (pdf_doc           *p,
   char     *buf = fmt_buf;
   int       len = 0;
   int       isclip = 0;
-  pdf_coord c;
+  pdf_coord p;
   double    wd, ht;
 
-  ASSERT(p && r && PT_OP_VALID(opchr));
+  ASSERT(r && PT_OP_VALID(opchr));
 
-  isclip = opchr == 'W' ? 1 : 0;
+  isclip = (opchr == 'W' || opchr == ' ') ? 1 : 0;
 
   /* disallow matrix for clipping.
    * q ... clip Q does nothing and
@@ -756,14 +759,14 @@ pdf_dev__rectshape (pdf_doc           *p,
             !INVERTIBLE_MATRIX(M)))
     return -1;
 
-  pdf_dev_graphics_mode(p);
+  graphics_mode();
 
   buf[len++] = ' ';
   if (!isclip) {
     buf[len++] = 'q';
     if (M) {
       buf[len++] = ' ';
-      len += pdf_dev_sprint_matrix(p, buf + len, M);
+      len += pdf_sprint_matrix(buf + len, M);
       buf[len++] = ' ';
       buf[len++] = 'c'; buf[len++] = 'm';
     }
@@ -771,15 +774,15 @@ pdf_dev__rectshape (pdf_doc           *p,
   }
   buf[len++] = 'n';
 
-  c.x = r->llx; c.y = r->lly;
+  p.x = r->llx; p.y = r->lly;
   wd  = r->urx - r->llx;
   ht  = r->ury - r->lly;
   buf[len++] = ' ';
-  len += pdf_dev_sprint_coord (p, buf + len, &c);
+  len += pdf_sprint_coord (buf + len, &p);
   buf[len++] = ' ';
-  len += pdf_dev_sprint_length(p, buf + len, wd);
+  len += pdf_sprint_length(buf + len, wd);
   buf[len++] = ' ';
-  len += pdf_dev_sprint_length(p, buf + len, ht);
+  len += pdf_sprint_length(buf + len, ht);
   buf[len++] = ' ';
   buf[len++] = 'r'; buf[len++] = 'e';
 
@@ -791,15 +794,16 @@ pdf_dev__rectshape (pdf_doc           *p,
     buf[len++] = isclip ? 'n' : 'Q';
   }
 
-  pdf_doc_add_page_content(p, buf, len);  /* op: q cm n re Q */
+  pdf_doc_add_page_content(buf, len);  /* op: q cm n re Q */
 
   return 0;
 }
 
+static int path_added = 0;
+
 /* FIXME */
 static int
-pdf_dev__flushpath (pdf_doc   *p,
-                    pdf_path  *pa,
+pdf_dev__flushpath (pdf_path  *pa,
                     char       opchr,
                     int        rule,
                     int        ignore_rule)
@@ -814,15 +818,16 @@ pdf_dev__flushpath (pdf_doc   *p,
   int        isclip = 0;
   int        isrect, i, j;
 
-  ASSERT(p && pa && PT_OP_VALID(opchr));
+  ASSERT(pa && PT_OP_VALID(opchr));
 
   isclip = (opchr == 'W') ? 1 : 0;
 
-  if (PA_LENGTH(pa) <= 0)
+  if (PA_LENGTH(pa) <= 0 && path_added == 0)
     return 0;
 
-  pdf_dev_graphics_mode(p);
-  isrect = pdf_path__isarect(pa, ignore_rule);
+  path_added = 0;
+  graphics_mode();
+  isrect = pdf_path__isarect(pa, ignore_rule); 
   if (isrect) {
     pe  = &(pa->path[0]);
     pe1 = &(pa->path[2]);
@@ -833,11 +838,11 @@ pdf_dev__flushpath (pdf_doc   *p,
     r.ury = pe1->p[0].y - pe->p[0].y; /* height... */
 
     b[len++] = ' ';
-    len += pdf_dev_sprint_rect(p, b + len, &r);
+    len += pdf_sprint_rect(b + len, &r);
     b[len++] = ' ';
     b[len++] = 'r';
     b[len++] = 'e';
-    pdf_doc_add_page_content(p, b, len);  /* op: re */
+    pdf_doc_add_page_content(b, len);  /* op: re */
     len = 0;
   } else {
     n_seg = PA_LENGTH(pa);
@@ -847,17 +852,17 @@ pdf_dev__flushpath (pdf_doc   *p,
       for (j = 0, pt = &pe->p[0];
            j < n_pts; j++, pt++) {
         b[len++] = ' ';
-        len += pdf_dev_sprint_coord(p, b + len, pt);
+        len += pdf_sprint_coord(b + len, pt);
       }
       b[len++] = ' ';
       b[len++] = PE_OPCHR(pe);
       if (len + 128 > b_len) {
-        pdf_doc_add_page_content(p, b, len);  /* op: m l c v y h */
-        len = 0;
+        pdf_doc_add_page_content(b, len);  /* op: m l c v y h */
+	len = 0;
       }
     }
     if (len > 0) {
-      pdf_doc_add_page_content(p, b, len);  /* op: m l c v y h */
+      pdf_doc_add_page_content(b, len);  /* op: m l c v y h */
       len = 0;
     }
   }
@@ -870,10 +875,11 @@ pdf_dev__flushpath (pdf_doc   *p,
     b[len++] = ' '; b[len++] = 'n';
   }
 
-  pdf_doc_add_page_content(p, b, len);
+  pdf_doc_add_page_content(b, len);  /* op: f F s S b B W f* F* s* S* b* B* W* */
 
   return 0;
 }
+
 
 /* Graphics State */
 typedef struct pdf_gstate_
@@ -903,10 +909,97 @@ typedef struct pdf_gstate_
   /* internal */
   pdf_path  path;
   int       flags;
-
+  /* bookkeeping the origin of the last transform applied */
+  pdf_coord pt_fixee;
 } pdf_gstate;
 
-dpx_stack *gs_stack = NULL; /* see also pdfdev.h */
+
+typedef struct m_stack_elem
+{
+  void                *data;
+  struct m_stack_elem *prev;
+} m_stack_elem;
+
+typedef struct m_stack
+{
+  int           size;
+  m_stack_elem *top;
+  m_stack_elem *bottom;
+} m_stack;
+
+static void
+m_stack_init (m_stack *stack)
+{
+  ASSERT(stack);
+
+  stack->size   = 0;
+  stack->top    = NULL;
+  stack->bottom = NULL;
+
+  return;
+}
+
+static void
+m_stack_push (m_stack *stack, void *data)
+{
+  m_stack_elem  *elem;
+
+  ASSERT(stack);
+
+  elem = NEW(1, m_stack_elem);
+  elem->prev = stack->top;
+  elem->data = data;
+
+  stack->top = elem;
+  if (stack->size == 0)
+    stack->bottom = elem;
+
+  stack->size++;
+
+  return;
+}
+
+static void *
+m_stack_pop (m_stack *stack)
+{
+  m_stack_elem *elem;
+  void         *data;
+
+  ASSERT(stack);
+
+  if (stack->size == 0)
+    return NULL;
+
+  data = stack->top->data;
+  elem = stack->top;
+  stack->top = elem->prev;
+  if (stack->size == 1)
+    stack->bottom = NULL;
+  RELEASE(elem);
+
+  stack->size--;
+
+  return data;
+}
+
+static void *
+m_stack_top (m_stack *stack)
+{
+  void  *data;
+
+  ASSERT(stack);
+
+  if (stack->size == 0)
+    return NULL;
+
+  data = stack->top->data;
+
+  return data;
+}
+
+#define m_stack_depth(s)    ((s)->size)
+
+static m_stack gs_stack;
 
 static void
 init_a_gstate (pdf_gstate *gs)
@@ -931,6 +1024,8 @@ init_a_gstate (pdf_gstate *gs)
   /* Internal variables */
   gs->flags = 0;
   init_a_path(&gs->path);
+  gs->pt_fixee.x = 0;
+  gs->pt_fixee.y = 0;
 
   return;
 }
@@ -977,21 +1072,23 @@ copy_a_gstate (pdf_gstate *gs1, pdf_gstate *gs2)
 
   pdf_color_copycolor(&gs1->fillcolor  , &gs2->fillcolor);
   pdf_color_copycolor(&gs1->strokecolor, &gs2->strokecolor);
+  gs1->pt_fixee.x = gs2->pt_fixee.x;
+  gs1->pt_fixee.y = gs2->pt_fixee.y;
 
   return;
 }
-
+    
 void
 pdf_dev_init_gstates (void)
 {
   pdf_gstate *gs;
 
-  gs_stack = dpx_stack_new();
+  m_stack_init(&gs_stack);
 
   gs = NEW(1, pdf_gstate);
   init_a_gstate(gs);
 
-  dpx_stack_push(gs_stack, gs); /* Initial state */
+  m_stack_push(&gs_stack, gs); /* Initial state */
 
   return;
 }
@@ -1001,10 +1098,10 @@ pdf_dev_clear_gstates (void)
 {
   pdf_gstate *gs;
 
-  if (dpx_stack_depth(gs_stack) > 1) /* at least 1 elem. */
+  if (m_stack_depth(&gs_stack) > 1) /* at least 1 elem. */
     WARN("GS stack depth is not zero at the end of the document.");
 
-  while ((gs = dpx_stack_pop(gs_stack)) != NULL) {
+  while ((gs = m_stack_pop(&gs_stack)) != NULL) {
     clear_a_gstate(gs);
     RELEASE(gs);
   }
@@ -1012,71 +1109,71 @@ pdf_dev_clear_gstates (void)
 }
 
 int
-pdf_dev_gsave (pdf_doc *p)
+pdf_dev_gsave (void)
 {
   pdf_gstate *gs0, *gs1;
 
-  gs0 = dpx_stack_top(gs_stack);
+  gs0 = m_stack_top(&gs_stack);
   gs1 = NEW(1, pdf_gstate);
   init_a_gstate(gs1);
   copy_a_gstate(gs1, gs0);
-  dpx_stack_push(gs_stack, gs1);
+  m_stack_push(&gs_stack, gs1);
 
-  pdf_doc_add_page_content(p, " q", 2);  /* op: q */
+  pdf_doc_add_page_content(" q", 2);  /* op: q */
 
   return 0;
 }
 
 int
-pdf_dev_grestore (pdf_doc *p)
+pdf_dev_grestore (void)
 {
   pdf_gstate *gs;
 
-  if (dpx_stack_depth(gs_stack) <= 1) { /* Initial state at bottom */
+  if (m_stack_depth(&gs_stack) <= 1) { /* Initial state at bottom */
     WARN("Too many grestores.");
     return  -1;
   }
 
-  gs = dpx_stack_pop(gs_stack);
+  gs = m_stack_pop(&gs_stack);
   clear_a_gstate(gs);
   RELEASE(gs);
 
-  pdf_doc_add_page_content(p, " Q", 2);  /* op: Q */
+  pdf_doc_add_page_content(" Q", 2);  /* op: Q */
 
-  pdf_dev_reset_fonts(p, 0);
+  pdf_dev_reset_fonts(0);
 
   return  0;
 }
 
 
 int
-pdf_dev_push_gstate (pdf_doc *p)
+pdf_dev_push_gstate (void)
 {
-  dpx_stack  *gss = gs_stack;
+  m_stack    *gss = &gs_stack;
   pdf_gstate *gs0;
 
   gs0 = NEW(1, pdf_gstate);
 
   init_a_gstate(gs0);
 
-  dpx_stack_push(gss, gs0);
+  m_stack_push(gss, gs0);
 
   return 0;
 }
 
 
 int
-pdf_dev_pop_gstate (pdf_doc *p)
+pdf_dev_pop_gstate (void)
 {
-  dpx_stack  *gss = gs_stack;
+  m_stack    *gss = &gs_stack;
   pdf_gstate *gs;
 
-  if (dpx_stack_depth(gss) <= 1) { /* Initial state at bottom */
+  if (m_stack_depth(gss) <= 1) { /* Initial state at bottom */
     WARN("Too many grestores.");
     return  -1;
   }
 
-  gs = dpx_stack_pop(gss);
+  gs = m_stack_pop(gss);
   clear_a_gstate(gs);
   RELEASE(gs);
 
@@ -1085,53 +1182,53 @@ pdf_dev_pop_gstate (pdf_doc *p)
 
 
 int
-pdf_dev_current_depth (pdf_doc *p)
+pdf_dev_current_depth (void)
 {
-  return (dpx_stack_depth(gs_stack) - 1); /* 0 means initial state */
+  return (m_stack_depth(&gs_stack) - 1); /* 0 means initial state */
 }
 
 void
-pdf_dev_grestore_to (pdf_doc *p, int depth)
+pdf_dev_grestore_to (int depth)
 {
-  dpx_stack  *gss = gs_stack;
+  m_stack    *gss = &gs_stack;
   pdf_gstate *gs;
 
   ASSERT(depth >= 0);
 
-  if (dpx_stack_depth(gss) > depth + 1) {
+  if (m_stack_depth(gss) > depth + 1) {
     WARN("Closing pending transformations at end of page/XObject.");
   }
 
-  while (dpx_stack_depth(gss) > depth + 1) {
-    pdf_doc_add_page_content(p, " Q", 2);  /* op: Q */
-    gs = dpx_stack_pop(gss);
+  while (m_stack_depth(gss) > depth + 1) {
+    pdf_doc_add_page_content(" Q", 2);  /* op: Q */
+    gs = m_stack_pop(gss);
     clear_a_gstate(gs);
     RELEASE(gs);
   }
-  pdf_dev_reset_fonts(p, 0);
+  pdf_dev_reset_fonts(0);
 
   return;
 }
 
 int
-pdf_dev_currentpoint (pdf_doc *p, pdf_coord *c)
+pdf_dev_currentpoint (pdf_coord *p)
 {
-  dpx_stack  *gss = gs_stack;
-  pdf_gstate *gs  = dpx_stack_top(gss);
+  m_stack    *gss = &gs_stack;
+  pdf_gstate *gs  = m_stack_top(gss);
   pdf_coord  *cpt = &gs->cp;
 
-  ASSERT(c);
+  ASSERT(p);
 
-  c->x = cpt->x; c->y = cpt->y;
+  p->x = cpt->x; p->y = cpt->y;
 
   return 0;
 }
 
 int
-pdf_dev_currentmatrix (pdf_doc *p, pdf_tmatrix *M)
+pdf_dev_currentmatrix (pdf_tmatrix *M)
 {
-  dpx_stack   *gss = gs_stack;
-  pdf_gstate  *gs  = dpx_stack_top(gss);
+  m_stack     *gss = &gs_stack;
+  pdf_gstate  *gs  = m_stack_top(gss);
   pdf_tmatrix *CTM = &gs->matrix;
 
   ASSERT(M);
@@ -1145,8 +1242,8 @@ pdf_dev_currentmatrix (pdf_doc *p, pdf_tmatrix *M)
 int
 pdf_dev_currentcolor (pdf_color *color, int is_fill)
 {
-  dpx_stack  *gss = gs_stack;
-  pdf_gstate *gs  = dpx_stack_top(gss);
+  m_stack    *gss = &gs_stack;
+  pdf_gstate *gs  = m_stack_top(gss);
   pdf_color  *fcl = &gs->fillcolor;
   pdf_color  *scl = &gs->strokecolor;
 
@@ -1165,23 +1262,23 @@ pdf_dev_currentcolor (pdf_color *color, int is_fill)
  *   the color is the same as the current graphics state color
  */
 void
-pdf_dev_set_color (pdf_doc *p, const pdf_color *color, char mask, int force)
+pdf_dev_set_color (const pdf_color *color, char mask, int force)
 {
   int len;
 
-  pdf_gstate *gs  = dpx_stack_top(gs_stack);
+  pdf_gstate *gs  = m_stack_top(&gs_stack);
   pdf_color *current = mask ? &gs->fillcolor : &gs->strokecolor;
 
   ASSERT(pdf_color_is_valid(color));
 
-  if (!(pdf_dev_get_param(p, PDF_DEV_PARAM_COLORMODE) &&
-      (force || pdf_color_compare(color, current))))
+  if (!(pdf_dev_get_param(PDF_DEV_PARAM_COLORMODE) &&
+	(force || pdf_color_compare(color, current))))
     /* If "color" is already the current color, then do nothing
      * unless a color operator is forced
      */
     return;
 
-  pdf_dev_graphics_mode(p);
+  graphics_mode();
   len = pdf_color_to_string(color, fmt_buf, mask);
   fmt_buf[len++] = ' ';
   switch (pdf_color_type(color)) {
@@ -1198,16 +1295,16 @@ pdf_dev_set_color (pdf_doc *p, const pdf_color *color, char mask, int force)
   default: /* already verified the given color */
     break;
   }
-  pdf_doc_add_page_content(p, fmt_buf, len);  /* op: RG K G rg k g etc. */
+  pdf_doc_add_page_content(fmt_buf, len);  /* op: RG K G rg k g etc. */
 
   pdf_color_copycolor(current, color);
 }
 
 int
-pdf_dev_concat (pdf_doc *p, const pdf_tmatrix *M)
+pdf_dev_concat (const pdf_tmatrix *M)
 {
-  dpx_stack   *gss = gs_stack;
-  pdf_gstate  *gs  = dpx_stack_top(gss);
+  m_stack     *gss = &gs_stack;
+  pdf_gstate  *gs  = m_stack_top(gss);
   pdf_path    *cpa = &gs->path;
   pdf_coord   *cpt = &gs->cp;
   pdf_tmatrix *CTM = &gs->matrix;
@@ -1220,22 +1317,22 @@ pdf_dev_concat (pdf_doc *p, const pdf_tmatrix *M)
   /* Adobe Reader erases page content if there are
    * non invertible transformation.
    */
-  if (fabs(detP(M)) < 1.0e-8) {
+  if (fabs(detP(M)) < OUR_EPSILON) {
     WARN("Transformation matrix not invertible.");
     WARN("--- M = [%g %g %g %g %g %g]",
          M->a, M->b, M->c, M->d, M->e, M->f);
     return -1;
   }
 
-  if (fabs(M->a - 1.0) > 1.e-8 || fabs(M->b) > 1.e-8
-      || fabs(M->c) > 1.e-8 || fabs(M->d - 1.0) > 1.e-8
-      || fabs(M->e) > 1.e-8 || fabs(M->f) > 1.e-8) {
+  if (fabs(M->a - 1.0) > OUR_EPSILON || fabs(M->b) > OUR_EPSILON
+   || fabs(M->c) > OUR_EPSILON || fabs(M->d - 1.0) > OUR_EPSILON
+   || fabs(M->e) > OUR_EPSILON || fabs(M->f) > OUR_EPSILON) {
     buf[len++] = ' ';
-    len += pdf_dev_sprint_matrix(p, buf + len, M);
+    len += pdf_sprint_matrix(buf + len, M);
     buf[len++] = ' ';
     buf[len++] = 'c';
     buf[len++] = 'm';
-    pdf_doc_add_page_content(p, buf, len);  /* op: cm */
+    pdf_doc_add_page_content(buf, len);  /* op: cm */
 
     pdf_concatmatrix(CTM, M);
   }
@@ -1255,22 +1352,22 @@ pdf_dev_concat (pdf_doc *p, const pdf_tmatrix *M)
  * array num d  D   line dash
  * int ri       RI  renderint intnet
  * int i        FL  flatness tolerance (0-100)
- * name gs      --  name: res. name of ExtGState dict.
- */
+ * name gs      --  name: res. name of ExtGState dict.  
+ */      
 int
-pdf_dev_setmiterlimit (pdf_doc *p, double mlimit)
+pdf_dev_setmiterlimit (double mlimit)
 {
-  dpx_stack  *gss = gs_stack;
-  pdf_gstate *gs  = dpx_stack_top(gss);
+  m_stack    *gss = &gs_stack;
+  pdf_gstate *gs  = m_stack_top(gss);
   int         len = 0;
   char       *buf = fmt_buf;
 
   if (gs->miterlimit != mlimit) {
     buf[len++] = ' ';
-    len += pdf_dev_sprint_length(p, buf + len, mlimit);
+    len += pdf_sprint_length(buf + len, mlimit);
     buf[len++] = ' ';
     buf[len++] = 'M';
-    pdf_doc_add_page_content(p, buf, len);  /* op: M */
+    pdf_doc_add_page_content(buf, len);  /* op: M */
     gs->miterlimit = mlimit;
   }
 
@@ -1278,16 +1375,16 @@ pdf_dev_setmiterlimit (pdf_doc *p, double mlimit)
 }
 
 int
-pdf_dev_setlinecap (pdf_doc *p, int capstyle)
+pdf_dev_setlinecap (int capstyle)
 {
-  dpx_stack  *gss = gs_stack;
-  pdf_gstate *gs  = dpx_stack_top(gss);
+  m_stack    *gss = &gs_stack;
+  pdf_gstate *gs  = m_stack_top(gss);
   int         len = 0;
   char       *buf = fmt_buf;
 
   if (gs->linecap != capstyle) {
     len = sprintf(buf, " %d J", capstyle);
-    pdf_doc_add_page_content(p, buf, len);  /* op: J */
+    pdf_doc_add_page_content(buf, len);  /* op: J */
     gs->linecap = capstyle;
   }
 
@@ -1295,16 +1392,16 @@ pdf_dev_setlinecap (pdf_doc *p, int capstyle)
 }
 
 int
-pdf_dev_setlinejoin (pdf_doc *p, int joinstyle)
+pdf_dev_setlinejoin (int joinstyle)
 {
-  dpx_stack  *gss = gs_stack;
-  pdf_gstate *gs  = dpx_stack_top(gss);
+  m_stack    *gss = &gs_stack;
+  pdf_gstate *gs  = m_stack_top(gss);
   int         len = 0;
   char       *buf = fmt_buf;
 
   if (gs->linejoin != joinstyle) {
     len = sprintf(buf, " %d j", joinstyle);
-    pdf_doc_add_page_content(p, buf, len);  /* op: j */
+    pdf_doc_add_page_content(buf, len);  /* op: j */
     gs->linejoin = joinstyle;
   }
 
@@ -1312,19 +1409,19 @@ pdf_dev_setlinejoin (pdf_doc *p, int joinstyle)
 }
 
 int
-pdf_dev_setlinewidth (pdf_doc *p, double width)
+pdf_dev_setlinewidth (double width)
 {
-  dpx_stack  *gss = gs_stack;
-  pdf_gstate *gs  = dpx_stack_top(gss);
+  m_stack    *gss = &gs_stack;
+  pdf_gstate *gs  = m_stack_top(gss);  
   int         len = 0;
   char       *buf = fmt_buf;
 
   if (gs->linewidth != width) {
     buf[len++] = ' ';
-    len += pdf_dev_sprint_length(p, buf + len, width);
+    len += pdf_sprint_length(buf + len, width);
     buf[len++] = ' ';
     buf[len++] = 'w';
-    pdf_doc_add_page_content(p, buf, len);  /* op: w */
+    pdf_doc_add_page_content(buf, len);  /* op: w */
     gs->linewidth = width;
   }
 
@@ -1332,27 +1429,27 @@ pdf_dev_setlinewidth (pdf_doc *p, double width)
 }
 
 int
-pdf_dev_setdash (pdf_doc *p, int count, double *pattern, double offset)
+pdf_dev_setdash (int count, double *pattern, double offset)
 {
-  dpx_stack  *gss = gs_stack;
-  pdf_gstate *gs  = dpx_stack_top(gss);
+  m_stack    *gss = &gs_stack;
+  pdf_gstate *gs  = m_stack_top(gss);
   int         len = 0;
   char       *buf = fmt_buf;
   int         i;
 
   gs->linedash.num_dash = count;
   gs->linedash.offset   = offset;
-  pdf_doc_add_page_content(p, " [", 2);  /* op: */
+  pdf_doc_add_page_content(" [", 2);  /* op: */
   for (i = 0; i < count; i++) {
     buf[0] = ' ';
-    len = pdf_dev_sprint_length(p, buf + 1, pattern[i]);
-    pdf_doc_add_page_content(p, buf, len + 1);  /* op: */
+    len = pdf_sprint_length (buf + 1, pattern[i]);
+    pdf_doc_add_page_content(buf, len + 1);  /* op: */
     gs->linedash.pattern[i] = pattern[i];
   }
-  pdf_doc_add_page_content(p, "] ", 2);  /* op: */
-  len = pdf_dev_sprint_length(p, buf, offset);
-  pdf_doc_add_page_content(p, buf, len);  /* op: */
-  pdf_doc_add_page_content(p, " d", 2);  /* op: d */
+  pdf_doc_add_page_content("] ", 2);  /* op: */
+  len = pdf_sprint_length (buf, offset);
+  pdf_doc_add_page_content(buf, len);  /* op: */
+  pdf_doc_add_page_content(" d", 2);  /* op: d */
 
   return 0;
 }
@@ -1361,8 +1458,8 @@ pdf_dev_setdash (pdf_doc *p, int count, double *pattern, double offset)
 int
 pdf_dev_setflat (int flatness)
 {
-  dpx_stack  *gss = gs_stack;
-  pdf_gstate *gs  = dpx_stack_top(gss);
+  m_stack    *gss = &gs_stack;
+  pdf_gstate *gs  = m_stack_top(gss);
   int         len = 0;
   char       *buf = fmt_buf;
 
@@ -1372,7 +1469,7 @@ pdf_dev_setflat (int flatness)
   if (gs->flatness != flatness) {
     gs->flatness = flatness;
     len = sprintf(buf, " %d i", flatness);
-    pdf_doc_add_page_content(p, buf, len);  /* op: i */
+    pdf_doc_add_page_content(buf, len);  /* op: i */
   }
 
   return 0;
@@ -1381,30 +1478,30 @@ pdf_dev_setflat (int flatness)
 
 /* ZSYUEDVEDEOF */
 int
-pdf_dev_clip (pdf_doc *p)
+pdf_dev_clip (void)
 {
-  dpx_stack  *gss = gs_stack;
-  pdf_gstate *gs  = dpx_stack_top(gss);
+  m_stack    *gss = &gs_stack;
+  pdf_gstate *gs  = m_stack_top(gss);
   pdf_path   *cpa = &gs->path;
 
-  return pdf_dev__flushpath(p, cpa, 'W', PDF_FILL_RULE_NONZERO, 0);
+  return pdf_dev__flushpath(cpa, 'W', PDF_FILL_RULE_NONZERO, 0);
 }
 
 int
-pdf_dev_eoclip (pdf_doc *p)
+pdf_dev_eoclip (void)
 {
-  dpx_stack  *gss = gs_stack;
-  pdf_gstate *gs  = dpx_stack_top(gss);
+  m_stack    *gss = &gs_stack;
+  pdf_gstate *gs  = m_stack_top(gss);
   pdf_path   *cpa = &gs->path;
 
-  return pdf_dev__flushpath(p, cpa, 'W', PDF_FILL_RULE_EVENODD, 0);
+  return pdf_dev__flushpath(cpa, 'W', PDF_FILL_RULE_EVENODD, 0);
 }
 
 int
-pdf_dev_flushpath (pdf_doc *p, char p_op, int fill_rule)
+pdf_dev_flushpath (char p_op, int fill_rule)
 {
-  dpx_stack  *gss   = gs_stack;
-  pdf_gstate *gs    = dpx_stack_top(gss);
+  m_stack    *gss   = &gs_stack;
+  pdf_gstate *gs    = m_stack_top(gss);
   pdf_path   *cpa   = &gs->path;
   int         error = 0;
 
@@ -1412,7 +1509,7 @@ pdf_dev_flushpath (pdf_doc *p, char p_op, int fill_rule)
    * that can be converted to a rect where fill rule
    * is inessential.
    */
-  error = pdf_dev__flushpath(p, cpa, p_op, fill_rule, 1);
+  error = pdf_dev__flushpath(cpa, p_op, fill_rule, 1);
   pdf_path__clearpath(cpa);
 
   gs->flags &= ~GS_FLAG_CURRENTPOINT_SET;
@@ -1421,53 +1518,53 @@ pdf_dev_flushpath (pdf_doc *p, char p_op, int fill_rule)
 }
 
 int
-pdf_dev_newpath (pdf_doc *p)
+pdf_dev_newpath (void)
 {
-  dpx_stack  *gss = gs_stack;
-  pdf_gstate *gs  = dpx_stack_top(gss);
-  pdf_path   *pa  = &gs->path;
+  m_stack    *gss = &gs_stack;
+  pdf_gstate *gs  = m_stack_top(gss);
+  pdf_path   *p   = &gs->path;
 
-  if (PA_LENGTH(pa) > 0) {
-    pdf_path__clearpath (pa);
+  if (PA_LENGTH(p) > 0) {
+    pdf_path__clearpath (p);
   }
   /* The following is required for "newpath" operator in mpost.c. */
-  pdf_doc_add_page_content(p, " n", 2);  /* op: n */
+  pdf_doc_add_page_content(" n", 2);  /* op: n */
 
   return 0;
 }
 
 int
-pdf_dev_moveto (pdf_doc *p, double x, double y)
+pdf_dev_moveto (double x, double y)
 {
-  dpx_stack  *gss = gs_stack;
-  pdf_gstate *gs  = dpx_stack_top(gss);
+  m_stack    *gss = &gs_stack;
+  pdf_gstate *gs  = m_stack_top(gss);
   pdf_path   *cpa = &gs->path;
   pdf_coord  *cpt = &gs->cp;
-  pdf_coord   c;
+  pdf_coord   p;
 
-  c.x = x; c.y = y;
-  return pdf_path__moveto(cpa, cpt, &c); /* cpt updated */
+  p.x = x; p.y = y;
+  return pdf_path__moveto(cpa, cpt, &p); /* cpt updated */
 }
 
 int
-pdf_dev_rmoveto (pdf_doc *p, double x, double y)
+pdf_dev_rmoveto (double x, double y)
 {
-  dpx_stack  *gss = gs_stack;
-  pdf_gstate *gs  = dpx_stack_top(gss);
+  m_stack    *gss = &gs_stack;
+  pdf_gstate *gs  = m_stack_top(gss);
   pdf_path   *cpa = &gs->path;
   pdf_coord  *cpt = &gs->cp;
-  pdf_coord   c;
+  pdf_coord   p;
 
-  c.x = cpt->x + x;
-  c.y = cpt->y + y;
-  return pdf_path__moveto(cpa, cpt, &c); /* cpt updated */
+  p.x = cpt->x + x;
+  p.y = cpt->y + y;
+  return pdf_path__moveto(cpa, cpt, &p); /* cpt updated */
 }
 
 int
-pdf_dev_lineto (pdf_doc *p, double x, double y)
+pdf_dev_lineto (double x, double y)
 {
-  dpx_stack  *gss = gs_stack;
-  pdf_gstate *gs  = dpx_stack_top(gss);
+  m_stack    *gss = &gs_stack;
+  pdf_gstate *gs  = m_stack_top(gss);
   pdf_path   *cpa = &gs->path;
   pdf_coord  *cpt = &gs->cp;
   pdf_coord   p0;
@@ -1478,10 +1575,10 @@ pdf_dev_lineto (pdf_doc *p, double x, double y)
 }
 
 int
-pdf_dev_rlineto (pdf_doc *p, double x, double y)
+pdf_dev_rlineto (double x, double y)
 {
-  dpx_stack  *gss = gs_stack;
-  pdf_gstate *gs  = dpx_stack_top(gss);
+  m_stack    *gss = &gs_stack;
+  pdf_gstate *gs  = m_stack_top(gss);
   pdf_path   *cpa = &gs->path;
   pdf_coord  *cpt = &gs->cp;
   pdf_coord   p0;
@@ -1492,13 +1589,12 @@ pdf_dev_rlineto (pdf_doc *p, double x, double y)
 }
 
 int
-pdf_dev_curveto (pdf_doc *p,
-                 double x0, double y0,
+pdf_dev_curveto (double x0, double y0,
                  double x1, double y1,
                  double x2, double y2)
 {
-  dpx_stack  *gss = gs_stack;
-  pdf_gstate *gs  = dpx_stack_top(gss);
+  m_stack    *gss = &gs_stack;
+  pdf_gstate *gs  = m_stack_top(gss);
   pdf_path   *cpa = &gs->path;
   pdf_coord  *cpt = &gs->cp;
   pdf_coord   p0, p1, p2;
@@ -1511,12 +1607,11 @@ pdf_dev_curveto (pdf_doc *p,
 }
 
 int
-pdf_dev_vcurveto (pdf_doc *p,
-                  double x0, double y0,
+pdf_dev_vcurveto (double x0, double y0,
                   double x1, double y1)
 {
-  dpx_stack  *gss = gs_stack;
-  pdf_gstate *gs  = dpx_stack_top(gss);
+  m_stack    *gss = &gs_stack;
+  pdf_gstate *gs  = m_stack_top(gss);
   pdf_path   *cpa = &gs->path;
   pdf_coord  *cpt = &gs->cp;
   pdf_coord   p0, p1;
@@ -1528,12 +1623,11 @@ pdf_dev_vcurveto (pdf_doc *p,
 }
 
 int
-pdf_dev_ycurveto (pdf_doc *p,
-                  double x0, double y0,
+pdf_dev_ycurveto (double x0, double y0,
                   double x1, double y1)
 {
-  dpx_stack  *gss = gs_stack;
-  pdf_gstate *gs  = dpx_stack_top(gss);
+  m_stack    *gss = &gs_stack;
+  pdf_gstate *gs  = m_stack_top(gss);
   pdf_path   *cpa = &gs->path;
   pdf_coord  *cpt = &gs->cp;
   pdf_coord   p0, p1;
@@ -1545,13 +1639,12 @@ pdf_dev_ycurveto (pdf_doc *p,
 }
 
 int
-pdf_dev_rcurveto (pdf_doc *p,
-                  double x0, double y0,
+pdf_dev_rcurveto (double x0, double y0,
                   double x1, double y1,
                   double x2, double y2)
 {
-  dpx_stack  *gss = gs_stack;
-  pdf_gstate *gs  = dpx_stack_top(gss);
+  m_stack    *gss = &gs_stack;
+  pdf_gstate *gs  = m_stack_top(gss);
   pdf_path   *cpa = &gs->path;
   pdf_coord  *cpt = &gs->cp;
   pdf_coord   p0, p1, p2;
@@ -1565,10 +1658,10 @@ pdf_dev_rcurveto (pdf_doc *p,
 
 
 int
-pdf_dev_closepath (pdf_doc *p)
+pdf_dev_closepath (void)
 {
-  dpx_stack  *gss = gs_stack;
-  pdf_gstate *gs  = dpx_stack_top(gss);
+  m_stack    *gss = &gs_stack;
+  pdf_gstate *gs  = m_stack_top(gss);
   pdf_coord  *cpt = &gs->cp;
   pdf_path   *cpa = &gs->path;
 
@@ -1577,68 +1670,69 @@ pdf_dev_closepath (pdf_doc *p)
 
 
 void
-pdf_dev_dtransform (pdf_doc *p, pdf_coord *c, const pdf_tmatrix *M)
+pdf_dev_dtransform (pdf_coord *p, const pdf_tmatrix *M)
 {
-  dpx_stack   *gss = gs_stack;
-  pdf_gstate  *gs  = dpx_stack_top(gss);
+  m_stack     *gss = &gs_stack;
+  pdf_gstate  *gs  = m_stack_top(gss);
   pdf_tmatrix *CTM = &gs->matrix;
 
-  ASSERT(c);
+  ASSERT(p);
 
-  pdf_coord__dtransform(c, (M ? M : CTM));
+  pdf_coord__dtransform(p, (M ? M : CTM));
 
   return;
 }
 
 void
-pdf_dev_idtransform (pdf_doc *p, pdf_coord *c, const pdf_tmatrix *M)
+pdf_dev_idtransform (pdf_coord *p, const pdf_tmatrix *M)
 {
-  dpx_stack   *gss = gs_stack;
-  pdf_gstate  *gs  = dpx_stack_top(gss);
+  m_stack     *gss = &gs_stack;
+  pdf_gstate  *gs  = m_stack_top(gss);
   pdf_tmatrix *CTM = &gs->matrix;
 
-  ASSERT(c);
+  ASSERT(p);
 
-  pdf_coord__idtransform(c, (M ? M : CTM));
+  pdf_coord__idtransform(p, (M ? M : CTM));
 
   return;
 }
 
 void
-pdf_dev_transform (pdf_doc *p, pdf_coord *c, const pdf_tmatrix *M)
+pdf_dev_transform (pdf_coord *p, const pdf_tmatrix *M)
 {
-  dpx_stack   *gss = gs_stack;
-  pdf_gstate  *gs  = dpx_stack_top(gss);
+  m_stack     *gss = &gs_stack;
+  pdf_gstate  *gs  = m_stack_top(gss);
   pdf_tmatrix *CTM = &gs->matrix;
 
-  ASSERT(c);
+  ASSERT(p);
 
-  pdf_coord__transform(c, (M ? M : CTM));
+  pdf_coord__transform(p, (M ? M : CTM));
 
   return;
 }
 
+#if 0
 void
-pdf_dev_itransform (pdf_doc *p, pdf_coord *c, const pdf_tmatrix *M)
+pdf_dev_itransform (pdf_coord *p, const pdf_tmatrix *M)
 {
-  dpx_stack   *gss = gs_stack;
-  pdf_gstate  *gs  = dpx_stack_top(gss);
+  m_stack     *gss = &gs_stack;
+  pdf_gstate  *gs  = m_stack_top(gss);
   pdf_tmatrix *CTM = &gs->matrix;
 
-  ASSERT(c);
+  ASSERT(p);
 
-  pdf_coord__itransform(c, (M ? M : CTM));
+  pdf_coord__itransform(p, (M ? M : CTM));
 
   return;
 }
+#endif
 
 int
-pdf_dev_arc  (pdf_doc *p,
-              double c_x , double c_y, double r,
+pdf_dev_arc  (double c_x , double c_y, double r,
               double a_0 , double a_1)
 {
-  dpx_stack  *gss = gs_stack;
-  pdf_gstate *gs  = dpx_stack_top(gss);
+  m_stack    *gss = &gs_stack;
+  pdf_gstate *gs  = m_stack_top(gss);
   pdf_path   *cpa = &gs->path;
   pdf_coord  *cpt = &gs->cp;
   pdf_coord   c;
@@ -1650,12 +1744,11 @@ pdf_dev_arc  (pdf_doc *p,
 
 /* *negative* arc */
 int
-pdf_dev_arcn (pdf_doc *p,
-              double c_x , double c_y, double r,
+pdf_dev_arcn (double c_x , double c_y, double r,
               double a_0 , double a_1)
 {
-  dpx_stack  *gss = gs_stack;
-  pdf_gstate *gs  = dpx_stack_top(gss);
+  m_stack    *gss = &gs_stack;
+  pdf_gstate *gs  = m_stack_top(gss);
   pdf_path   *cpa = &gs->path;
   pdf_coord  *cpt = &gs->cp;
   pdf_coord   c;
@@ -1666,15 +1759,14 @@ pdf_dev_arcn (pdf_doc *p,
 }
 
 int
-pdf_dev_arcx (pdf_doc *p,
-              double c_x , double c_y,
+pdf_dev_arcx (double c_x , double c_y,
               double r_x , double r_y,
               double a_0 , double a_1,
               int    a_d ,
               double xar)
 {
-  dpx_stack  *gss = gs_stack;
-  pdf_gstate *gs  = dpx_stack_top(gss);
+  m_stack    *gss = &gs_stack;
+  pdf_gstate *gs  = m_stack_top(gss);
   pdf_path   *cpa = &gs->path;
   pdf_coord  *cpt = &gs->cp;
   pdf_coord   c;
@@ -1686,14 +1778,13 @@ pdf_dev_arcx (pdf_doc *p,
 
 /* Required by Tpic */
 int
-pdf_dev_bspline (pdf_doc *p,
-                 double x0, double y0,
+pdf_dev_bspline (double x0, double y0,
                  double x1, double y1, double x2, double y2)
 {
-  dpx_stack  *gss = gs_stack;
-  pdf_gstate *gs  = dpx_stack_top(gss);
+  m_stack    *gss = &gs_stack;
+  pdf_gstate *gs  = m_stack_top(gss);
   pdf_path   *cpa = &gs->path;
-  pdf_coord  *cpt = &gs->cp;
+  pdf_coord  *cpt = &gs->cp;  
   pdf_coord   p1, p2, p3;
 
   p1.x = x0 + 2.0 * (x1 - x0) / 3.0;
@@ -1708,8 +1799,7 @@ pdf_dev_bspline (pdf_doc *p,
 
 #if 0
 int
-pdf_dev_rectstroke (pdf_doc *p,
-                    double x, double y,
+pdf_dev_rectstroke (double x, double y,
                     double w, double h,
                     const pdf_tmatrix *M  /* optional */
                    )
@@ -1721,13 +1811,12 @@ pdf_dev_rectstroke (pdf_doc *p,
   r.urx = x + w;
   r.ury = y + h;
 
-  return  pdf_dev__rectshape(p, &r, M, 'S');
+  return  pdf_dev__rectshape(&r, M, 'S');
 }
 #endif
 
 int
-pdf_dev_rectfill  (pdf_doc *p,
-                   double x, double y,
+pdf_dev_rectfill  (double x, double y,
                    double w, double h)
 {
   pdf_rect r;
@@ -1737,12 +1826,11 @@ pdf_dev_rectfill  (pdf_doc *p,
   r.urx = x + w;
   r.ury = y + h;
 
-  return  pdf_dev__rectshape(p, &r, NULL, 'f');
+  return  pdf_dev__rectshape(&r, NULL, 'f');
 }
 
 int
-pdf_dev_rectclip (pdf_doc *p,
-                  double x, double y,
+pdf_dev_rectclip (double x, double y,
                   double w, double h)
 {
   pdf_rect r;
@@ -1751,6 +1839,39 @@ pdf_dev_rectclip (pdf_doc *p,
   r.lly = y;
   r.urx = x + w;
   r.ury = y + h;
+  
+  return  pdf_dev__rectshape(&r, NULL, 'W');
+}
 
-  return  pdf_dev__rectshape(p, &r, NULL, 'W');
+int
+pdf_dev_rectadd (double x, double y,
+                  double w, double h)
+{
+  pdf_rect r;
+
+  r.llx = x;
+  r.lly = y;
+  r.urx = x + w;
+  r.ury = y + h;
+  path_added = 1;
+
+  return  pdf_dev__rectshape(&r, NULL, ' ');
+}
+
+void
+pdf_dev_set_fixed_point (double x, double y)
+{
+  m_stack    *gss = &gs_stack;
+  pdf_gstate *gs  = m_stack_top(gss);
+  gs->pt_fixee.x = x;
+  gs->pt_fixee.y = y;
+}
+
+void
+pdf_dev_get_fixed_point (pdf_coord *p)
+{
+  m_stack    *gss = &gs_stack;
+  pdf_gstate *gs  = m_stack_top(gss);
+  p->x = gs->pt_fixee.x;
+  p->y = gs->pt_fixee.y;
 }

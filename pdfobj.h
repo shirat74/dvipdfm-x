@@ -1,20 +1,20 @@
 /* This is dvipdfmx, an eXtended version of dvipdfm by Mark A. Wicks.
 
-    Copyright (C) 2007-2015 by Jin-Hwan Cho and Shunsaku Hirata,
+    Copyright (C) 2007-2018 by Jin-Hwan Cho and Shunsaku Hirata,
     the dvipdfmx project team.
-
+    
     Copyright (C) 1998, 1999 by Mark A. Wicks <mwicks@kettering.edu>
 
     This program is free software; you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
     the Free Software Foundation; either version 2 of the License, or
     (at your option) any later version.
-
+    
     This program is distributed in the hope that it will be useful,
     but WITHOUT ANY WARRANTY; without even the implied warranty of
     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
     GNU General Public License for more details.
-
+    
     You should have received a copy of the GNU General Public License
     along with this program; if not, write to the Free Software
     Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA.
@@ -24,6 +24,8 @@
 #define _PDFOBJ_H_
 
 #include <stdio.h>
+
+typedef struct pdf_out pdf_out;
 
 /* Here is the complete list of PDF object types */
 
@@ -40,31 +42,31 @@
 
 #define PDF_OBJ_INVALID 0
 
-#define STREAM_COMPRESS      (1 << 0)
-#define STREAM_USE_PREDICTOR (1 << 1)
+#define STREAM_COMPRESS (1 << 0)
+#define STREAM_USE_PREDICTOR   (1 << 1)
 
 /* A deeper object hierarchy will be considered as (illegal) loop. */
 #define PDF_OBJ_MAX_DEPTH  30
 
 typedef struct pdf_obj  pdf_obj;
 typedef struct pdf_file pdf_file;
-typedef struct pdf_out  pdf_out;
 
 /* External interface to pdf routines */
-extern int      pdf_obj_get_verbose (void);
-extern void     pdf_obj_set_verbose (void);
 extern void     pdf_error_cleanup   (void);
 
-extern pdf_out *pdf_out_init      (const char *filename, const char *id_str,
-                                   int ver_major, int ver_minor,
-                                   int enable_encrypt, int keybits, int32_t permission,
-                                   const char *opasswd, const char *upasswd,
-                                   int enable_objstm);
-extern void     pdf_out_flush     (pdf_out *p);
-extern unsigned pdf_get_version   (void);
+extern FILE    *pdf_get_output_file (void);
+extern pdf_out *pdf_out_init (const char *filename, const char **id_keys, int num_id_keys,
+                              int ver_major, int ver_minor,
+                              int compression_level,
+                              int enable_encrypt,
+                              int enable_objstm,
+                              int enable_predictor);
+extern void     pdf_out_set_encrypt (int keybits, int32_t permission,
+                                     const char *opasswd, const char *upasswd,
+                                     int use_aes, int encrypt_metadata);
+extern void     pdf_out_flush     (void);
 
-/* FIXME */
-extern void     pdf_out_set_encrypt_dict (pdf_out *p);
+extern int      pdf_get_version   (void);
 
 extern void     pdf_release_obj (pdf_obj *object);
 extern int      pdf_obj_typeof  (pdf_obj *object);
@@ -137,7 +139,7 @@ extern pdf_obj *pdf_dict_keys   (pdf_obj *dict);
  * pdf_link_obj() it rather than allocate/free-ing them each time. But I
  * already removed that.
  */
-extern int      pdf_add_dict     (pdf_obj *dict, pdf_obj *key,    pdf_obj *value);
+extern int      pdf_add_dict     (pdf_obj *dict, pdf_obj *key,    pdf_obj *value); 
 #if 0
 extern void     pdf_put_dict     (pdf_obj *dict, const char *key, pdf_obj *value);
 #endif
@@ -178,28 +180,25 @@ extern int         pdf_compare_reference (pdf_obj *ref1, pdf_obj *ref2);
 /* The following routines are not appropriate for pdfobj.
  */
 
-extern void      pdf_out_set_compression   (pdf_out *p, int level);
-extern void      pdf_out_set_use_predictor (pdf_out *p, int bval);
-
-extern void      pdf_out_set_info     (pdf_out *p, pdf_obj *obj);
-extern void      pdf_out_set_root     (pdf_out *p, pdf_obj *obj);
+extern void      pdf_set_info     (pdf_obj *obj);
+extern void      pdf_set_root     (pdf_obj *obj);
 
 extern void      pdf_files_init    (void);
 extern void      pdf_files_close   (void);
-extern int       check_for_pdf     (FILE *file);
+extern int      check_for_pdf     (FILE *file);
 extern pdf_file *pdf_open          (const char *ident, FILE *file);
 extern void      pdf_close         (pdf_file *pf);
 extern pdf_obj  *pdf_file_get_trailer (pdf_file *pf);
-extern int       pdf_file_get_version (pdf_file *pf);
 extern pdf_obj  *pdf_file_get_catalog (pdf_file *pf);
+extern int       pdf_file_get_version (pdf_file *pf);
 
 extern pdf_obj *pdf_deref_obj     (pdf_obj *object);
 extern pdf_obj *pdf_import_object (pdf_obj *object);
 
-extern int      pdfobj_escape_str (char *dst, size_t dstlen,
-                                   const unsigned char *src, size_t srclen);
+extern int      pdfobj_escape_str (char *buffer, int size, const unsigned char *s, int len);
 
-extern pdf_obj *pdf_new_indirect  (pdf_file *pf,
-                                   uint32_t  label, uint16_t generation);
+extern pdf_obj *pdf_new_indirect  (pdf_file *pf, uint32_t label, uint16_t generation);
+
+extern int pdf_check_version (int major, int minor);
 
 #endif  /* _PDFOBJ_H_ */

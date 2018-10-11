@@ -1,20 +1,20 @@
 /* This is dvipdfmx, an eXtended version of dvipdfm by Mark A. Wicks.
 
-    Copyright (C) 2002-2015 by Jin-Hwan Cho and Shunsaku Hirata,
+    Copyright (C) 2002-2016 by Jin-Hwan Cho and Shunsaku Hirata,
     the dvipdfmx project team.
-
+    
     Copyright (C) 1998, 1999 by Mark A. Wicks <mwicks@kettering.edu>
 
     This program is free software; you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
     the Free Software Foundation; either version 2 of the License, or
     (at your option) any later version.
-
+    
     This program is distributed in the hope that it will be useful,
     but WITHOUT ANY WARRANTY; without even the implied warranty of
     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
     GNU General Public License for more details.
-
+    
     You should have received a copy of the GNU General Public License
     along with this program; if not, write to the Free Software
     Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA.
@@ -30,7 +30,7 @@
 #include "mfileio.h"
 #include "error.h"
 
-#ifdef IODEBUG
+#ifdef IODEBUG 
 static FILE *iodebug_file = NULL;
 static int  event = 0;
 static void io_debug_init(void)
@@ -60,7 +60,7 @@ FILE *mfopen(const char *name, const char *mode, const char *function, int line)
 	  function, line);
   return tmp;
 }
-int mfclose(FILE *file, const char *function, int line)
+int mfclose(FILE *file, const char *function, int line) 
 {
   io_debug_init();
   event += 1;
@@ -75,7 +75,7 @@ static void os_error(void)
   ERROR ("io:  An OS command failed that should not have.\n");
 }
 
-void seek_absolute (FILE *file, int32_t pos)
+void seek_absolute (FILE *file, int32_t pos) 
 {
   if (fseek(file, (long)pos, SEEK_SET)) {
     os_error();
@@ -90,14 +90,14 @@ void seek_relative (FILE *file, int32_t pos)
 }
 
 
-void seek_end (FILE *file)
+void seek_end (FILE *file) 
 {
   if (fseek(file, 0L, SEEK_END)) {
     os_error();
   }
 }
 
-int32_t tell_position (FILE *file)
+int32_t tell_position (FILE *file) 
 {
   long size = ftell (file);
   if (size < 0)
@@ -129,7 +129,7 @@ off_t xfile_size (FILE *file, const char *name)
 }
 
 /* Unlike fgets, mfgets works with \r, \n, or \r\n end of lines. */
-char *mfgets (char *buffer, int length, FILE *file)
+char *mfgets (char *buffer, int length, FILE *file) 
 {
   int ch = 0, i = 0;
   while (i < length-1 && (ch = fgetc (file)) >= 0 && ch != '\n' && ch != '\r')

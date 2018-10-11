@@ -1,20 +1,20 @@
 /* This is dvipdfmx, an eXtended version of dvipdfm by Mark A. Wicks.
 
-    Copyright (C) 2002-2015 by Jin-Hwan Cho and Shunsaku Hirata,
+    Copyright (C) 2002-2016 by Jin-Hwan Cho and Shunsaku Hirata,
     the dvipdfmx project team.
-
+    
     Copyright (C) 1998, 1999 by Mark A. Wicks <mwicks@kettering.edu>
 
     This program is free software; you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
     the Free Software Foundation; either version 2 of the License, or
     (at your option) any later version.
-
+    
     This program is distributed in the hope that it will be useful,
     but WITHOUT ANY WARRANTY; without even the implied warranty of
     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
     GNU General Public License for more details.
-
+    
     You should have received a copy of the GNU General Public License
     along with this program; if not, write to the Free Software
     Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA.
@@ -35,7 +35,6 @@
 #include "pdfparse.h"
 #include "pdfobj.h"
 
-#include "pdfdoc.h"
 #include "pdfcolor.h"
 #include "pdfdraw.h"
 #include "pdfximage.h"
@@ -111,20 +110,14 @@ spc_handler_postscriptbox (struct spc_env *spe, struct spc_arg *ap)
   }
   MFCLOSE(fp);
 
-  form_id = pdf_ximage_findresource(spe->pdf, filename, options);
+  form_id = pdf_ximage_findresource(filename, options);
   if (form_id < 0) {
     spc_warn(spe, "Failed to load image file: %s", filename);
     return  -1;
   }
 
-  {
-    double x, y;
-    spc_get_coord(&x, &y);
-    pdf_dev_put_image(spe->pdf, form_id,
-                      &ti, spe->x_user - x, spe->y_user - y, &spe->info.rect);
-    spe->info.is_drawable = 1;
-  }
-  
+  pdf_dev_put_image(form_id, &ti, spe->x_user, spe->y_user);
+
   return  0;
 }
 

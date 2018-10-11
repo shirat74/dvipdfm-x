@@ -1,6 +1,6 @@
 /* This is dvipdfmx, an eXtended version of dvipdfm by Mark A. Wicks.
 
-    Copyright (C) 2002-2014 by Jin-Hwan Cho and Shunsaku Hirata,
+    Copyright (C) 2002-2018 by Jin-Hwan Cho and Shunsaku Hirata,
     the dvipdfmx project team.
     
     This program is free software; you can redistribute it and/or modify
@@ -23,8 +23,6 @@
 
 #include "sfnt.h"
 #include "otl_opt.h"
-
-extern void otl_gsub_set_verbose (void);
 
 typedef struct otl_gsub otl_gsub;
 
@@ -54,6 +52,12 @@ extern int  otl_gsub_apply_alt (otl_gsub *gsub_list, USHORT alt_idx, USHORT *gid
 extern int  otl_gsub_apply_lig (otl_gsub *gsub_list,
                                 USHORT *gid_in, USHORT num_gids,
                                 USHORT *gid_out);
+
+/* Handle a list of OTL features */
+extern int  otl_gsub_add_feat_list (otl_gsub *gsub_list,
+                                    const char *otl_tags, sfnt *sfont);
+extern int  otl_gsub_set_chain   (otl_gsub *gsub_list, const char *otl_tags);
+extern int  otl_gsub_apply_chain (otl_gsub *gsub_list, USHORT *gid);
 
 #if  0  
 extern int  otl_gsub_dump      (otl_gsub *gsub_list,
