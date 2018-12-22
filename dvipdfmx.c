@@ -39,6 +39,7 @@
 #include "dpxconf.h"
 #include "dpxfile.h"
 #include "dpxutil.h"
+#include "dpxcrypt.h"
 
 #include "dvi.h"
 
@@ -382,6 +383,26 @@ get_enc_password (char *oplain, char *uplain)
   }
 
   return 0;
+}
+
+static void
+compute_id_string (unsigned char *id, const char *producer,
+                   const char *dviname, const char *pdfname)
+{
+  char        datestr[32];
+  MD5_CONTEXT md5;
+
+  MD5_init(&md5);
+  /* Don't use timezone for compatibility */
+  dpx_util_format_asn_date(datestr, 0);
+  MD5_write(&md5, (const unsigned char *)datestr, strlen(datestr));
+  if (producer)
+    MD5_write(&md5, (const unsigned char *)producer, strlen(producer));
+  if (dviname)
+    MD5_write(&md5, (const unsigned char *)dviname, strlen(dviname));
+  if (pdfname)
+    MD5_write(&md5, (const unsigned char *)pdfname, strlen(pdfname));
+  MD5_final(id, &md5);
 }
 
 static const char *optstrig = ":hD:r:m:g:x:y:o:s:p:clf:i:qtvV:z:d:I:K:P:O:MSC:Ee";
@@ -830,7 +851,9 @@ do_dvi_pages (void)
         dvi_scan_specials(page_no,
                           &w, &h, &xo, &yo, &lm,
                           /* No need for encryption options */
-                          NULL, NULL, NULL, NULL, NULL, NULL, NULL);
+                          NULL, NULL, NULL, NULL, NULL, NULL, NULL,
+                          /* No trailer IDs */
+                          NULL, NULL, NULL);
         /* The first page was already scanned once and SWAP() was applied there.
          * Do not apply SWAP() twice!
          * FIXME: SWAP() not applied to paper_width and paper_height. Why?
@@ -959,7 +982,9 @@ main (int argc, char *argv[])
   char              *base;
   struct pdf_setting settings;
   char               uplain[MAX_PWD_LEN+1], oplain[MAX_PWD_LEN+1]; /* encryption password */
-  const char        *ids[4] = {NULL, NULL, NULL, NULL};
+  const char        *creator = NULL;
+  unsigned char      id1[16], id2[16];
+  int                has_id = 0;
 
 #ifdef WIN32
   int ac;
@@ -1061,12 +1086,13 @@ main (int argc, char *argv[])
     dvi2pts = dvi_init(dvi_filename, mag);
     if (dvi2pts == 0.0)
       ERROR("dvi_init() failed!");
-    ids[3] = dvi_comment(); /* Set PDF Creator entry */
+    creator = dvi_comment(); /* Set PDF Creator entry */
     dvi_scan_specials(0,
                       &paper_width, &paper_height,
                       &x_offset, &y_offset, &landscape_mode,
                       &pdf_version_major, &pdf_version_minor,
-                      &do_encryption, &key_bits, &permission, oplain, uplain);
+                      &do_encryption, &key_bits, &permission, oplain, uplain,
+                      &has_id, id1, id2);
   }
 
   /* Command-line options take precedence */
@@ -1084,16 +1110,15 @@ main (int argc, char *argv[])
   settings.ver_major = pdf_version_major;
   settings.ver_minor = pdf_version_minor;
   
-  /* Identifiers for calculating PDF file ID. */
-  {
+  /* PDF trailer ID. */
+  if (!has_id) {
 #define PRODUCER \
 "%s-%s, Copyright 2002-2015 by Jin-Hwan Cho, Matthias Franz, and Shunsaku Hirata"
     char producer[256];
 
     sprintf(producer, PRODUCER, my_name, VERSION);
-    ids[0] = producer;
-    ids[1] = dvi_filename;
-    ids[2] = pdf_filename;
+    compute_id_string(id1, producer, dvi_filename, pdf_filename);
+    memcpy(id2, id1, 16);
   }
   
   /* Encryption settings */
@@ -1141,7 +1166,7 @@ main (int argc, char *argv[])
   set_distiller_template(filter_template);
 
   /* Initialize PDF document creation routine. */
-  pdf_open_document(pdf_filename, ids, settings);
+  pdf_open_document(pdf_filename, creator, id1, id2, settings);
 
   if (opt_flags & OPT_CIDFONT_FIXEDPITCH)
     CIDFont_set_flags(CIDFONT_FORCE_FIXEDPITCH);

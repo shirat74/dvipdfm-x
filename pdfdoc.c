@@ -2480,11 +2480,14 @@ pdf_doc_add_page_content (const char *buffer, unsigned length)
 }
 
 void
-pdf_open_document (const char *filename, const char **ids, struct pdf_setting settings)
+pdf_open_document (const char *filename,
+                   const char *creator,
+                   const unsigned char *id1, const unsigned char *id2,
+                   struct pdf_setting settings)
 {
   pdf_doc *p = &pdoc;
 
-  pdf_out_init(filename, ids, 3,
+  pdf_out_init(filename, id1, id2,
                settings.ver_major, settings.ver_minor, settings.object.compression_level,
                settings.enable_encrypt,
                settings.object.enable_objstm, settings.object.enable_predictor);
@@ -2508,10 +2511,10 @@ pdf_open_document (const char *filename, const char **ids, struct pdf_setting se
   pdf_init_images();
 
   pdf_doc_init_docinfo(p);
-  if (ids[3]) {
+  if (creator) {
     pdf_add_dict(p->info,
                  pdf_new_name("Creator"),
-                 pdf_new_string(ids[3], strlen(ids[3])));
+                 pdf_new_string(creator, strlen(creator)));
   }
 
   pdf_doc_init_bookmarks(p, settings.outline_open_depth);

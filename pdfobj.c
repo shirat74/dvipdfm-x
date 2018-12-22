@@ -35,7 +35,7 @@
 #include "mfileio.h"
 #include "dpxconf.h"
 #include "dpxutil.h"
-#include "dpxcrypt.h"
+
 #include "pdflimits.h"
 #include "pdfencrypt.h"
 #include "pdfparse.h"
@@ -193,7 +193,8 @@ struct pdf_out {
     int         enc_mode; /* boolean */
   } state;
 
-  unsigned char id[16];
+  unsigned char id1[16];
+  unsigned char id2[16];
 
   struct {
     int         major;
@@ -250,7 +251,8 @@ init_pdf_out_struct (pdf_out *p)
 
   p->state.enc_mode = 0;
 
-  memset(p->id, 0, 16);
+  memset(p->id1, 0, 16);
+  memset(p->id2, 0, 16);
 
   p->version.major  = 1;
   p->version.minor  = PDF_VERSION_DEFAULT;
@@ -412,29 +414,11 @@ add_xref_entry (pdf_out *p,
   p->xref_table[label].indirect = NULL;
 }
 
-static void
-compute_id (unsigned char *id, const char **id_keys, int num_id_keys)
-{
-  char        datestr[32];
-  int         i;
-  MD5_CONTEXT md5;
-
-  ASSERT(id);
-
-  MD5_init(&md5);
-  /* Don't use timezone for compatibility */
-  dpx_util_format_asn_date(datestr, 0);
-  MD5_write(&md5, (unsigned char *)datestr, strlen(datestr));
-  for (i = 0; i < num_id_keys; i++) {
-    if (id_keys[i])
-      MD5_write(&md5, (const unsigned char *)id_keys[i], strlen(id_keys[i]));
-  }
-  MD5_final(id, &md5);
-}
-
 #define BINARY_MARKER "%\344\360\355\370\n"
 pdf_out *
-pdf_out_init (const char *filename, const char **id_keys, int num_id_keys,
+pdf_out_init (const char *filename,
+              const unsigned char *id1,
+              const unsigned char *id2,
               int ver_major, int ver_minor, int compression_level,
               int enable_encrypt,
               int enable_objstm,
@@ -495,14 +479,15 @@ pdf_out_init (const char *filename, const char **id_keys, int num_id_keys,
   pdf_out_str(p, "\n", 1);
   pdf_out_str(p, BINARY_MARKER, strlen(BINARY_MARKER));
 
-  /* Compute ID and setup security handler */
+  /* Set trailer ID and setup security handler */
   {
     pdf_obj       *id_array;
 
-    compute_id(p->id, id_keys, num_id_keys);
+    memcpy(p->id1, id1, 16);
+    memcpy(p->id2, id2, 16);
     id_array = pdf_new_array();
-    pdf_add_array(id_array, pdf_new_string(p->id, 16));
-    pdf_add_array(id_array, pdf_new_string(p->id, 16));
+    pdf_add_array(id_array, pdf_new_string(p->id1, 16));
+    pdf_add_array(id_array, pdf_new_string(p->id2, 16));
     pdf_add_dict(p->trailer, pdf_new_name("ID"), id_array);
   }
   p->state.enc_mode = 0;
@@ -520,7 +505,7 @@ pdf_out_set_encrypt (int keybits, int32_t permission,
 
   pdf_obj *encrypt, *extension, *catalog;
 
-  p->sec_data = pdf_enc_init(p->id, keybits, permission,
+  p->sec_data = pdf_enc_init(p->id1, keybits, permission,
                                opasswd, upasswd, use_aes, encrypt_metadata);
   if (!p->sec_data) {
     p->options.enable_encrypt = 0;

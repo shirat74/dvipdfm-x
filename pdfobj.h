@@ -55,7 +55,8 @@ typedef struct pdf_file pdf_file;
 extern void     pdf_error_cleanup   (void);
 
 extern FILE    *pdf_get_output_file (void);
-extern pdf_out *pdf_out_init (const char *filename, const char **id_keys, int num_id_keys,
+extern pdf_out *pdf_out_init (const char *filename,
+                              const unsigned char *id1, const unsigned char *id2,
                               int ver_major, int ver_minor,
                               int compression_level,
                               int enable_encrypt,
