@@ -1945,7 +1945,11 @@ spc_handler_pdfm_tounicode (struct spc_env *spe, struct spc_arg *args)
   }
   RELEASE(cmap_name);
 
-  /* Additional "taint key" */
+  /* Additional "taint key"
+   * An array of PDF name objects can be supplied optionally.
+   * Dictionary entries specified by this option will be added to the list
+   * of dictionary keys to be treated as the target of "ToUnicode" conversion.
+   */
   skip_white(&args->curptr, args->endptr);
   if (args->curptr < args->endptr) {
     pdf_obj *taint_keys;
