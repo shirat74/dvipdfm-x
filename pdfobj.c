@@ -216,6 +216,9 @@ struct pdf_out {
     size_t      file_position;
     int         line_position;
     size_t      compression_saved;
+#if defined(LIBDPX)
+    size_t      file_stats;
+#endif /* LIBDPX */
   } output;
 
   struct {
@@ -266,6 +269,9 @@ init_pdf_out_struct (pdf_out *p)
   p->output.file_position = 0;
   p->output.line_position = 0;
   p->output.compression_saved = 0;
+#if deined(LIBDPX)
+  p->output.file_stats = 0;
+#endif /* LIBDPX */
 
   p->obj.next_label = 1;
   p->obj.max_ind_objects = 0;
@@ -621,7 +627,7 @@ long
 pdf_output_stats (void)
 {
   pdf_out *p = current_output();
-  return p->output.file_position;
+  return p->output.file_stats;
 }
 #endif /* LIBDPX */
 
@@ -680,6 +686,8 @@ pdf_out_flush (void)
     }
 #if !defined(LIBDPX)
     MESG("%ld bytes written", p->output.file_position);
+#else
+    p->output.file_stats = p->output.file_position;
 #endif /* !LIBDPX */
 
     MFCLOSE(p->output.file);
