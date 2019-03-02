@@ -620,11 +620,11 @@ load_cmap4 (struct cmap4 *map,
     for (j = 0; j <= c1 - c0; j++) {
       ch = c0 + j;
       if (map->idRangeOffset[i] == 0) {
-	gid = (ch + map->idDelta[i]) & 0xffff;
+        gid = (ch + map->idDelta[i]) & 0xffff;
       } else if (c0 == 0xffff && c1 == 0xffff &&
                    map->idRangeOffset[i] == 0xffff) {
-	/* this is for protection against some old broken fonts... */
-	gid = 0;
+        /* this is for protection against some old broken fonts... */
+        gid = 0;
       } else {
         gid = (map->glyphIndexArray[j+d] + map->idDelta[i]) & 0xffff;
       }
@@ -633,26 +633,26 @@ load_cmap4 (struct cmap4 *map,
           otl_gsub_apply_chain(gsub_list, &gid);
         if (gsub_vert)
           otl_gsub_apply(gsub_vert, &gid);
-	if (GIDToCIDMap) {
-	  cid = ((GIDToCIDMap[2*gid] << 8)|GIDToCIDMap[2*gid+1]);
-	  if (cid == 0)
+        if (GIDToCIDMap) {
+          cid = ((GIDToCIDMap[2*gid] << 8)|GIDToCIDMap[2*gid+1]);
+          if (cid == 0)
             WARN("GID %u does not have corresponding CID %u.", gid, cid);
-	} else {
-	  cid = gid;
-	}
-	wbuf[0] = 0;
-	wbuf[1] = 0;
-	wbuf[2] = (ch >> 8) & 0xff;
-	wbuf[3] =  ch & 0xff;
-	wbuf[4] = (cid >> 8) & 0xff;
-	wbuf[5] =  cid & 0xff;
-	CMap_add_cidchar(cmap, wbuf, 4, cid);
-	if (tounicode_add) {
-	  unsigned char *p = wbuf + 6;
-	  size_t   uc_len;
-	  uc_len = UC_UTF16BE_encode_char(ch, &p, wbuf + WBUF_SIZE -1 );
-	  CMap_add_bfchar(tounicode_add, wbuf+4, 2, wbuf+6, uc_len);
-	}
+        } else {
+          cid = gid;
+        }
+        wbuf[0] = 0;
+        wbuf[1] = 0;
+        wbuf[2] = (ch >> 8) & 0xff;
+        wbuf[3] =  ch & 0xff;
+        wbuf[4] = (cid >> 8) & 0xff;
+        wbuf[5] =  cid & 0xff;
+        CMap_add_cidchar(cmap, wbuf, 4, cid);
+        if (tounicode_add) {
+          unsigned char *p = wbuf + 6;
+          size_t   uc_len;
+          uc_len = UC_UTF16BE_encode_char(ch, &p, wbuf + WBUF_SIZE -1 );
+          CMap_add_bfchar(tounicode_add, wbuf+4, 2, wbuf+6, uc_len);
+        }
       }
     }
   }
@@ -671,8 +671,7 @@ load_cmap12 (struct cmap12 *map,
 
   for (i = 0; i < map->nGroups; i++) {
     for (ch  = map->groups[i].startCharCode;
-	 ch <= map->groups[i].endCharCode;
-	 ch++) {
+         ch <= map->groups[i].endCharCode; ch++) {
       int  d = ch - map->groups[i].startCharCode;
       gid = (USHORT) ((map->groups[i].startGlyphID + d) & 0xffff);
       if (gsub_list)
@@ -680,11 +679,11 @@ load_cmap12 (struct cmap12 *map,
       if (gsub_vert)
         otl_gsub_apply(gsub_vert, &gid);
       if (GIDToCIDMap) {
-	cid = ((GIDToCIDMap[2*gid] << 8)|GIDToCIDMap[2*gid+1]);
-	if (cid == 0)
-	  WARN("GID %u does not have corresponding CID %u.", gid, cid);
+        cid = ((GIDToCIDMap[2*gid] << 8)|GIDToCIDMap[2*gid+1]);
+        if (cid == 0)
+          WARN("GID %u does not have corresponding CID %u.", gid, cid);
       } else {
-	cid = gid;
+        cid = gid;
       }
       wbuf[0] = (ch >> 24) & 0xff;
       wbuf[1] = (ch >> 16) & 0xff;
@@ -718,8 +717,7 @@ load_cmap12 (struct cmap12 *map,
 #include "cff.h"
 
 static int
-handle_CIDFont (sfnt *sfont,
-		unsigned char **GIDToCIDMap, CIDSysInfo *csi)
+handle_CIDFont (sfnt *sfont, unsigned char **GIDToCIDMap, CIDSysInfo *csi)
 {
   cff_font *cffont;
   int       offset, i;
@@ -850,8 +848,10 @@ handle_CIDFont (sfnt *sfont,
 
 static int is_PUA_or_presentation (unsigned int uni)
 {
-  /* KANGXI RADICALs are commonly double encoded. */
-  return  ((uni >= 0x2F00 && uni <= 0x2FD5) ||
+  /* Some of CJK Radicals Supplement and Kangxi Radicals
+   * are commonly double encoded, lower the priority.
+   */
+  return  ((uni >= 0x2E80 && uni <= 0x2EF3) || (uni >= 0x2F00 && uni <= 0x2FD5) ||
            (uni >= 0xE000 && uni <= 0xF8FF) || (uni >= 0xFB00 && uni <= 0xFB4F) ||
            (uni >= 0xF0000 && uni <= 0xFFFFD) || (uni >= 0x100000 && uni <= 0x10FFFD));
 }
@@ -1123,14 +1123,14 @@ create_ToUnicode_cmap (tt_cmap *ttcmap,
     /* For create_ToUnicode_cmap{4,12}(), cffont is for GID -> CID lookup,
      * so it is only needed for CID fonts. */
     switch (ttcmap->format) {
-      case 4:
-        count = create_ToUnicode_cmap4(cmap, ttcmap->map, used_chars_copy,
-                                       is_cidfont ? cffont : NULL);
-        break;
-      case 12:
-        count = create_ToUnicode_cmap12(cmap, ttcmap->map, used_chars_copy,
-                                        is_cidfont ? cffont : NULL);
-        break;
+    case 4:
+      count = create_ToUnicode_cmap4(cmap, ttcmap->map, used_chars_copy,
+                                     is_cidfont ? cffont : NULL);
+      break;
+    case 12:
+      count = create_ToUnicode_cmap12(cmap, ttcmap->map, used_chars_copy,
+                                      is_cidfont ? cffont : NULL);
+      break;
     }
 
     /* For handle_subst_glyphs(), cffont is for GID -> glyph name lookup, so
