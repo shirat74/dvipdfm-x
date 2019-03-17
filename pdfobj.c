@@ -269,7 +269,7 @@ init_pdf_out_struct (pdf_out *p)
   p->output.file_position = 0;
   p->output.line_position = 0;
   p->output.compression_saved = 0;
-#if deined(LIBDPX)
+#if defined(LIBDPX)
   p->output.file_stats = 0;
 #endif /* LIBDPX */
 
