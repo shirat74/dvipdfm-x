@@ -1680,70 +1680,147 @@ otl_gsub_apply_chain (otl_gsub *gsub_list, USHORT *gid) {
   return retval;
 }
 
-#if  0
-static int
-otl_gsub_dump_single (struct otl_gsub_subtab *subtab)
+#if  1
+#include "unicode.h"
+
+static void
+add_glyph_if_valid (int32_t *map_base, int32_t *map_sub, USHORT num_glyphs,
+                    USHORT gid, USHORT gid_sub)
 {
-  int  gid, idx;
+    if (gid_sub < num_glyphs && gid < num_glyphs) {
+      int32_t ch = map_base[gid];
+      if (UC_is_valid(ch)) {
+        map_base[gid_sub] = ch;
+      } else {
+        ch = map_sub[gid];
+        if (UC_is_valid(ch)) {
+          map_sub[gid_sub] = ch;
+        }
+      }
+      // WARN("%u --> U+%04x", gid_sub, ch); /* DEBUG */
+    }
+}
+
+static int
+otl_gsub_dump_single (struct otl_gsub_subtab *subtab,
+                      int32_t *map_base, int32_t *map_sub, USHORT num_glyphs)
+{
+  int32_t i, idx, gid;
+  USHORT  gid_sub;
 
   ASSERT(subtab);
 
   if (subtab->SubstFormat == 1) {
     struct otl_gsub_single1 *data;
+    struct clt_coverage      *cov;
 
     data = (subtab->table).single1;
-    for (gid = 0; gid < 0x10000; gid++) {
-      idx  = clt_lookup_coverage(&data->coverage, gid);
-      if (idx >= 0) {
-        fprintf(stdout, "substitute \\%u by \\%u;\n",
-                (USHORT) gid, (USHORT) (gid + data->DeltaGlyphID));
+    cov  = &data->coverage;
+    switch (cov->format) {
+    case 1: /* list */
+      for (idx = 0; idx < cov->count; idx++) {
+        gid = cov->list[idx];
+        gid_sub = gid + data->DeltaGlyphID;
+        add_glyph_if_valid(map_base, map_sub, num_glyphs, gid, gid_sub);
       }
+      break;
+    case 2: /* range */
+      for (i = 0; i < cov->count; i++) {
+        for (gid = cov->range[i].Start;
+             gid <= cov->range[i].End && gid < num_glyphs; gid++) {
+          idx = cov->range[i].StartCoverageIndex + gid - cov->range[i].Start;
+          gid_sub = gid + data->DeltaGlyphID;
+          add_glyph_if_valid(map_base, map_sub, num_glyphs, gid, gid_sub);     
+        }
+      }
+      break;
     }
   } else if (subtab->SubstFormat == 2) {
     struct otl_gsub_single2 *data;
+    struct clt_coverage      *cov;
 
     data = (subtab->table).single2;
-    for (gid = 0; gid < 0x10000; gid++) {
-      idx  = clt_lookup_coverage(&data->coverage, gid);
-      if (idx >= 0 &&
-          idx < data->GlyphCount) {
-        fprintf(stdout, "substitute \\%u by \\%u;\n",
-                (USHORT) gid, (data->Substitute)[idx]);
+    cov  = &data->coverage;
+    switch (cov->format) {
+    case 1: /* list */
+      for (idx = 0; idx < cov->count; idx++) {
+        gid = cov->list[idx];
+        if (idx >= 0 && idx < data->GlyphCount) {
+          gid_sub = (data->Substitute)[idx];
+          add_glyph_if_valid(map_base, map_sub, num_glyphs, gid, gid_sub);
+        }
       }
+      break;
+    case 2: /* range */
+      for (i = 0; i < cov->count; i++) {
+        for (gid = cov->range[i].Start;
+             gid <= cov->range[i].End && gid < num_glyphs; gid++) {
+          idx = cov->range[i].StartCoverageIndex + gid - cov->range[i].Start;
+          if (idx >= 0 && idx < data->GlyphCount) {
+            gid_sub = (data->Substitute)[idx];
+            add_glyph_if_valid(map_base, map_sub, num_glyphs, gid, gid_sub);
+          }
+        }
+      }
+      break;
     }
   }
 
   return  0;
 }
 
-static int
-otl_gsub_dump_alternate (struct otl_gsub_subtab *subtab)
+static void   
+add_alternate1_inverse_map (int32_t *map_base, int32_t *map_sub, USHORT num_glyphs,
+                            USHORT gid, int idx,
+                            struct otl_gsub_alternate1 *data)
 {
-  int  gid, idx;
+  if (idx >= 0 && idx < data->AlternateSetCount) {
+    struct otl_gsub_altset *altset;
+    USHORT i;
+
+    altset = &(data->AlternateSet[idx]);
+    if (altset->GlyphCount == 0)
+      return;
+    for (i = 0; i < altset->GlyphCount; i++) {
+      USHORT gid_alt = altset->Alternate[i];
+      add_glyph_if_valid(map_base, map_sub, num_glyphs, gid, gid_alt);
+    }
+  }
+}
+
+static int
+otl_gsub_dump_alternate (struct otl_gsub_subtab *subtab,
+                         int32_t *map_base, int32_t *map_sub, USHORT num_glyphs)
+{
+  int  i, gid, idx;
 
   ASSERT(subtab);
 
   if (subtab->SubstFormat == 1) {
     struct otl_gsub_alternate1 *data;
-
+    struct clt_coverage        *cov;
     data = subtab->table.alternate1;
-    for (gid = 0; gid < 0x10000; gid++) {
-      idx  = clt_lookup_coverage(&data->coverage, gid);
-      if (idx >= 0 && idx < data->AlternateSetCount) {
-        struct otl_gsub_altset *altset;
-        USHORT i;
-        altset = &(data->AlternateSet[idx]);
-        if (altset->GlyphCount == 0)
-          continue;
-        fprintf(stdout, "substitute \\%u from [", (USHORT) gid);
-        for (i = 0; i < altset->GlyphCount; i++) {
-          fprintf(stdout, " \\%u", altset->Alternate[i]);
+    cov  = &data->coverage;
+    switch (cov->format) {
+    case 1: /* list */
+      for (idx = 0; idx < cov->count; idx++) {
+        gid = cov->list[idx];
+        if (gid < num_glyphs) {
+          add_alternate1_inverse_map(map_base, map_sub, num_glyphs, gid, idx, data);
         }
-        fprintf(stdout, " ];\n");
       }
+      break;
+    case 2: /* range */
+      for (i = 0; i < cov->count; i++) {
+        for (gid = cov->range[i].Start;
+             gid <= cov->range[i].End && gid < num_glyphs; gid++) {
+          idx = cov->range[i].StartCoverageIndex + gid - cov->range[i].Start;
+          add_alternate1_inverse_map(map_base, map_sub, num_glyphs, gid, idx, data);      
+        }
+      }
+      break;
     }
   }
-
   return  0;
 }
 
@@ -1779,47 +1856,37 @@ otl_gsub_dump_ligature (struct otl_gsub_subtab *subtab)
 }
 
 int
-otl_gsub_dump (otl_gsub *gsub_list,
-               const char *script, const char *language, const char *feature)
+otl_gsub_dump (int32_t *map_base, int32_t *map_sub, USHORT num_glyphs, sfnt *sfont)
 {
-  int    error = -1;
+  int       error = 0;
+  otl_gsub *gsub_list;
   struct otl_gsub_tab    *gsub;
   struct otl_gsub_subtab *subtab;
-  int    sel, i, j;
+  int       i, j;
 
-  if (!gsub_list)
-    return  -1;
+  gsub_list = otl_gsub_new();
+  otl_gsub_add_feat(gsub_list, "*", "*", "*", sfont);
 
-  sel   = gsub_list->select;
-  error = otl_gsub_select(gsub_list, script, language, feature);
-  if (error < 0) {
-    ERROR("GSUB feature %s.%s.%s not found.", script, language, feature);
-  }
-
-  i = gsub_list->select;
-  if (i < 0 || i >= gsub_list->num_gsubs) {
-    ERROR("GSUB not selected...");
-    return -1;
-  }
-  gsub = &(gsub_list->gsubs[i]);
-
-  for (j = 0;
-       !error &&
-       j < gsub->num_subtables; j++) {
-    subtab = &(gsub->subtables[j]);
-    switch ((int) subtab->LookupType){
-    case OTL_GSUB_TYPE_SINGLE:
-      error = otl_gsub_dump_single(subtab);
-      break;
-    case OTL_GSUB_TYPE_ALTERNATE:
-      error = otl_gsub_dump_alternate(subtab);
-      break;
-    case OTL_GSUB_TYPE_LIGATURE:
-      error = otl_gsub_dump_ligature(subtab);
-      break;
+  for (i = 0; i < gsub_list->num_gsubs; i++) {
+    gsub = &(gsub_list->gsubs[i]);
+    for (j = 0;
+         !error &&
+         j < gsub->num_subtables; j++) {
+      subtab = &(gsub->subtables[j]);
+      switch ((int) subtab->LookupType){
+      case OTL_GSUB_TYPE_SINGLE:
+        error = otl_gsub_dump_single(subtab, map_base, map_sub, num_glyphs);
+        break;
+      case OTL_GSUB_TYPE_ALTERNATE:
+        error = otl_gsub_dump_alternate(subtab, map_base, map_sub, num_glyphs);
+        break;
+    //case OTL_GSUB_TYPE_LIGATURE:
+      //error = otl_gsub_dump_ligature(subtab);
+      //break;
+      }
     }
   }
-  gsub_list->select = sel;
+  otl_gsub_release(gsub_list);
 
   return  error;
 }

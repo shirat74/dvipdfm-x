@@ -998,50 +998,11 @@ prepare_CIDFont_from_sfnt(sfnt* sfont)
   return cffont;
 }
 
-static USHORT
-add_to_cmap_if_used (CMap *cmap,
-                     cff_font *cffont,
-                     char *used_chars,
-                     USHORT gid,
-                     ULONG ch)
+static void
+create_inverse_cmap4 (int32_t *map_base, int32_t *map_sub, USHORT num_glyphs,
+                      struct cmap4 *map)
 {
-  USHORT count = 0;
-  USHORT cid = cffont ? cff_charsets_lookup_inverse(cffont, gid) : gid;
-  if (is_used_char2(used_chars, cid)) {
-    int len;
-    unsigned char *p = wbuf + 2;
-
-    count++;
-
-    wbuf[0] = (cid >> 8) & 0xff;
-    wbuf[1] = (cid & 0xff);
-    len = UC_UTF16BE_encode_char((int32_t) ch, &p, wbuf + WBUF_SIZE);
-    CMap_add_bfchar(cmap, wbuf, 2, wbuf + 2, len);
-
-    /* Skip PUA characters and alphabetic presentation forms, allowing
-     * handle_subst_glyphs() as it might find better mapping. Fixes the
-     * mapping of ligatures encoded in PUA in fonts like Linux Libertine
-     * and old Adobe fonts.
-     */
-    if (!is_PUA_or_presentation(ch)) {
-      /* Avoid duplicate entry
-       * There are problem when two Unicode code is mapped to
-       * single glyph...
-       */
-      used_chars[cid / 8] &= ~(1 << (7 - (cid % 8)));
-    }
-  }
-
-  return count;
-}
-
-static USHORT
-create_ToUnicode_cmap4 (CMap *cmap,
-                        struct cmap4 *map,
-                        char *used_chars,
-                        cff_font *cffont)
-{
-  USHORT count = 0, segCount = map->segCountX2 / 2;
+  USHORT segCount = map->segCountX2 / 2;
   USHORT i, j;
 
   for (i = 0; i < segCount; i++) {
@@ -1060,32 +1021,33 @@ create_ToUnicode_cmap4 (CMap *cmap,
       } else {
         gid = (map->glyphIndexArray[j + d] + map->idDelta[i]) & 0xffff;
       }
-
-      count += add_to_cmap_if_used(cmap, cffont, used_chars, gid, ch);
+      if (is_PUA_or_presentation(ch)) {
+        map_sub[gid] = ch;
+      } else { 
+        map_base[gid] = ch;
+      }
     }
   }
-
-  return count;
 }
 
-static USHORT
-create_ToUnicode_cmap12 (CMap *cmap,
-                         struct cmap12 *map,
-                         char *used_chars,
-                         cff_font *cffont)
+static void
+create_inverse_cmap12 (int32_t *map_base, int32_t *map_sub, USHORT num_glyphs,
+                       struct cmap12 *map)
 {
-  ULONG i, ch, count = 0;
+  ULONG i, ch;
 
   for (i = 0; i < map->nGroups; i++) {
     for (ch  = map->groups[i].startCharCode;
          ch <= map->groups[i].endCharCode; ch++) {
       int d = ch - map->groups[i].startCharCode;
       USHORT gid = (USHORT) ((map->groups[i].startGlyphID + d) & 0xffff);
-      count += add_to_cmap_if_used(cmap, cffont, used_chars, gid, ch);
+      if (is_PUA_or_presentation(ch)) {
+        map_sub[gid] = ch;
+      } else {
+        map_base[gid] = ch;        
+      }      
     }
   }
-
-  return count;
 }
 
 /* NOTE: Reverse mapping code which had been placed here is removed since:
@@ -1094,57 +1056,137 @@ create_ToUnicode_cmap12 (CMap *cmap,
  * Especially, the second one causes problems.
  */  
 static pdf_obj *
-create_ToUnicode_cmap (tt_cmap *ttcmap,
+create_ToUnicode_cmap (tt_cmap    *ttcmap,
                        const char *cmap_name,
-                       CMap *cmap_add,
+                       CMap       *cmap_add,
                        const char *used_chars,
-                       sfnt *sfont)
+                       sfnt       *sfont)
 {
   pdf_obj  *stream = NULL;
-  CMap     *cmap;
-  USHORT    count = 0;
-  cff_font *cffont = prepare_CIDFont_from_sfnt(sfont);
-  char      is_cidfont = cffont && (cffont->flag & FONTTYPE_CIDFONT);
+  cff_font *cffont = NULL;
+  char      is_cidfont  = 0;
+  USHORT   *CIDToGIDMap = NULL;
+  int32_t  *map_base = NULL, *map_sub = NULL;
+  USHORT    num_glyphs = 0;
 
-  cmap = CMap_new();
-  CMap_set_name (cmap, cmap_name);
-  CMap_set_wmode(cmap, 0);
-  CMap_set_type (cmap, CMAP_TYPE_TO_UNICODE);
-  CMap_set_CIDSysInfo(cmap, &CSI_UNICODE);
-  CMap_add_codespacerange(cmap, srange_min, srange_max, 2);
+  ASSERT(ttcmap);
 
-  /* cmap_add here stores information about all unencoded glyphs which can be
-   * accessed only through OT Layout GSUB table.
-   */
+  cffont = prepare_CIDFont_from_sfnt(sfont);
+  is_cidfont = cffont && (cffont->flag & FONTTYPE_CIDFONT);
   {
-    char used_chars_copy[8192];
-    memcpy(used_chars_copy, used_chars, 8192);
+    struct tt_maxp_table *maxp;
+    
+    maxp = tt_read_maxp_table(sfont);
+    if (maxp) {
+      num_glyphs = maxp->numGlyphs;
+      RELEASE(maxp);
+    }
+    WARN("num_glyphs: %s, %u", cmap_name, num_glyphs);
+  }
+  map_base = NEW(num_glyphs, int32_t);
+  memset(map_base, -1, num_glyphs);
+  map_sub  = NEW(num_glyphs, int32_t);
+  memset(map_base, -1, num_glyphs);
+  CIDToGIDMap = NEW(65536, uint16_t);
+  {
+    int32_t cid;
 
-    /* For create_ToUnicode_cmap{4,12}(), cffont is for GID -> CID lookup,
-     * so it is only needed for CID fonts. */
+    if (cffont) {
+      memset(CIDToGIDMap, 0, 65536);
+      for (cid = 0; cid < 65536; cid++) {
+        uint16_t gid = cffont ? cff_charsets_lookup(cffont, cid) : cid;
+        CIDToGIDMap[cid] = gid;
+      }
+    } else {
+      for (cid = 0; cid < 65536; cid++) {
+        CIDToGIDMap[cid] = (USHORT) cid;
+      }
+    }
+  }
+ 
+  {
     switch (ttcmap->format) {
     case 4:
-      count = create_ToUnicode_cmap4(cmap, ttcmap->map, used_chars_copy,
-                                     is_cidfont ? cffont : NULL);
+      create_inverse_cmap4(map_base, map_sub, num_glyphs, ttcmap->map);
       break;
     case 12:
-      count = create_ToUnicode_cmap12(cmap, ttcmap->map, used_chars_copy,
-                                      is_cidfont ? cffont : NULL);
+      create_inverse_cmap12(map_base, map_sub, num_glyphs, ttcmap->map);
       break;
     }
+    otl_gsub_dump(map_base, map_sub, num_glyphs, sfont);
+  }
 
+
+  {
+    CMap   *cmap;
+    int32_t i, count;
+  
+    cmap = CMap_new();
+    CMap_set_name (cmap, cmap_name);
+    CMap_set_wmode(cmap, 0);
+    CMap_set_type (cmap, CMAP_TYPE_TO_UNICODE);
+    CMap_set_CIDSysInfo(cmap, &CSI_UNICODE);
+    CMap_add_codespacerange(cmap, srange_min, srange_max, 2);
+
+    count = 0;
+    for (i = 0; i < 8192; i++) {
+      if (used_chars[i] != 0) {
+        int j;
+        for (j = 0; j < 8; j++) {
+          uint16_t cid = 8 * i + j;
+          if (is_used_char2(used_chars, cid)) {
+            USHORT gid = CIDToGIDMap[cid];
+            if (gid < num_glyphs) {
+              int32_t ch = map_base[gid];
+              if (UC_is_valid(ch)) {
+                unsigned char buf[256], *p;
+                size_t        len;
+                p = buf + 2;
+                buf[0] = (cid >> 8) & 0xff;
+                buf[1] = cid & 0xff;
+                len = UC_UTF16BE_encode_char(ch, &p, buf + 254);
+                CMap_add_bfchar(cmap, buf, 2, buf + 2, len);
+                WARN("base: %u --> U+%04X", gid, ch); /* DEBUG */
+                count++;
+              } else {
+                ch = map_sub[gid];
+                if (UC_is_valid(ch)) {
+                  unsigned char buf[256], *p;
+                  size_t        len;
+                  p = buf + 2;
+                  buf[0] = (cid >> 8) & 0xff;
+                  buf[1] = cid & 0xff;
+                  len = UC_UTF16BE_encode_char(ch, &p, buf + 254);
+                  CMap_add_bfchar(cmap, buf, 2, buf + 2, len);
+                  WARN("sub: %u --> U+%04X", gid, ch); /* DEBUG */
+                  count++;
+                } else {
+                  WARN("ToUnicode mapping unavailable for glyph CID=%u.", cid);
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+    /* cmap_add here stores information about all unencoded glyphs which can be
+     * accessed only through OT Layout GSUB table.
+     */
     /* For handle_subst_glyphs(), cffont is for GID -> glyph name lookup, so
      * it is only needed for non-CID fonts. */
-    count += handle_subst_glyphs(cmap, cmap_add, used_chars_copy, sfont,
+    count += handle_subst_glyphs(cmap, cmap_add, used_chars, sfont,
                                  is_cidfont ? NULL : cffont);
+  
+    if (count < 1)
+      stream = NULL;
+    else {
+      stream = CMap_create_stream(cmap);
+    }
+    CMap_release(cmap);  
   }
-
-  if (count < 1)
-    stream = NULL;
-  else {
-    stream = CMap_create_stream(cmap);
-  }
-  CMap_release(cmap);
+  RELEASE(CIDToGIDMap);
+  RELEASE(map_base);
+  RELEASE(map_sub);
 
   if (cffont)
     cff_close(cffont);
