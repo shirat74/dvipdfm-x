@@ -856,14 +856,13 @@ static int is_PUA_or_presentation (unsigned int uni)
            (uni >= 0xF0000 && uni <= 0xFFFFD) || (uni >= 0x100000 && uni <= 0x10FFFD));
 }
 
-static char*
-sfnt_get_glyphname(struct tt_post_table *post, cff_font *cffont, USHORT gid)
+static char *
+lookup_glyph_name (struct tt_post_table *post, cff_font *cffont, USHORT gid)
 {
-  char* name = NULL;
+  char *name = NULL;
 
   if (post)
     name = tt_get_glyphname(post, gid);
-
   if (!name && cffont)
     name = cff_get_glyphname(cffont, gid);
 
@@ -879,97 +878,82 @@ sfnt_get_glyphname(struct tt_post_table *post, cff_font *cffont, USHORT gid)
 #define is_used_char2(b,c) (((b)[(c)/8]) & (1 << (7-((c)%8))))
 #endif
 
-static USHORT
-handle_subst_glyphs (CMap     *cmap,
-                     CMap     *cmap_add,
-                     char     *used_chars,
-                     sfnt     *sfont,
-                     cff_font *cffont)
+static int32_t
+handle_subst_glyphs (CMap *cmap, CMap *cmap_add, char *used_chars)
 {
-  USHORT count;
-  USHORT i;
+  int32_t count = 0;
+  int32_t cid;
+
+  for (cid = 0; cid < 65536; cid++) {
+    if (!is_used_char2(used_chars, cid))
+      continue;
+    else {
+      unsigned char        buf[256];
+      int                  inbytesleft = 2, outbytesleft = 254;
+      size_t               len;
+      unsigned char       *outbuf = buf + 2;
+      const unsigned char *inbuf  = buf;
+
+      buf[0] = (cid >> 8) & 0xff;
+      buf[1] =  cid & 0xff;
+      CMap_decode(cmap_add, &inbuf, &inbytesleft, &outbuf, &outbytesleft);
+      if (inbytesleft == 0) {
+        len = 254 - outbytesleft;
+        CMap_add_bfchar(cmap, buf, 2, buf + 2, len);
+        used_chars[cid / 8] &= ~(1 << (7 - (cid % 8)));         
+        count++;
+      }
+    }
+  }
+
+  return count;
+}
+
+static int32_t
+add_ToUnicode_via_glyph_name (CMap *cmap, char *used_chars, USHORT num_glyphs,
+                              uint16_t *GIDToCIDMap,
+                              sfnt *sfont, cff_font *cffont)
+{
+  int32_t               count = 0;
+  USHORT                gid;
   struct tt_post_table *post = NULL;
 
-  if (!cmap_add)
-    post = tt_read_post_table(sfont);
+  post = tt_read_post_table(sfont);
+  if (!post && !cffont)
+    return count;
 
-  for (count = 0, i = 0; i < 8192; i++) {
-    int   j;
-    int32_t  len;
-    int  inbytesleft, outbytesleft;
-    const unsigned char *inbuf;
-    unsigned char *outbuf;
+  for (gid = 0; gid < num_glyphs; gid++) {
+    uint16_t cid = GIDToCIDMap[gid];
+    if (is_used_char2(used_chars, cid)) {
+#define MAX_UNICODES 32
+      char   *name;
+      int32_t unicodes[MAX_UNICODES];
+      int     unicode_count = -1;
 
-    if (used_chars[i] == 0)
-      continue;
-
-    for (j = 0; j < 8; j++) {
-      USHORT gid = 8 * i + j;
-
-      if (!is_used_char2(used_chars, gid))
-        continue;
-
-      if (!cmap_add) {
-#define MAX_UNICODES	16
-        /* try to look up Unicode values from the glyph name... */
-        char* name;
-        int32_t unicodes[MAX_UNICODES];
-        int  unicode_count = -1;
-        name = sfnt_get_glyphname(post, cffont, gid);
-        if (name) {
-          unicode_count = agl_get_unicodes(name, unicodes, MAX_UNICODES);
-        }
+      name = lookup_glyph_name(post, cffont, gid);
+      if (name) {
+        unicode_count = agl_get_unicodes(name, unicodes, MAX_UNICODES);
 #undef MAX_UNICODES
-        if (unicode_count == -1) {
-          if(dpx_conf.verbose_level > VERBOSE_LEVEL_MIN) {
-            if (name)
-              MESG("No Unicode mapping available: GID=%u, name=%s\n", gid, name);
-            else
-              MESG("No Unicode mapping available: GID=%u\n", gid);
-          }
-        } else {
-          /* the Unicode characters go into wbuf[2] and following, in UTF16BE */
-          /* we rely on WBUF_SIZE being more than adequate for MAX_UNICODES  */
-          unsigned char* p = wbuf + 2;
-          int  k;
-          len = 0;
-          for (k = 0; k < unicode_count; ++k) {
-            len += UC_UTF16BE_encode_char(unicodes[k], &p, wbuf+WBUF_SIZE);
-          }
-          wbuf[0] = (gid >> 8) & 0xff;
-          wbuf[1] =  gid & 0xff;
-          CMap_add_bfchar(cmap, wbuf, 2, wbuf + 2, len);
-          used_chars[gid / 8] &= ~(1 << (7 - (gid % 8)));         
-          count++;
-        }
         RELEASE(name);
-      } else {
-        wbuf[0] = (gid >> 8) & 0xff;
-        wbuf[1] =  gid & 0xff;
+        if (unicode_count > 0) {
+          unsigned char *buf;
+          unsigned char *p, *endptr;
+          int            k;
+          size_t         len = 0;
 
-        inbuf        = wbuf;
-        inbytesleft  = 2;
-        outbuf       = wbuf + 2;
-        outbytesleft = WBUF_SIZE - 2;
-        CMap_decode(cmap_add, &inbuf, &inbytesleft, &outbuf, &outbytesleft);
-
-        if (inbytesleft != 0) {
-          WARN("CMap conversion failed...");
-        } else {
-          len = WBUF_SIZE - 2 - outbytesleft;
-          CMap_add_bfchar(cmap, wbuf, 2, wbuf + 2, len);
-          used_chars[gid / 8] &= ~(1 << (7 - (gid % 8)));         
+          buf    = NEW(unicode_count*4+2, unsigned char);
+          p      = buf + 2;
+          endptr = buf + (unicode_count * 4 + 2);
+          for (k = 0; k < unicode_count; ++k) {
+            len += UC_UTF16BE_encode_char(unicodes[k], &p, endptr);
+          }
+          buf[0] = (cid >> 8) & 0xff;
+          buf[1] =  cid & 0xff;
+          CMap_add_bfchar(cmap, buf, 2, buf + 2, len);
+          used_chars[cid / 8] &= ~(1 << (7 - (cid % 8)));         
           count++;
 
-          if (dpx_conf.verbose_level > VERBOSE_LEVEL_MIN) {
-            int _i;
-
-            MESG("otf_cmap>> Additional ToUnicode mapping: <%04X> <", gid);
-            for (_i = 0; _i < len; _i++) {
-              MESG("%02X", wbuf[2 + _i]);
-            }
-            MESG(">\n");
-          }
+          RELEASE(buf);
         }
       }
     }
@@ -1071,6 +1055,7 @@ create_ToUnicode_cmap (tt_cmap    *ttcmap,
 
   ASSERT(ttcmap);
 
+  /* Get num_glyphs from maxp talbe */
   {
     struct tt_maxp_table *maxp;
     
@@ -1080,6 +1065,8 @@ create_ToUnicode_cmap (tt_cmap    *ttcmap,
       RELEASE(maxp);
     }
   }
+
+  /* Initialize GID to Unicode mapping table */
   map_base = NEW(num_glyphs, int32_t);
   map_sub  = NEW(num_glyphs, int32_t);
   for (gid = 0; gid < num_glyphs; gid++) {
@@ -1087,6 +1074,7 @@ create_ToUnicode_cmap (tt_cmap    *ttcmap,
     map_sub [gid] = -1;
   }
 
+  /* Create "base" mapping from inverse mapping of OpenType cmap */
   switch (ttcmap->format) {
   case 4:
     create_inverse_cmap4(map_base, map_sub, num_glyphs, ttcmap->map);
@@ -1096,6 +1084,7 @@ create_ToUnicode_cmap (tt_cmap    *ttcmap,
     break;
   }
 
+  /* Now create ToUnicode CMap stream */
   {
     CMap     *cmap;
     int32_t   count;
@@ -1106,19 +1095,18 @@ create_ToUnicode_cmap (tt_cmap    *ttcmap,
 
     cffont = prepare_CIDFont_from_sfnt(sfont);
     is_cidfont = cffont && (cffont->flag & FONTTYPE_CIDFONT);
-    
+
+    /* GIT to CID mapping info. */
     GIDToCIDMap = NEW(num_glyphs, uint16_t);
-    {
-      if (cffont) {
-        memset(GIDToCIDMap, 0, num_glyphs);
-        for (gid = 0; gid < num_glyphs; gid++) {
-          uint16_t cid = cff_charsets_lookup_inverse(cffont, gid);
-          GIDToCIDMap[gid] = cid;
-        }
-      } else {
-        for (gid = 0; gid < num_glyphs; gid++) {
-          GIDToCIDMap[gid] = gid;
-        }
+    if (is_cidfont) {
+      memset(GIDToCIDMap, 0, num_glyphs);
+      for (gid = 0; gid < num_glyphs; gid++) {
+        uint16_t cid = cff_charsets_lookup_inverse(cffont, gid);
+        GIDToCIDMap[gid] = cid;
+      }
+    } else {
+      for (gid = 0; gid < num_glyphs; gid++) {
+        GIDToCIDMap[gid] = gid;
       }
     }
  
@@ -1135,60 +1123,68 @@ create_ToUnicode_cmap (tt_cmap    *ttcmap,
     for (gid = 0; gid < num_glyphs; gid++) {
       uint16_t cid = GIDToCIDMap[gid];
       if (is_used_char2(used_chars_copy, cid)) {
-        int32_t ch = map_base[gid];
+        int32_t        ch;
+        unsigned char  src[2], dst[4];
+        unsigned char *p = dst, *endptr = dst + 4;
+        size_t         len;
 
+        ch = map_base[gid];
         if (UC_is_valid(ch)) {
-          unsigned char buf[256], *p;
-          size_t        len;
-          p = buf + 2;
-          buf[0] = (cid >> 8) & 0xff;
-          buf[1] = cid & 0xff;
-          len = UC_UTF16BE_encode_char(ch, &p, buf + 254);
-          CMap_add_bfchar(cmap, buf, 2, buf + 2, len);
+          src[0] = (cid >> 8) & 0xff;
+          src[1] = cid & 0xff;
+          len = UC_UTF16BE_encode_char(ch, &p, endptr);
+          CMap_add_bfchar(cmap, src, 2, dst, len);
           used_chars_copy[cid / 8] &= ~(1 << (7 - (cid % 8)));
           count++;
-        } else {
-          ch = map_sub[gid];
-          if (UC_is_valid(ch)) {
-            unsigned char buf[256], *p;
-            size_t        len;
-            p = buf + 2;
-            buf[0] = (cid >> 8) & 0xff;
-            buf[1] = cid & 0xff;
-            len = UC_UTF16BE_encode_char(ch, &p, buf + 254);
-            CMap_add_bfchar(cmap, buf, 2, buf + 2, len);
-            used_chars_copy[cid / 8] &= ~(1 << (7 - (cid % 8)));
-            count++;
-          }
         }
       }
     }
 
     /* cmap_add here stores information about all unencoded glyphs which can be
      * accessed only through OT Layout GSUB table.
+     * This is only availabel when encoding is "unicode".
      */
     if (cmap_add) {
-      /* For handle_subst_glyphs(), cffont is for GID -> glyph name lookup, so
-       * it is only needed for non-CID fonts.
-       */
-      count += handle_subst_glyphs(cmap, cmap_add, used_chars_copy, sfont,
-                                   is_cidfont ? NULL : cffont);
+      count += handle_subst_glyphs(cmap, cmap_add, used_chars_copy);
     } else {
+      /* Else, try gathering information from GSUB tables */
       count += otl_gsub_add_ToUnicode(cmap, used_chars_copy,
                                       map_base, map_sub, num_glyphs,
                                       GIDToCIDMap, sfont);
     }
+    /* Find Unicode mapping via PostScript glyph names... */
+    add_ToUnicode_via_glyph_name(cmap, used_chars_copy, num_glyphs,
+                                 GIDToCIDMap, sfont, (is_cidfont ? cffont : NULL));    
     if (cffont)
       cff_close(cffont);
     
+    /* Finaly, PUA and presentation forms... */
+    for (gid = 0; gid < num_glyphs; gid++) {
+      uint16_t cid = GIDToCIDMap[gid];
+      if (is_used_char2(used_chars_copy, cid)) {
+        int32_t        ch;
+        unsigned char  src[2], dst[4];
+        unsigned char *p = dst, *endptr = dst + 4;
+        size_t         len;
+
+        ch = map_sub[gid];
+        if (UC_is_valid(ch)) {
+          src[0] = (cid >> 8) & 0xff;
+          src[1] = cid & 0xff;
+          len = UC_UTF16BE_encode_char(ch, &p, endptr);
+          CMap_add_bfchar(cmap, src, 2, dst, len);
+          used_chars_copy[cid / 8] &= ~(1 << (7 - (cid % 8)));
+          count++;
+        }
+      }
+    }
+
     /* Check for missing mapping */
-    {
+    if (dpx_conf.verbose_level > VERBOSE_LEVEL_MIN) {
       for (gid = 0; gid < num_glyphs; gid++) {
         uint16_t cid = GIDToCIDMap[gid];
         if (is_used_char2(used_chars_copy, cid)) {
-          if (dpx_conf.verbose_level > VERBOSE_LEVEL_MIN) {
-            WARN("Unable to find ToUnicode mapping for glyph CID=%u (GID=%u)", cid, gid);
-          }
+          WARN("Unable to find ToUnicode mapping for glyph CID=%u (GID=%u)", cid, gid);
         }
       }
     }

@@ -1692,10 +1692,11 @@ add_glyph_if_valid (CMap *cmap, char *used_chars,
                     int32_t *map_base, int32_t *map_sub, USHORT num_glyphs,
                     uint16_t *GIDToCIDMap, USHORT gid, USHORT gid_sub)
 {
-  int           count = 0;
-  unsigned char buf[256], *p;
-  size_t        len;
-  uint16_t      cid_sub;
+  int            count = 0;
+  unsigned char  src[2], dst[4];
+  unsigned char *p = dst, *endptr = dst + 4;
+  size_t         len;
+  uint16_t       cid_sub;
 
   if (gid_sub >= num_glyphs || gid >= num_glyphs)
     return 0;
@@ -1704,21 +1705,19 @@ add_glyph_if_valid (CMap *cmap, char *used_chars,
   if (is_used_char2(used_chars, cid_sub)) {
     int32_t ch = map_base[gid];
     if (UC_is_valid(ch)) {
-      p = buf + 2;
-      buf[0] = (cid_sub >> 8) & 0xff;
-      buf[1] = cid_sub & 0xff;
-      len = UC_UTF16BE_encode_char(ch, &p, buf + 254);
-      CMap_add_bfchar(cmap, buf, 2, buf + 2, len);
+      src[0] = (cid_sub >> 8) & 0xff;
+      src[1] = cid_sub & 0xff;
+      len = UC_UTF16BE_encode_char(ch, &p, endptr);
+      CMap_add_bfchar(cmap, src, 2, dst, len);
       used_chars[cid_sub / 8] &= ~(1 << (7 - (cid_sub % 8)));
       count = 1;
     } else {
       ch = map_sub[gid];
       if (UC_is_valid(ch)) {
-        p = buf + 2;
-        buf[0] = (cid_sub >> 8) & 0xff;
-        buf[1] = cid_sub & 0xff;
-        len = UC_UTF16BE_encode_char(ch, &p, buf + 254);
-        CMap_add_bfchar(cmap, buf, 2, buf + 2, len);
+        src[0] = (cid_sub >> 8) & 0xff;
+        src[1] = cid_sub & 0xff;
+        len = UC_UTF16BE_encode_char(ch, &p, endptr);
+        CMap_add_bfchar(cmap, src, 2, dst, len);
         used_chars[cid_sub / 8] &= ~(1 << (7 - (cid_sub % 8)));
         count = 1;
       }
@@ -1728,13 +1727,13 @@ add_glyph_if_valid (CMap *cmap, char *used_chars,
 }
 
 static int
-otl_gsub_dump_single (CMap *cmap, char *used_chars,
+add_ToUnicode_single (CMap *cmap, char *used_chars,
                       struct otl_gsub_subtab *subtab,
                       int32_t *map_base, int32_t *map_sub, USHORT num_glyphs,
                       uint16_t *GIDToCIDMap)
 {
   int     count = 0;
-  int32_t i, idx, gid;
+  USHORT  i, idx, gid;
   USHORT  gid_sub;
 
   ASSERT(subtab);
@@ -1806,13 +1805,13 @@ otl_gsub_dump_single (CMap *cmap, char *used_chars,
   return count;
 }
 
-static int  
+static int32_t  
 add_alternate1_inverse_map (CMap *cmap, char *used_chars,
                             int32_t *map_base, int32_t *map_sub, USHORT num_glyphs,
                             uint16_t *GIDToCIDMap, USHORT gid, int idx,
                             struct otl_gsub_alternate1 *data)
 {
-  int count = 0;
+  int32_t count = 0;
 
   if (idx >= 0 && idx < data->AlternateSetCount) {
     struct otl_gsub_altset *altset;
@@ -1831,14 +1830,14 @@ add_alternate1_inverse_map (CMap *cmap, char *used_chars,
   return count;
 }
 
-static int
-otl_gsub_dump_alternate (CMap *cmap, char *used_chars,
+static int32_t
+add_ToUnicode_alternate (CMap *cmap, char *used_chars,
                          struct otl_gsub_subtab *subtab,
                          int32_t *map_base, int32_t *map_sub, USHORT num_glyphs,
                          uint16_t *GIDToCIDMap)
 {
-  int  count = 0;
-  int  i, gid, idx;
+  int32_t count = 0;
+  USHORT  i, gid, idx;
 
   ASSERT(subtab);
 
@@ -1865,7 +1864,7 @@ otl_gsub_dump_alternate (CMap *cmap, char *used_chars,
           idx = cov->range[i].StartCoverageIndex + gid - cov->range[i].Start;
           count += add_alternate1_inverse_map(cmap, used_chars,
                                               map_base, map_sub, num_glyphs,
-                                              GIDToCIDMap, gid, idx, data);      
+                                              GIDToCIDMap, gid, idx, data);
         }
       }
       break;
@@ -1874,31 +1873,112 @@ otl_gsub_dump_alternate (CMap *cmap, char *used_chars,
   return count;
 }
 
-static int
-otl_gsub_dump_ligature (struct otl_gsub_subtab *subtab)
+static int32_t  
+add_ligature1_inverse_map (CMap *cmap, char *used_chars,
+                           int32_t *map_base, int32_t *map_sub, USHORT num_glyphs,
+                           uint16_t *GIDToCIDMap, USHORT gid_1, int idx,
+                           struct otl_gsub_ligature1 *data)
 {
-  int  gid, idx;
+  int32_t count = 0;
+
+  if (idx >= 0 && idx < data->LigSetCount) {
+    struct otl_gsub_ligset *ligset;
+    USHORT                  i, j;
+
+    ligset = &(data->LigatureSet[idx]); 
+    for (j = 0; j < ligset->LigatureCount; j++) {
+      USHORT gid_sub = ligset->Ligature[j].LigGlyph;
+      if (gid_sub < num_glyphs) {
+        uint16_t cid = GIDToCIDMap[gid_sub];
+        if (is_used_char2(used_chars, cid)) {
+          int32_t ch, *ucv;
+          USHORT  comp_count = ligset->Ligature[j].CompCount;
+          int     fail_count = 0;
+
+          ucv         = NEW(count, int32_t);
+          ch          = UC_is_valid(map_base[gid_1]) ? map_base[gid_1] : map_sub[gid_1];
+          ucv[0]      = ch;
+          fail_count += UC_is_valid(ch) ? 0 : 1; 
+          for (i = 0; i < ligset->Ligature[j].CompCount - 1; i++) {
+            USHORT gid = ligset->Ligature[j].Component[i];
+            if (gid < num_glyphs) {
+              ch          = UC_is_valid(map_base[gid]) ? map_base[gid] : map_sub[gid];
+              ucv[i+1]    = ch;
+              fail_count += UC_is_valid(ch) ? 0 : 1;
+           } else {
+              fail_count += 1;
+            } 
+          }
+          if (fail_count == 0) {
+            unsigned char  src[2], *dst;
+            unsigned char *p, *endptr;
+            size_t         len = 0;
+
+            src[0] = (cid >> 8) & 0xff;
+            src[1] =  cid & 0xff;
+            dst    = NEW(comp_count*4, unsigned char);
+            p      = dst;
+            endptr = dst + comp_count * 4;
+            WARN("lig: %u", cid);
+            for (i = 0; i < comp_count; i++) {
+              WARN("-- char: U+%04X (%c)", ucv[i], ucv[i]);
+              len += UC_UTF16BE_encode_char(ucv[i], &p, endptr);
+            }
+            CMap_add_bfchar(cmap, src, 2, dst, len);
+            used_chars[cid / 8] &= ~(1 << (7 - (cid % 8)));
+            count++;
+            RELEASE(dst);
+          }
+          RELEASE(ucv);
+        }
+      }
+    }
+  }
+
+  return count;
+}
+
+static int32_t
+add_ToUnicode_ligature (CMap *cmap, char *used_chars,
+                        struct otl_gsub_subtab *subtab,
+                        int32_t *map_base, int32_t *map_sub, USHORT num_glyphs,
+                        uint16_t *GIDToCIDMap)
+{
+  int32_t count = 0;
+  USHORT  i, idx, gid;
 
   ASSERT(subtab);
 
   if (subtab->SubstFormat == 1) {
     struct otl_gsub_ligature1 *data;
+    struct clt_coverage        *cov;
 
     data = subtab->table.ligature1;
-    for (gid = 0; gid < 0x10000; gid++) {
-      idx  = clt_lookup_coverage(&data->coverage, gid);
-      if (idx >= 0 && idx < data->LigSetCount) {
-        struct otl_gsub_ligset *ligset;
-        USHORT  i, j;
-        ligset = &(data->LigatureSet[idx]); 
-        for (j = 0; j < ligset->LigatureCount; j++) {
-          fprintf(stdout, "substitute \\%u", (USHORT) gid);
-          for (i = 0; i < ligset->Ligature[j].CompCount - 1; i++) {
-            fprintf(stdout, " \\%u", ligset->Ligature[j].Component[i]);
-          }
-          fprintf(stdout, " by \\%u;\n", ligset->Ligature[j].LigGlyph);
+    cov  = &data->coverage;
+    switch (cov->format) {
+    case 1: /* list */
+      for (idx = 0; idx < cov->count; idx++) {
+        gid = cov->list[idx];
+        if (gid < num_glyphs) {
+          count += add_ligature1_inverse_map(cmap, used_chars,
+                                             map_base, map_sub, num_glyphs,
+                                             GIDToCIDMap, gid, idx, data);
         }
       }
+      break;
+    case 2: /* range */
+      for (i = 0; i < cov->count; i++) {
+        for (gid = cov->range[i].Start;
+             gid <= cov->range[i].End && gid < num_glyphs; gid++) {
+          idx = cov->range[i].StartCoverageIndex + gid - cov->range[i].Start;
+          if (gid < num_glyphs) {
+            count += add_ligature1_inverse_map(cmap, used_chars,
+                                               map_base, map_sub, num_glyphs,
+                                               GIDToCIDMap, gid, idx, data); 
+          }
+        }
+      }
+      break;
     }
   }
 
@@ -1925,18 +2005,20 @@ otl_gsub_add_ToUnicode (CMap *cmap, char *used_chars,
       subtab = &(gsub->subtables[j]);
       switch ((int) subtab->LookupType){
       case OTL_GSUB_TYPE_SINGLE:
-        count += otl_gsub_dump_single(cmap, used_chars, subtab,
+        count += add_ToUnicode_single(cmap, used_chars, subtab,
                                       map_base, map_sub, num_glyphs,
                                       GIDToCIDMap);
         break;
       case OTL_GSUB_TYPE_ALTERNATE:
-        count += otl_gsub_dump_alternate(cmap, used_chars, subtab,
+        count += add_ToUnicode_alternate(cmap, used_chars, subtab,
                                          map_base, map_sub, num_glyphs,
                                          GIDToCIDMap);
         break;
-    //case OTL_GSUB_TYPE_LIGATURE:
-      //count += otl_gsub_dump_ligature(subtab);
-      //break;
+      case OTL_GSUB_TYPE_LIGATURE:
+        count += add_ToUnicode_ligature(cmap, used_chars, subtab,
+                                        map_base, map_sub, num_glyphs,
+                                        GIDToCIDMap);
+        break;
       }
     }
   }
