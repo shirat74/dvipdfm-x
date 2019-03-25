@@ -850,9 +850,11 @@ static int is_PUA_or_presentation (unsigned int uni)
 {
   /* Some of CJK Radicals Supplement and Kangxi Radicals
    * are commonly double encoded, lower the priority.
+   * CJK Compatibility Ideographs & Supplement added.
    */
   return  ((uni >= 0x2E80 && uni <= 0x2EF3) || (uni >= 0x2F00 && uni <= 0x2FD5) ||
            (uni >= 0xE000 && uni <= 0xF8FF) || (uni >= 0xFB00 && uni <= 0xFB4F) ||
+           (uni >= 0xF900 && uni <= 0xFAFF) || (uni >= 0x2F800 && uni <= 0x2FA1F) ||
            (uni >= 0xF0000 && uni <= 0xFFFFD) || (uni >= 0x100000 && uni <= 0x10FFFD));
 }
 
@@ -1154,7 +1156,7 @@ create_ToUnicode_cmap (tt_cmap    *ttcmap,
     }
     /* Find Unicode mapping via PostScript glyph names... */
     add_ToUnicode_via_glyph_name(cmap, used_chars_copy, num_glyphs,
-                                 GIDToCIDMap, sfont, (is_cidfont ? cffont : NULL));    
+                                 GIDToCIDMap, sfont, is_cidfont ? NULL : cffont);    
     if (cffont)
       cff_close(cffont);
     
