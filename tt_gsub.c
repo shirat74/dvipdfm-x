@@ -1919,9 +1919,7 @@ add_ligature1_inverse_map (CMap *cmap, char *used_chars,
             dst    = NEW(comp_count*4, unsigned char);
             p      = dst;
             endptr = dst + comp_count * 4;
-            WARN("lig: %u", cid);
             for (i = 0; i < comp_count; i++) {
-              WARN("-- char: U+%04X (%c)", ucv[i], ucv[i]);
               len += UC_UTF16BE_encode_char(ucv[i], &p, endptr);
             }
             CMap_add_bfchar(cmap, src, 2, dst, len);
