@@ -1396,16 +1396,17 @@ otf_load_Unicode_CMap (const char *map_name, int ttc_index, /* 0 for non-TTC fon
     cffont = cff_open(sfont->stream, offset, 0);
     if (!cffont) {
       RELEASE(cmap_name);
+      RELEASE(GIDToCIDMap);
       sfnt_close(sfont);
       return -1; 
-    } else if (!(cffont->flag & FONTTYPE_CIDFONT)) {
+    }
+    if (!(cffont->flag & FONTTYPE_CIDFONT)) {
       csi.registry   = strdup("Adobe");
       csi.ordering   = strdup("Identity");
       csi.supplement = 0;
       for (gid = 0; gid < num_glyphs; gid++) {
         GIDToCIDMap[gid] = gid;
       }
-      cff_close(cffont);
     } else {
       if (!cff_dict_known(cffont->topdict, "ROS")) {
         csi.registry   = strdup("Adobe");
@@ -1421,8 +1422,8 @@ otf_load_Unicode_CMap (const char *map_name, int ttc_index, /* 0 for non-TTC fon
         csi.supplement = (int) cff_dict_get(cffont->topdict, "ROS", 2);
       }
       create_GIDToCIDMap(GIDToCIDMap, num_glyphs, cffont);
-      cff_close(cffont);     
     }
+    cff_close(cffont);
   } else {
     uint16_t gid;
 
@@ -1551,9 +1552,9 @@ otf_load_Unicode_CMap (const char *map_name, int ttc_index, /* 0 for non-TTC fon
   if (GIDToCIDMap)
     RELEASE(GIDToCIDMap);
   if (csi.registry)
-	  RELEASE(csi.registry);
+    RELEASE(csi.registry);
   if (csi.ordering)
-	  RELEASE(csi.ordering);
+    RELEASE(csi.ordering);
   sfnt_close(sfont);
   DPXFCLOSE(fp);
 
@@ -1637,12 +1638,9 @@ otf_try_load_GID_to_CID_map (const char *map_name, int ttc_index, int wmode)
   /* Read GID-to-CID mapping if CFF OpenType is found. */
   if (sfont->type == SFNT_TYPE_POSTSCRIPT) {
     cff_font             *cffont;
-    CMap                 *cmap;
-    uint16_t              gid, num_glyphs = 0;
     struct tt_maxp_table *maxp;
     const unsigned char   csrange[4]  = {0x00, 0x00, 0xff, 0xff};
-    CIDSysInfo            csi         = {NULL, NULL, 0};
-    uint16_t             *GIDToCIDMap = NULL;
+    uint16_t              num_glyphs  = 0;
 
     maxp       = tt_read_maxp_table(sfont);
     num_glyphs = (card16) maxp->numGlyphs;
@@ -1651,6 +1649,11 @@ otf_try_load_GID_to_CID_map (const char *map_name, int ttc_index, int wmode)
     offset = sfnt_find_table_pos(sfont, "CFF ");    
     cffont = cff_open(sfont->stream, offset, 0);
     if (cffont && cffont->flag & FONTTYPE_CIDFONT) {
+      CMap       *cmap;
+      uint16_t    gid;
+      uint16_t   *GIDToCIDMap = NULL;
+      CIDSysInfo  csi         = {NULL, NULL, 0};
+
       if (!cff_dict_known(cffont->topdict, "ROS")) {
         csi.registry   = strdup("Adobe");
         csi.ordering   = strdup("Identity");
@@ -1686,15 +1689,14 @@ otf_try_load_GID_to_CID_map (const char *map_name, int ttc_index, int wmode)
         MESG("\n");
         MESG("otf_cmap>> Creating GID-to-CID mapping for font=\"%s\"\n", map_name);
       }
+      RELEASE(GIDToCIDMap);
+      if (csi.registry)
+        RELEASE(csi.registry);
+      if (csi.ordering)
+        RELEASE(csi.ordering);      
     }
     if (cffont)
       cff_close(cffont);
-    if (csi.registry)
-	    RELEASE(csi.registry);
-    if (csi.ordering)
-	    RELEASE(csi.ordering);
-    if (GIDToCIDMap)
-      RELEASE(GIDToCIDMap);
   }
 
   RELEASE(cmap_name);
