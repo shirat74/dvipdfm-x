@@ -977,10 +977,11 @@ otl_gsub_read_feat (struct otl_gsub_tab *gsub, sfnt *sfont)
 
       sfnt_seek_set(sfont, offset);
       clt_read_feature_table(&feature_table, sfont);
+#if 0
       if (feature_table.FeatureParams != 0) {
         ERROR("unrecognized FeatureParams");
       }
-
+#endif
       /* Lookup table */
       for (i = 0; i < feature_table.LookupListIndex.count; i++) {
         struct clt_lookup_table lookup_table;
