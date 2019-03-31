@@ -130,7 +130,13 @@ read_cmap2 (sfnt *sfont, ULONG len)
   }
   n += 1; /* the number of subHeaders is one plus the max of subHeaderKeys */
 
-  map->subHeaders = NEW(n, struct SubHeader); 
+  if (len < 512 +  n * 8 ) {
+    WARN("invalid/truncated format2 TT cmap subtable");
+    RELEASE(map);
+    return NULL;
+  }
+
+  map->subHeaders = NEW(n, struct SubHeader);
   for (i = 0; i < n; i++) {
     map->subHeaders[i].firstCode     = sfnt_get_ushort(sfont);
     map->subHeaders[i].entryCount    = sfnt_get_ushort(sfont);
@@ -645,8 +651,8 @@ create_GIDToCIDMap (uint16_t *GIDToCIDMap, uint16_t num_glyphs, cff_font *cffont
       
       cids = charset->data.glyphs;
       for (gid = 1, i = 0; i < charset->num_entries; i++) {
-	      GIDToCIDMap[gid] = cids[i];
-	      gid++;
+        GIDToCIDMap[gid] = cids[i];
+        gid++;
       }
     }
     break;
