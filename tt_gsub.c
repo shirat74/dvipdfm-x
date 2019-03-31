@@ -1895,7 +1895,7 @@ add_ligature1_inverse_map (CMap *cmap, char *used_chars,
           USHORT  comp_count = ligset->Ligature[j].CompCount;
           int     fail_count = 0;
 
-          ucv         = NEW(count, int32_t);
+          ucv         = NEW(comp_count, int32_t);
           ch          = UC_is_valid(map_base[gid_1]) ? map_base[gid_1] : map_sub[gid_1];
           ucv[0]      = ch;
           fail_count += UC_is_valid(ch) ? 0 : 1; 
