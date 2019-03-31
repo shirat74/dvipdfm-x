@@ -821,26 +821,6 @@ add_ToUnicode_via_glyph_name (CMap *cmap, char *used_chars, USHORT num_glyphs,
   return count;
 }
 
-static cff_font *
-prepare_CIDFont_from_sfnt(sfnt* sfont)
-{
-  cff_font *cffont;
-  unsigned  offset = 0;
-
-  if (sfont->type != SFNT_TYPE_POSTSCRIPT     ||
-      sfnt_read_table_directory(sfont, 0) < 0 ||
-      (offset = sfnt_find_table_pos(sfont, "CFF ")) == 0) {
-    return NULL;
-  }
-
-  cffont = cff_open(sfont->stream, offset, 0);
-  if (!cffont)
-    return NULL;
-
-  cff_read_charsets(cffont);
-  return cffont;
-}
-
 static void
 create_inverse_cmap4 (int32_t *map_base, int32_t *map_sub, USHORT num_glyphs,
                       struct cmap4 *map)
@@ -948,15 +928,19 @@ create_ToUnicode_cmap (tt_cmap    *ttcmap,
     char      is_cidfont  = 0;
     uint16_t *GIDToCIDMap = NULL;
     char     *used_chars_copy = NULL;
-
-    cffont = prepare_CIDFont_from_sfnt(sfont);
+  
+    if (sfont->type == SFNT_TYPE_POSTSCRIPT) {
+      ULONG offset;
+      offset = sfnt_find_table_pos(sfont, "CFF ");
+      cffont = cff_open(sfont->stream, offset, 0);
+    }
     is_cidfont = cffont && (cffont->flag & FONTTYPE_CIDFONT);
 
     /* GIT to CID mapping info. */
     GIDToCIDMap = NEW(num_glyphs, uint16_t);
-    if (is_cidfont)
+    if (is_cidfont) {
       create_GIDToCIDMap(GIDToCIDMap, num_glyphs, cffont);
-    else {
+    } else {
       for (gid = 0; gid < num_glyphs; gid++) {
         GIDToCIDMap[gid] = gid;
       }
