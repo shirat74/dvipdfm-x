@@ -68,11 +68,12 @@ read_cmap0 (sfnt *sfont, ULONG len)
   struct cmap0 *map;
   int    i;
 
-  if (len < 256)
-    ERROR("invalid cmap subtable");
+  if (len < 256) {
+    WARN("invalid format 0 TT cmap subtable");
+    return NULL;
+  }
 
   map = NEW(1, struct cmap0);
-
   for (i = 0; i < 256; i++)
     map->glyphIndexArray[i] = sfnt_get_byte(sfont);
 
@@ -114,14 +115,14 @@ read_cmap2 (sfnt *sfont, ULONG len)
   struct cmap2 *map;
   USHORT i, n;
 
-  if (len < 512)
-    ERROR("invalid cmap subtable");
-    
-  map = NEW(1, struct cmap2);
+  if (len < 512) {
+    WARN("invalid fromt2 TT cmap subtable");
+    return NULL;
+  }
 
+  map = NEW(1, struct cmap2);
   for (i = 0; i < 256; i++)
     map->subHeaderKeys[i] = sfnt_get_ushort(sfont);
-
   for (n = 0, i = 0; i < 256; i++) {
     map->subHeaderKeys[i] /= 8;
     if (n < map->subHeaderKeys[i])
@@ -222,8 +223,10 @@ read_cmap4(sfnt *sfont, ULONG len)
   struct cmap4 *map;
   USHORT i, n, segCount;
 
-  if (len < 8)
-    ERROR("invalid cmap subtable");
+  if (len < 8) {
+    WARN("invalid format 4 TT cmap subtable");
+    return NULL;
+  }
 
   map = NEW(1, struct cmap4);
 
@@ -288,19 +291,19 @@ lookup_cmap4 (struct cmap4 *map, USHORT cc)
    * Last segment maps 0xffff to gid 0 (?)
   */
   i = segCount = map->segCountX2 / 2;
-  while (i-- > 0 &&  cc <= map->endCount[i]) {
+  while (i-- > 0 && cc <= map->endCount[i]) {
     if (cc >= map->startCount[i]) {
       if (map->idRangeOffset[i] == 0) {
-	gid = (cc + map->idDelta[i]) & 0xffff;
+        gid = (cc + map->idDelta[i]) & 0xffff;
       } else if (cc == 0xffff && map->idRangeOffset[i] == 0xffff) {
-	/* this is for protection against some old broken fonts... */
-	gid = 0;
+        /* this is for protection against some old broken fonts... */
+        gid = 0;
       } else {
-	j  = map->idRangeOffset[i] - (segCount - i) * 2;
-	j  = (cc - map->startCount[i]) + (j / 2);
-	gid = map->glyphIndexArray[j];
-	if (gid != 0)
-	  gid = (gid + map->idDelta[i]) & 0xffff;
+        j = map->idRangeOffset[i] - (segCount - i) * 2;
+        j = (cc - map->startCount[i]) + (j / 2);
+        gid = map->glyphIndexArray[j];
+        if (gid != 0)
+          gid = (gid + map->idDelta[i]) & 0xffff;
       }
       break;
     }
@@ -323,14 +326,15 @@ read_cmap6 (sfnt *sfont, ULONG len)
   struct cmap6 *map;
   USHORT i;
   
-  if (len < 4)
-    ERROR("invalid cmap subtable");
+  if (len < 4) {
+    WARN("invalid format 6 TT cmap subtable");
+    return NULL;
+  }
 
   map =  NEW(1, struct cmap6);
   map->firstCode       = sfnt_get_ushort(sfont);
   map->entryCount      = sfnt_get_ushort(sfont);
-  map->glyphIndexArray = NEW(map->entryCount, USHORT);
-  
+  map->glyphIndexArray = NEW(map->entryCount, USHORT);  
   for (i = 0; i < map->entryCount; i++)
     map->glyphIndexArray[i] = sfnt_get_ushort(sfont);
 
@@ -390,13 +394,14 @@ read_cmap12 (sfnt *sfont, ULONG len)
   struct cmap12 *map;
   ULONG  i;
   
-  if (len < 4)
-    ERROR("invalid cmap subtable");
+  if (len < 4) {
+    WARN("invalid format 12 TT cmap subtable");
+    return NULL;
+  }
 
   map =  NEW(1, struct cmap12);
   map->nGroups = sfnt_get_ulong(sfont);
   map->groups  = NEW(map->nGroups, struct charGroup);
-
   for (i = 0; i < map->nGroups; i++) {
     map->groups[i].startCharCode = sfnt_get_ulong(sfont);
     map->groups[i].endCharCode   = sfnt_get_ulong(sfont);
@@ -427,8 +432,8 @@ lookup_cmap12 (struct cmap12 *map, ULONG cccc)
 	 cccc <= map->groups[i].endCharCode) {
     if (cccc >= map->groups[i].startCharCode) {
       gid = (USHORT) ((cccc -
-		       map->groups[i].startCharCode +
-		       map->groups[i].startGlyphID) & 0xffff);
+		                   map->groups[i].startCharCode +
+		                   map->groups[i].startGlyphID) & 0xffff);
       break;
     }
   }
@@ -510,6 +515,7 @@ tt_cmap_read (sfnt *sfont, USHORT platform, USHORT encoding)
     WARN("Unrecognized OpenType/TrueType cmap format.");
     tt_cmap_release(cmap);
     return NULL;
+    break;
   }
 
   if (!cmap->map) {
@@ -526,24 +532,25 @@ tt_cmap_release (tt_cmap *cmap)
 
   if (cmap) {
     if (cmap->map) {
-      switch(cmap->format) {
+      switch (cmap->format) {
       case 0:
-	release_cmap0(cmap->map);
-	break;
+        release_cmap0(cmap->map);
+        break;
       case 2:
-	release_cmap2(cmap->map);
-	break;
+        release_cmap2(cmap->map);
+        break;
       case 4:
-	release_cmap4(cmap->map);
-	break;
+        release_cmap4(cmap->map);
+        break;
       case 6:
-	release_cmap6(cmap->map);
-	break;
+        release_cmap6(cmap->map);
+        break;
       case 12:
-	release_cmap12(cmap->map);
-	break;
+        release_cmap12(cmap->map);
+        break;
       default:
-	ERROR("Unrecognized OpenType/TrueType cmap format.");
+        WARN("Unrecognized OpenType/TrueType cmap format: %d", cmap->format);
+        break;
       }
     }
     RELEASE(cmap);
@@ -582,7 +589,7 @@ tt_cmap_lookup (tt_cmap *cmap, ULONG cc)
     gid = lookup_cmap12(cmap->map, (ULONG) cc);
     break;
   default:
-    ERROR("Unrecognized OpenType/TrueType cmap subtable format");
+    WARN("Unrecognized OpenType/TrueType cmap subtable format: %d", cmap->format);
     break;
   }
 
@@ -1106,7 +1113,10 @@ otf_create_ToUnicode_stream (const char *font_name,
   }
 
   if (!sfont) {
-    ERROR("Could not open OpenType/TrueType font file \"%s\"", font_name);
+    WARN("Could not open OpenType/TrueType font file \"%s\"", font_name);
+    RELEASE(cmap_name);
+    DPXFCLOSE(fp);
+    return NULL;    
   }
 
   switch (sfont->type) {
@@ -1116,7 +1126,11 @@ otf_create_ToUnicode_stream (const char *font_name,
   case SFNT_TYPE_TTC:
     offset = ttc_read_offset(sfont, ttc_index);
     if (offset == 0) {
-      ERROR("Invalid TTC index");
+      WARN("Invalid TTC index for font: %s", font_name);
+      sfnt_close(sfont);
+      DPXFCLOSE(fp);
+      RELEASE(cmap_name);
+      return NULL;
     }
     break;
   default:
@@ -1125,7 +1139,11 @@ otf_create_ToUnicode_stream (const char *font_name,
   }
 
   if (sfnt_read_table_directory(sfont, offset) < 0) {
-    ERROR("Could not read OpenType/TrueType table directory.");
+    WARN("Could not read OpenType/TrueType table directory: %s", font_name);
+    sfnt_close(sfont);
+    DPXFCLOSE(fp);
+    RELEASE(cmap_name);
+    return NULL;
   }
 
   cmap_add_name = NEW(strlen(font_name)+strlen(",000-UCS32-Add")+1, char);
@@ -1154,7 +1172,7 @@ otf_create_ToUnicode_stream (const char *font_name,
 #else
   if (cmap_obj == NULL)
 #endif /* LIBDPX */
-    WARN("Unable to read OpenType/TrueType Unicode cmap table.");
+    WARN("Creating ToUnicode CMap failed for \"%s\"", font_name);
   tt_cmap_release(ttcmap);
   CMap_set_silent(0);
 
@@ -1344,6 +1362,7 @@ otf_load_Unicode_CMap (const char *map_name, int ttc_index, /* 0 for non-TTC fon
   if (!sfont) {
     WARN("Could not open OpenType/TrueType/dfont font file \"%s\"", map_name);
     RELEASE(cmap_name);
+    DPXFCLOSE(fp);
     return -1;
   }
   switch (sfont->type) {
@@ -1353,6 +1372,7 @@ otf_load_Unicode_CMap (const char *map_name, int ttc_index, /* 0 for non-TTC fon
       WARN("Offset=0 returned for font=%s, TTC_index=%d", map_name, ttc_index);
       RELEASE(cmap_name);
       sfnt_close(sfont);
+      DPXFCLOSE(fp);
       return -1;
     }
     break;
@@ -1366,7 +1386,8 @@ otf_load_Unicode_CMap (const char *map_name, int ttc_index, /* 0 for non-TTC fon
   default:
     WARN("Not a OpenType/TrueType/TTC font?: %s", map_name);
     RELEASE(cmap_name);
-    sfnt_close(sfont);    
+    sfnt_close(sfont);
+    DPXFCLOSE(fp);    
     return -1;
     break;
   }
@@ -1375,6 +1396,7 @@ otf_load_Unicode_CMap (const char *map_name, int ttc_index, /* 0 for non-TTC fon
     WARN("Could not read OpenType/TrueType table directory: %s", map_name);
     RELEASE(cmap_name);
     sfnt_close(sfont);
+    DPXFCLOSE(fp);
     return -1;
   }
 
@@ -1398,6 +1420,7 @@ otf_load_Unicode_CMap (const char *map_name, int ttc_index, /* 0 for non-TTC fon
       RELEASE(cmap_name);
       RELEASE(GIDToCIDMap);
       sfnt_close(sfont);
+      DPXFCLOSE(fp);
       return -1; 
     }
     if (!(cffont->flag & FONTTYPE_CIDFONT)) {
@@ -1605,13 +1628,20 @@ otf_try_load_GID_to_CID_map (const char *map_name, int ttc_index, int wmode)
   }
 
   if (!sfont) {
-    ERROR("Could not open OpenType/TrueType/dfont font file \"%s\"", map_name);
+    WARN("Could not open OpenType/TrueType/dfont font file \"%s\"", map_name);
+    RELEASE(cmap_name);
+    DPXFCLOSE(fp);
+    return -1;
   }
   switch (sfont->type) {
   case SFNT_TYPE_TTC:
     offset = ttc_read_offset(sfont, ttc_index);
     if (offset == 0) {
-      ERROR("Invalid TTC index");
+      WARN("Invalid TTC index for font \"%s\": %d", map_name, ttc_index);
+      sfnt_close(sfont);
+      DPXFCLOSE(fp);
+      RELEASE(cmap_name);
+      return -1;
     }
     break;
   case SFNT_TYPE_TRUETYPE:
@@ -1622,12 +1652,20 @@ otf_try_load_GID_to_CID_map (const char *map_name, int ttc_index, int wmode)
     offset = sfont->offset;
     break;
   default:
-    ERROR("Not a OpenType/TrueType/TTC font?: %s", map_name);
-    break;
+    WARN("Not a OpenType/TrueType/TTC font?: %s", map_name);
+    sfnt_close(sfont);
+    DPXFCLOSE(fp);
+    RELEASE(cmap_name);
+    return -1;
   }
 
-  if (sfnt_read_table_directory(sfont, offset) < 0)
-    ERROR("Could not read OpenType/TrueType table directory.");
+  if (sfnt_read_table_directory(sfont, offset) < 0) {
+    WARN("Could not read OpenType/TrueType table directory: %s", map_name);
+    sfnt_close(sfont);
+    DPXFCLOSE(fp);
+    RELEASE(cmap_name);
+    return -1;
+  }
   if (sfont->type != SFNT_TYPE_POSTSCRIPT) {
     RELEASE(cmap_name);
     sfnt_close(sfont);
