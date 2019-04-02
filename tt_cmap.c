@@ -1316,17 +1316,6 @@ otf_load_Unicode_CMap (const char *map_name, int ttc_index, /* 0 for non-TTC fon
   cmap_id = CMap_cache_find(cmap_name);
   if (cmap_id >= 0) {
     RELEASE(cmap_name);
-    return cmap_id;
-  }
-
-  if (dpx_conf.verbose_level > VERBOSE_LEVEL_MIN) {
-    MESG("\n");
-    MESG("otf_cmap>> Unicode charmap for font=\"%s\" layout=\"%s\"\n",
-	       map_name, (otl_tags ? otl_tags : "none"));
-  } 
-  cmap_id = CMap_cache_find(cmap_name);
-  if (cmap_id >= 0) {
-    RELEASE(cmap_name);
     if (dpx_conf.verbose_level > VERBOSE_LEVEL_MIN)
       MESG("otf_cmap>> Found at cmap_id=%d.\n", cmap_id);
 
@@ -1334,6 +1323,12 @@ otf_load_Unicode_CMap (const char *map_name, int ttc_index, /* 0 for non-TTC fon
   }
 
   /* CMap not found */
+  if (dpx_conf.verbose_level > VERBOSE_LEVEL_MIN) {
+    MESG("\n");
+    MESG("otf_cmap>> Creating Unicode charmap for font=\"%s\" layout=\"%s\"\n",
+	       map_name, (otl_tags ? otl_tags : "none"));
+  } 
+
   fp = DPXFOPEN(map_name, DPX_RES_TYPE_TTFONT);
   if (!fp) {
     fp = DPXFOPEN(map_name, DPX_RES_TYPE_OTFONT);
@@ -1458,7 +1453,6 @@ otf_load_Unicode_CMap (const char *map_name, int ttc_index, /* 0 for non-TTC fon
 
   if (ttcmap) {
     CMap     *cmap      = NULL;
-    CMap     *tounicode = NULL;
     int32_t  *map_base, *map_sub;
     uint32_t  gid;
   
@@ -1479,26 +1473,6 @@ otf_load_Unicode_CMap (const char *map_name, int ttc_index, /* 0 for non-TTC fon
       gsub_vert = NULL;
     }
     if (otl_tags) {
-      char *tounicode_name;
-      int   tounicode_id;
-
-      tounicode_name = NEW(strlen(map_name)+strlen(",000-UCS32-Add")+1, char);
-      sprintf(tounicode_name, "%s,%03d-UCS32-Add", map_name, ttc_index);
-      tounicode_id = CMap_cache_find(tounicode_name);
-      if (tounicode_id >= 0)
-        tounicode = CMap_cache_get(tounicode_id);
-      else {
-        tounicode = CMap_new();
-        CMap_set_name (tounicode, tounicode_name);
-        CMap_set_type (tounicode, CMAP_TYPE_TO_UNICODE);
-        CMap_set_wmode(tounicode, 0);
-        CMap_add_codespacerange(tounicode, srange_min, srange_max, 2);
-        CMap_set_CIDSysInfo(tounicode, &CSI_UNICODE);
-        CMap_add_bfchar(tounicode, srange_min, 2, srange_max, 2);
-        tounicode_id = CMap_cache_add(tounicode);
-      }
-      RELEASE(tounicode_name);
-      
       gsub_list = otl_gsub_new();
       if (otl_gsub_add_feat_list(gsub_list, otl_tags, sfont) < 0) {
         WARN("Reading GSUB feature table(s) failed for \"%s\"", otl_tags);
@@ -1533,15 +1507,37 @@ otf_load_Unicode_CMap (const char *map_name, int ttc_index, /* 0 for non-TTC fon
       break;
     }
     tt_cmap_release(ttcmap);
-    if (tounicode) {
-      unsigned char src[2], dst[5];
+
+    if (otl_tags) {
+      CMap *tounicode = NULL;
+      char *tounicode_name;
+      int   tounicode_id;
+
+      tounicode_name = NEW(strlen(map_name)+strlen(",000-UCS32-Add")+1, char);
+      sprintf(tounicode_name, "%s,%03d-UCS32-Add", map_name, ttc_index);
+      tounicode_id = CMap_cache_find(tounicode_name);
+      if (tounicode_id >= 0)
+        tounicode = CMap_cache_get(tounicode_id);
+      else {
+        tounicode = CMap_new();
+        CMap_set_name (tounicode, tounicode_name);
+        CMap_set_type (tounicode, CMAP_TYPE_TO_UNICODE);
+        CMap_set_wmode(tounicode, 0);
+        CMap_add_codespacerange(tounicode, srange_min, srange_max, 2);
+        CMap_set_CIDSysInfo(tounicode, &CSI_UNICODE);
+        CMap_add_bfchar(tounicode, srange_min, 2, srange_max, 2);
+        tounicode_id = CMap_cache_add(tounicode);
+      }
+      RELEASE(tounicode_name);
+            
       for (gid = 0; gid < num_glyphs; gid++) {
-        uint16_t cid = GIDToCIDMap[gid];
+        uint16_t      cid = GIDToCIDMap[gid];
+        unsigned char src[2], dst[4];
         if (cid > 0) {
           int32_t ch = UC_is_valid(map_base[gid]) ? map_base[gid] : map_sub[gid];
           if (UC_is_valid(ch)) {
             unsigned char *p      = dst;
-            unsigned char *endptr = dst + 5;
+            unsigned char *endptr = dst + 4;
             size_t         len;
             src[0] = (cid >> 8) & 0xff;
             src[1] =  cid & 0xff;
