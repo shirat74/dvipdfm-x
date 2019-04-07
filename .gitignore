@@ -43,3 +43,4 @@ Temporary Items
 .apdisk
 *.ac
 ac/dvipdfm-x.ac
+.vscode
