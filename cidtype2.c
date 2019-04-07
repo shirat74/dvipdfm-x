@@ -1050,7 +1050,7 @@ CIDFont_type2_open (CIDFont *font, const char *name,
 	ERROR("Incompatible CMap specified for this font.");
       }
       if (opt->csi->supplement < cmap_csi->supplement) {
-	WARN("Supplmement value in CIDSystemInfo increased.");
+	WARN("Supplement value in CIDSystemInfo increased.");
 	WARN("Some characters may not shown.");
 	opt->csi->supplement = cmap_csi->supplement;
       }

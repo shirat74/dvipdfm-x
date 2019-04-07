@@ -920,7 +920,7 @@ CIDFont_type0_open (CIDFont *font, const char *name,
       ERROR("Inconsistent CMap specified for this font.");
     }
     if (csi->supplement < cmap_csi->supplement) {
-      WARN("CMap have higher supplmement number.");
+      WARN("CMap have higher supplement number.");
       WARN("Some characters may not be displayed or printed.");
     }
   }
