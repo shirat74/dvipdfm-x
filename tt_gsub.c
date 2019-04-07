@@ -977,10 +977,11 @@ otl_gsub_read_feat (struct otl_gsub_tab *gsub, sfnt *sfont)
 
       sfnt_seek_set(sfont, offset);
       clt_read_feature_table(&feature_table, sfont);
+#if 0
       if (feature_table.FeatureParams != 0) {
         ERROR("unrecognized FeatureParams");
       }
-
+#endif
       /* Lookup table */
       for (i = 0; i < feature_table.LookupListIndex.count; i++) {
         struct clt_lookup_table lookup_table;
@@ -1895,7 +1896,7 @@ add_ligature1_inverse_map (CMap *cmap, char *used_chars,
           USHORT  comp_count = ligset->Ligature[j].CompCount;
           int     fail_count = 0;
 
-          ucv         = NEW(count, int32_t);
+          ucv         = NEW(comp_count, int32_t);
           ch          = UC_is_valid(map_base[gid_1]) ? map_base[gid_1] : map_sub[gid_1];
           ucv[0]      = ch;
           fail_count += UC_is_valid(ch) ? 0 : 1; 
@@ -1919,9 +1920,7 @@ add_ligature1_inverse_map (CMap *cmap, char *used_chars,
             dst    = NEW(comp_count*4, unsigned char);
             p      = dst;
             endptr = dst + comp_count * 4;
-            WARN("lig: %u", cid);
             for (i = 0; i < comp_count; i++) {
-              WARN("-- char: U+%04X (%c)", ucv[i], ucv[i]);
               len += UC_UTF16BE_encode_char(ucv[i], &p, endptr);
             }
             CMap_add_bfchar(cmap, src, 2, dst, len);
