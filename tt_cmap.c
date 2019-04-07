@@ -1060,29 +1060,27 @@ static cmap_plat_enc_rec cmap_plat_encs[] = {
 
 pdf_obj *
 otf_create_ToUnicode_stream (const char *font_name,
-                             int ttc_index, /* 0 for non-TTC */
+                             int         ttc_index, /* 0 for non-TTC */
                              const char *basefont,
                              const char *used_chars)
 {
-  pdf_obj    *cmap_ref = NULL;
-  int         res_id;
-  pdf_obj    *cmap_obj = NULL;
-  CMap       *cmap_add;
-  int         cmap_add_id;
-  tt_cmap    *ttcmap;
-  char       *cmap_name, *cmap_add_name;
-  FILE       *fp = NULL;
-  sfnt       *sfont;
-  ULONG       offset = 0;
-  int         i;
+  pdf_obj  *cmap_ref = NULL; /* returned value */
+  CMap     *cmap_add = NULL;
+  char     *cmap_name;
+  FILE     *fp       = NULL;
+  sfnt     *sfont;
+  ULONG     offset   = 0;
+  tt_cmap  *ttcmap; 
+  int       cmap_id, cmap_add_id;
+  int       i;
 
   cmap_name = NEW(strlen(basefont)+strlen("-UTF16")+1, char);
   sprintf(cmap_name, "%s-UTF16", basefont);
 
-  res_id = pdf_findresource("CMap", cmap_name);
-  if (res_id >= 0) {
+  cmap_id = pdf_findresource("CMap", cmap_name);
+  if (cmap_id >= 0) {
     RELEASE(cmap_name);
-    cmap_ref = pdf_get_resource_reference(res_id);
+    cmap_ref = pdf_get_resource_reference(cmap_id);
     return cmap_ref;
   }
 
@@ -1136,48 +1134,63 @@ otf_create_ToUnicode_stream (const char *font_name,
     return NULL;
   }
 
-  cmap_add_name = NEW(strlen(font_name)+strlen(",000-UCS32-Add")+1, char);
-  sprintf(cmap_add_name, "%s,%03d-UCS32-Add", font_name, ttc_index);
-  cmap_add_id = CMap_cache_find(cmap_add_name);
-  RELEASE(cmap_add_name);
-  if (cmap_add_id < 0) {
-    cmap_add = NULL;
-  } else {
-    cmap_add = CMap_cache_get(cmap_add_id);
+  /* cmap_add is used for storing information on ToUnicode mapping for
+   * unencoded glyphs which can be reached only through GSUB substitution.
+   * This is available only when "unicode" is specified in the encoding
+   * field of fontmap. We remember the inverse mapping via cmap_add in this
+   * case.
+   */
+  {
+    char *cmap_add_name;
+
+    cmap_add_name = NEW(strlen(font_name)+strlen(",000-UCS32-Add")+1, char);
+    sprintf(cmap_add_name, "%s,%03d-UCS32-Add", font_name, ttc_index);
+    cmap_add_id = CMap_cache_find(cmap_add_name);
+    RELEASE(cmap_add_name);
+    if (cmap_add_id < 0) {
+      cmap_add = NULL;
+    } else {
+      cmap_add = CMap_cache_get(cmap_add_id);
+    }
   }
 
-  CMap_set_silent(1); /* many warnings without this... */
+  ttcmap = NULL;
   for (i = 0; i < sizeof(cmap_plat_encs) / sizeof(cmap_plat_enc_rec); ++i) {
     ttcmap = tt_cmap_read(sfont, cmap_plat_encs[i].platform, cmap_plat_encs[i].encoding);
     if (!ttcmap)
       continue;
 
     if (ttcmap->format == 4 || ttcmap->format == 12) {
-      cmap_obj = create_ToUnicode_cmap(ttcmap, cmap_name, cmap_add, used_chars, sfont);
       break;
+    } else {
+      tt_cmap_release(ttcmap);
+      ttcmap = NULL;
     }
   }
-#if defined(LIBDPX)
-  if (cmap_obj == NULL && dpx_conf.verbose_level > VERBOSE_LEVEL_MIN)
-#else
-  if (cmap_obj == NULL)
-#endif /* LIBDPX */
-    WARN("Creating ToUnicode CMap failed for \"%s\"", font_name);
-  tt_cmap_release(ttcmap);
-  CMap_set_silent(0);
+  if (ttcmap) {
+    pdf_obj  *cmap_obj;
 
-  if (cmap_obj) {
-    res_id   = pdf_defineresource("CMap", cmap_name,
-				                          cmap_obj, PDF_RES_FLUSH_IMMEDIATE);
-    cmap_ref = pdf_get_resource_reference(res_id);
-  } else {
-    cmap_ref = NULL;
+    CMap_set_silent(1); /* many warnings without this... */
+    cmap_obj = create_ToUnicode_cmap(ttcmap, cmap_name, cmap_add, used_chars, sfont);
+    CMap_set_silent(0);
+    if (cmap_obj) {
+      cmap_id = pdf_defineresource("CMap", cmap_name,
+			    	                       cmap_obj, PDF_RES_FLUSH_IMMEDIATE);
+      cmap_ref = pdf_get_resource_reference(cmap_id);
+    }
+    tt_cmap_release(ttcmap);
   }
-  RELEASE(cmap_name);
 
+  /* Cleanup */
+  RELEASE(cmap_name);
   sfnt_close(sfont);
-  if (fp)
-    DPXFCLOSE(fp);
+  DPXFCLOSE(fp);
+
+#ifndef LIBDPX
+  if (!cmap_ref) {
+    WARN("Creating ToUnicode CMap failed for \"%s\"", font_name);
+  }
+#endif
 
   return cmap_ref;
 }
@@ -1558,8 +1571,7 @@ otf_load_Unicode_CMap (const char *map_name, int ttc_index, /* 0 for non-TTC fon
   gsub_list = NULL;
 
   RELEASE(cmap_name);
-  if (GIDToCIDMap)
-    RELEASE(GIDToCIDMap);
+  RELEASE(GIDToCIDMap);
   if (csi.registry)
     RELEASE(csi.registry);
   if (csi.ordering)
