@@ -994,8 +994,8 @@ create_ToUnicode_cmap (tt_cmap    *ttcmap,
                                       GIDToCIDMap, sfont);
     }
     /* Find Unicode mapping via PostScript glyph names... */
-    add_ToUnicode_via_glyph_name(cmap, used_chars_copy, num_glyphs,
-                                 GIDToCIDMap, sfont, is_cidfont ? NULL : cffont);    
+    count += add_ToUnicode_via_glyph_name(cmap, used_chars_copy, num_glyphs,
+                                          GIDToCIDMap, sfont, is_cidfont ? NULL : cffont);    
     if (cffont)
       cff_close(cffont);
     
@@ -1298,8 +1298,6 @@ otf_load_Unicode_CMap (const char *map_name, int ttc_index, /* 0 for non-TTC fon
   ULONG       offset      = 0;
   uint16_t    num_glyphs  = 0;
   FILE       *fp          = NULL;
-  otl_gsub   *gsub_vert   = NULL;
-  otl_gsub   *gsub_list   = NULL;
   tt_cmap    *ttcmap      = NULL;
   CIDSysInfo  csi         = {NULL, NULL, 0};
   uint16_t   *GIDToCIDMap = NULL;
@@ -1467,6 +1465,8 @@ otf_load_Unicode_CMap (const char *map_name, int ttc_index, /* 0 for non-TTC fon
   if (ttcmap) {
     CMap     *cmap      = NULL;
     int32_t  *map_base, *map_sub;
+    otl_gsub *gsub_vert = NULL;
+    otl_gsub *gsub_list = NULL;    
     uint32_t  gid;
   
     if (wmode == 1) {
@@ -1519,8 +1519,12 @@ otf_load_Unicode_CMap (const char *map_name, int ttc_index, /* 0 for non-TTC fon
                  cmap, map_base, map_sub);
       break;
     }
+    if (gsub_vert)
+      otl_gsub_release(gsub_vert);
+    if (gsub_list)
+      otl_gsub_release(gsub_list);
     tt_cmap_release(ttcmap);
-
+ 
     if (otl_tags) {
       CMap *tounicode = NULL;
       char *tounicode_name;
@@ -1562,13 +1566,6 @@ otf_load_Unicode_CMap (const char *map_name, int ttc_index, /* 0 for non-TTC fon
     }
     cmap_id = CMap_cache_add(cmap);
   }
-
-  if (gsub_vert)
-    otl_gsub_release(gsub_vert);
-  gsub_vert = NULL;
-  if (gsub_list)
-    otl_gsub_release(gsub_list);
-  gsub_list = NULL;
 
   RELEASE(cmap_name);
   RELEASE(GIDToCIDMap);
