@@ -2539,17 +2539,19 @@ filter_row_TIFF2 (unsigned char *dst, const unsigned char *src,
  * Especially, calling pdf_add_stream() for each 4 bytes append is highly
  * inefficient.
  */
-static int
-filter_decoded (pdf_obj *dst, const void *src, size_t srclen,
-                struct decode_parms *parms)
+static pdf_obj *
+get_stream_predictor_decoded (const void *src, size_t srclen, struct decode_parms *parms)
 {
+  pdf_obj             *dst;
   const unsigned char *p = (const unsigned char *) src;
   const unsigned char *endptr = p + srclen;
-  unsigned char *prev, *buf;
-  int bits_per_pixel  = parms->colors * parms->bits_per_component;
-  int bytes_per_pixel = (bits_per_pixel + 7) / 8;
-  int length = (parms->columns * bits_per_pixel + 7) / 8;
-  int i, error = 0;
+  unsigned char        *prev, *buf;
+  int                   bits_per_pixel  = parms->colors * parms->bits_per_component;
+  int                   bytes_per_pixel = (bits_per_pixel + 7) / 8;
+  int                   length = (parms->columns * bits_per_pixel + 7) / 8;
+  int                   i, error = 0;
+
+  dst  = pdf_new_stream(0);
 
   prev = NEW(length, unsigned char);
   buf  = NEW(length, unsigned char);
@@ -2676,16 +2678,21 @@ filter_decoded (pdf_obj *dst, const void *src, size_t srclen,
   RELEASE(prev);
   RELEASE(buf);
 
-  return error;
+  if (error) {
+    pdf_release_obj(dst);
+    dst = NULL;
+  }
+
+  return dst;
 }
 
-static int
-pdf_add_stream_flate_filtered (pdf_obj *dst, const void *data, size_t len, struct decode_parms *parms)
+static pdf_obj *
+get_stream_flate_decoded (const void *data, size_t len, struct decode_parms *parms)
 {
-  pdf_obj *tmp;
-  z_stream z;
-  Bytef    wbuf[WBUF_SIZE];
-  int      error;
+  pdf_obj  *dst;
+  pdf_obj  *tmp;
+  z_stream  z;
+  Bytef     wbuf[WBUF_SIZE];
 
   z.zalloc = Z_NULL; z.zfree = Z_NULL; z.opaque = Z_NULL;
 
@@ -2694,7 +2701,7 @@ pdf_add_stream_flate_filtered (pdf_obj *dst, const void *data, size_t len, struc
 
   if (inflateInit(&z) != Z_OK) {
     WARN("inflateInit() failed.");
-    return -1;
+    return NULL;
   }
 
   tmp = pdf_new_stream(0);
@@ -2706,7 +2713,8 @@ pdf_add_stream_flate_filtered (pdf_obj *dst, const void *data, size_t len, struc
     else if (status != Z_OK) {
       WARN("inflate() failed. Broken PDF file?");
       inflateEnd(&z);
-      return -1;
+      pdf_release_obj(tmp);
+      return NULL;
     }
 
     if (z.avail_out == 0) {
@@ -2719,12 +2727,80 @@ pdf_add_stream_flate_filtered (pdf_obj *dst, const void *data, size_t len, struc
   if (WBUF_SIZE - z.avail_out > 0)
     pdf_add_stream(tmp, wbuf, WBUF_SIZE - z.avail_out);
 
-  error = filter_decoded(dst, pdf_stream_dataptr(tmp), pdf_stream_length(tmp), parms);
+  if (inflateEnd(&z) == Z_OK) {
+    if (parms) { 
+      dst = get_stream_predictor_decoded(pdf_stream_dataptr(tmp), pdf_stream_length(tmp), parms);
+    } else {
+      dst = pdf_link_obj(tmp);
+    }
+  } else {
+    dst = NULL;
+  }
   pdf_release_obj(tmp);
 
-  return ((!error && inflateEnd(&z) == Z_OK) ? 0 : -1);
+  return dst;
 }
 #endif
+
+static pdf_obj *
+get_stream_asciihex_decoded (const void *data, size_t len)
+{
+  pdf_obj       *dst;
+  int            eod = 0, error = 0;
+  const char    *p = (const char *) data;
+  const char    *endptr = p + len;
+  unsigned char *buf, ch;
+  size_t         pos, n;
+
+  buf = NEW((len+1)/2, unsigned char);
+  skip_white(&p, endptr);
+  ch = 0; n = 0; pos = 0;
+  while (p < endptr && !error && !eod) {
+    char c1, val;
+    c1 = p[0];
+    if (p + 1 == endptr) {
+      if (c1 == '>') {
+        eod = 1; p++;
+        break;
+      } else {
+        error = -1;
+        break;
+      }
+    }
+    if (c1 > 'A' && c1 < 'F') {
+      val = c1 - 'A' + 10;
+    } else if (c1 > 'a' && c1 < 'f') {
+      val = c1 - 'a' + 10;
+    } else if (c1 >'0' && c1 < '9') {
+      val = c1 - '0';
+    } else if (c1 == '>') {
+      val = 0;
+      eod = 1;
+    } else {
+      error = -1;
+      break;
+    }
+    if (pos % 2) {
+      buf[n] = ch + val;
+      n++;
+      ch = 0;
+    } else {
+      ch = val << 4;
+    }
+    pos++; p++;
+    skip_white(&p, endptr);
+  }
+  if (error || !eod) {
+    WARN("Invalid ASCIIHex data seen.");
+    dst = NULL;
+  } else {
+    dst = pdf_new_stream(0);
+    pdf_add_stream(dst, buf, n);
+  }
+  RELEASE(buf);
+
+  return dst;
+}
 
 int
 pdf_concat_stream (pdf_obj *dst, pdf_obj *src)
@@ -2772,22 +2848,31 @@ pdf_concat_stream (pdf_obj *dst, pdf_obj *src)
       have_parms = 1;
     }
     if (PDF_OBJ_ARRAYTYPE(filter)) {
-      if (pdf_array_length(filter) > 1) {
-        WARN("Multiple DecodeFilter not supported.");
-        return -1;
-      }
-      filter = pdf_get_array(filter, 0);
-    }
-    if (PDF_OBJ_NAMETYPE(filter)) {
-      char  *filter_name = pdf_name_value(filter);
-      if (filter_name && !strcmp(filter_name, "FlateDecode")) {
-        if (have_parms)
-          error = pdf_add_stream_flate_filtered(dst, stream_data, stream_length, &parms);
-        else
-          error = pdf_add_stream_flate(dst, stream_data, stream_length);
-      } else {
-        WARN("DecodeFilter \"%s\" not supported.", filter_name);
-        error = -1;
+      int i, num;
+      num = pdf_array_length(filter);
+      for (i = 0; i < num; i++) {
+        filter = pdf_get_array(filter, i);
+        if (PDF_OBJ_NAMETYPE(filter)) {
+          char    *filter_name = pdf_name_value(filter);
+          pdf_obj *tmp = NULL;
+          if (filter_name) {
+            if (!strcmp(filter_name, "FlateDecode")) {
+              tmp = get_stream_flate_decoded(stream_data, stream_length, have_parms ? &parms : NULL);
+            } else if (!strcmp(filter_name, "ASCIIHexDecode")) {
+              tmp = get_stream_asciihex_decoded(stream_data, stream_length);
+            } else if (!strcmp(filter_name, "ASCII85Decode")) {
+
+            } else {
+              WARN("DecodeFilter \"%s\" not supported.", filter_name);
+              error = -1;
+            }
+            if (tmp) {
+              if (!error)
+                pdf_add_stream(dst, pdf_stream_dataptr(tmp), pdf_stream_length(tmp));
+              pdf_release_obj(tmp);
+            }
+          }
+        }
       }
     } else
       ERROR("Broken PDF file?");
