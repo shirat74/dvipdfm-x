@@ -2746,7 +2746,7 @@ static pdf_obj *
 get_stream_asciihex_decoded (const void *data, size_t len)
 {
   pdf_obj       *dst;
-  int            eod = 0, error = 0;
+  int            eod, error = 0;
   const char    *p = (const char *) data;
   const char    *endptr = p + len;
   unsigned char *buf, ch;
@@ -2754,28 +2754,21 @@ get_stream_asciihex_decoded (const void *data, size_t len)
 
   buf = NEW((len+1)/2, unsigned char);
   skip_white(&p, endptr);
-  ch = 0; n = 0; pos = 0;
+  ch = 0; n = 0; pos = 0; eod = 0;
   while (p < endptr && !error && !eod) {
     char c1, val;
     c1 = p[0];
-    if (p + 1 == endptr) {
-      if (c1 == '>') {
-        eod = 1; p++;
-        break;
-      } else {
-        error = -1;
-        break;
-      }
-    }
-    if (c1 > 'A' && c1 < 'F') {
+    if (c1 >= 'A' && c1 <= 'F') {
       val = c1 - 'A' + 10;
-    } else if (c1 > 'a' && c1 < 'f') {
+    } else if (c1 >= 'a' && c1 <= 'f') {
       val = c1 - 'a' + 10;
-    } else if (c1 >'0' && c1 < '9') {
+    } else if (c1 >= '0' && c1 <= '9') {
       val = c1 - '0';
     } else if (c1 == '>') {
       val = 0;
       eod = 1;
+      if ((pos % 2) == 0)
+        break;
     } else {
       error = -1;
       break;
@@ -2791,7 +2784,7 @@ get_stream_asciihex_decoded (const void *data, size_t len)
     skip_white(&p, endptr);
   }
   if (error || !eod) {
-    WARN("Invalid ASCIIHex data seen.");
+    WARN("Invalid ASCIIHex data seen: %s", eod ? "Invalid character" : "No EOD marker");
     dst = NULL;
   } else {
     dst = pdf_new_stream(0);
@@ -2874,8 +2867,29 @@ pdf_concat_stream (pdf_obj *dst, pdf_obj *src)
           }
         }
       }
-    } else
+    } else if (PDF_OBJ_NAMETYPE(filter)) {
+      char    *filter_name = pdf_name_value(filter);
+      pdf_obj *tmp = NULL;
+      if (filter_name) {
+        if (!strcmp(filter_name, "FlateDecode")) {
+          tmp = get_stream_flate_decoded(stream_data, stream_length, have_parms ? &parms : NULL);
+        } else if (!strcmp(filter_name, "ASCIIHexDecode")) {
+          tmp = get_stream_asciihex_decoded(stream_data, stream_length);
+        } else if (!strcmp(filter_name, "ASCII85Decode")) {
+
+        } else {
+          WARN("DecodeFilter \"%s\" not supported.", filter_name);
+          error = -1;
+        }
+        if (tmp) {
+          if (!error)
+            pdf_add_stream(dst, pdf_stream_dataptr(tmp), pdf_stream_length(tmp));
+          pdf_release_obj(tmp);
+        }
+      }
+    } else {
       ERROR("Broken PDF file?");
+    }
 #endif /* HAVE_ZLIB */
   }
 
