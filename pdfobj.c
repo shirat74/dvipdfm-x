@@ -2784,7 +2784,7 @@ get_stream_asciihex_decoded (const void *data, size_t len)
     skip_white(&p, endptr);
   }
   if (error || !eod) {
-    WARN("Invalid ASCIIHex data seen: %s", eod ? "Invalid character" : "No EOD marker");
+    WARN("Invalid ASCIIHex data seen: %s", error ? "Invalid character" : "No EOD marker");
     dst = NULL;
   } else {
     dst = pdf_new_stream(0);
@@ -2841,31 +2841,38 @@ pdf_concat_stream (pdf_obj *dst, pdf_obj *src)
       have_parms = 1;
     }
     if (PDF_OBJ_ARRAYTYPE(filter)) {
-      int i, num;
+      int      i, num;
+      pdf_obj *tmp = NULL, *prev = NULL;
+      pdf_obj *dec = NULL;
+
       num = pdf_array_length(filter);
       for (i = 0; i < num; i++) {
-        filter = pdf_get_array(filter, i);
-        if (PDF_OBJ_NAMETYPE(filter)) {
-          char    *filter_name = pdf_name_value(filter);
-          pdf_obj *tmp = NULL;
+        tmp = pdf_get_array(filter, i);
+        if (PDF_OBJ_NAMETYPE(tmp)) {
+          char *filter_name = pdf_name_value(filter);
           if (filter_name) {
             if (!strcmp(filter_name, "FlateDecode")) {
-              tmp = get_stream_flate_decoded(stream_data, stream_length, have_parms ? &parms : NULL);
+              dec = get_stream_flate_decoded(stream_data, stream_length, have_parms ? &parms : NULL);
             } else if (!strcmp(filter_name, "ASCIIHexDecode")) {
-              tmp = get_stream_asciihex_decoded(stream_data, stream_length);
+              dec = get_stream_asciihex_decoded(stream_data, stream_length);
             } else if (!strcmp(filter_name, "ASCII85Decode")) {
 
             } else {
               WARN("DecodeFilter \"%s\" not supported.", filter_name);
               error = -1;
             }
-            if (tmp) {
-              if (!error)
-                pdf_add_stream(dst, pdf_stream_dataptr(tmp), pdf_stream_length(tmp));
-              pdf_release_obj(tmp);
-            }
+            if (prev)
+              pdf_release_obj(prev);
+            prev = dec;
+            stream_data   = pdf_stream_dataptr(dec);
+            stream_length = pdf_stream_length(dec);
           }
         }
+      }
+      if (dec) {
+        if (!error)
+          pdf_add_stream(dst, pdf_stream_dataptr(dec), pdf_stream_length(dec));
+        pdf_release_obj(dec);
       }
     } else if (PDF_OBJ_NAMETYPE(filter)) {
       char    *filter_name = pdf_name_value(filter);
