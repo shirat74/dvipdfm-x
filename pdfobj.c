@@ -2853,6 +2853,7 @@ get_stream_ascii85_decoded (const void *data, size_t len)
     if (eod)
      break;
     q[0] = ch;
+    skip_white(&p, endptr);
     for (m = 1; m < 5 && p < endptr; m++) {
       ch = p[0];
       p++;
