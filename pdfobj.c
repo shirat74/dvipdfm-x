@@ -2463,18 +2463,25 @@ get_decode_parms (struct decode_parms *parms, pdf_obj *dict)
   parms->columns   = 1;
 
   tmp = pdf_deref_obj(pdf_lookup_dict(dict, "Predictor"));
-  if (tmp)
+  if (tmp) {
     parms->predictor = pdf_number_value(tmp);
+    pdf_release_obj(tmp);
+  }
   tmp = pdf_deref_obj(pdf_lookup_dict(dict, "Colors"));
-  if (tmp)
+  if (tmp) {
     parms->colors = pdf_number_value(tmp);
+    pdf_release_obj(tmp);
+  }
   tmp = pdf_deref_obj(pdf_lookup_dict(dict, "BitsPerComponent"));
-  if (tmp)
+  if (tmp) {
     parms->bits_per_component = pdf_number_value(tmp);
+    pdf_release_obj(tmp);
+  }
   tmp = pdf_deref_obj(pdf_lookup_dict(dict, "Columns"));
-  if (tmp)
+  if (tmp) {
     parms->columns = pdf_number_value(tmp);
-
+    pdf_release_obj(tmp);
+  }
   if (parms->bits_per_component != 1 &&
       parms->bits_per_component != 2 &&
       parms->bits_per_component != 4 &&
@@ -2746,7 +2753,7 @@ static pdf_obj *
 get_stream_asciihex_decoded (const void *data, size_t len)
 {
   pdf_obj       *dst;
-  int            eod, error = 0;
+  int            eod, error;
   const char    *p = (const char *) data;
   const char    *endptr = p + len;
   unsigned char *buf, ch;
@@ -2754,7 +2761,7 @@ get_stream_asciihex_decoded (const void *data, size_t len)
 
   buf = NEW((len+1)/2, unsigned char);
   skip_white(&p, endptr);
-  ch = 0; n = 0; pos = 0; eod = 0;
+  ch = 0; n = 0; pos = 0; eod = 0; error = 0;
   while (p < endptr && !error && !eod) {
     char c1, val;
     c1 = p[0];
@@ -2795,6 +2802,133 @@ get_stream_asciihex_decoded (const void *data, size_t len)
   return dst;
 }
 
+static char b85example[] = "9jqo^BlbD-BleB1DJ+*+F(f,q/0JhKF<GL>Cj@.4Gp$d7F!,L7@<6@)/0JDEF<G%<+EV:2F!," \
+  "O<DJ+*.@<*K0@<6L(Df-\0Ec5e;DffZ(EZee.Bl.9pF\"AGXBPCsi+DGm>@3BB/F*&OCAfu2/AKY" \
+  "i(DIb:@FD,*)+C]U=@3BN#EcYf8ATD3s@q?d$AftVqCh[NqF<G:8+EV:.+Cf>-FD5W8ARlolDIa" \
+  "l(DId<j@<?3r@:F%a+D58'ATD4$Bl@l3De:,-DJs`8ARoFb/0JMK@qB4^F!,R<AKZ&-DfTqBG%G" \
+  ">uD.RTpAKYo'+CT/5+Cei#DII?(E,9)oF*2M7/c~>";
+
+static pdf_obj *
+get_stream_ascii85_decoded (const void *data, size_t len)
+{
+  pdf_obj       *dst;
+  int            eod, error;
+  const char    *p = (const char *) b85example;
+  const char    *endptr = p + len;
+  unsigned char *buf;
+  size_t         n;
+
+  WARN("%s", p);
+
+  buf = NEW(4*(len+4)/5, unsigned char);
+  skip_white(&p, endptr);
+  n = 0; eod = 0; error = 0;
+  while (p < endptr && !error && !eod) {
+    char q[5] = {0, 0, 0, 0, 0};
+    int  m;
+    char ch;
+
+    ch = p[0];
+    p++;
+    if (ch == 'z') {
+      memset(buf+n, 0, 4);
+      n += 4;
+      p++;
+      continue;
+    } else if (ch == '~') {
+      skip_white(&p, endptr);
+      if (p < endptr) {
+        if (p[0] == '>') {
+          eod = 1;
+          p++;
+        } else {
+          error = -1;
+          break;
+        }
+      } else {
+        error = -1;
+        break;
+      }
+    }
+    if (eod)
+     break;
+    q[0] = ch;
+    for (m = 1; m < 5 && p < endptr; m++) {
+      ch = p[0];
+      p++;
+      if (ch == '~') {
+        skip_white(&p, endptr);
+        if (p < endptr) {
+          if (p[0] == '>') {
+            p++;
+            eod = 1;
+            break;
+          } else {
+            WARN("EOD corrupt");
+            error = -1;
+            break;
+          }
+        } else {
+          error = -1;
+          break;
+        }
+      } else if (ch < '!' || ch > 'u') {
+        WARN("Invaid char: <%02x> <%c>", ch, ch);
+        error = -1;
+        break;
+      } else {
+        q[m] = ch;
+      }
+      skip_white(&p, endptr);
+    }
+    WARN("next ==> <%c%c%c%c%c>", p[0], p[1], p[2], p[3], p[4]);
+    if (eod)
+      break;
+    if (!error) {
+      uint32_t val = 0;
+      int      i;
+      if (m <= 1) {
+        WARN("Too few");
+        error = -1;
+        break;
+      }
+      for (i = 0; i < 4; i++) {
+        val = 85 * val + (q[i] - '!');
+      }
+      /* Check overflow */
+      if (val > UINT32_MAX / 85 && (q[4] - '!') > (UINT32_MAX & 0xff)) {
+        WARN("Overflow.");
+        error = -1;
+        break;
+      } else {
+        val = 85 * val + (q[4] - '!');
+      }
+      if (!error) {
+        for (i = 3; i >= 0; i--) {
+          buf[n + i] = val & 0xff;
+          val /= 256;
+        }
+        WARN("buf ==> <%c%c%c%c>", buf[n], buf[n+1], buf[n+2], buf[n+3]);
+        n += m - 1;
+      }
+    }
+    skip_white(&p, endptr);
+  }
+  if (error) {
+    WARN("Error in reading ASCII85 data.");
+    dst = NULL;
+  } else if (!eod) {
+    WARN("Error in reading ASCII85 data: No EOD");
+    dst = NULL;
+  } else {
+    dst = pdf_new_stream(0);
+    pdf_add_stream(dst, buf, n);
+  }
+  RELEASE(buf);
+
+  return dst;
+}
+
 int
 pdf_concat_stream (pdf_obj *dst, pdf_obj *src)
 {
@@ -2812,10 +2946,9 @@ pdf_concat_stream (pdf_obj *dst, pdf_obj *src)
   stream_dict   = pdf_stream_dict   (src);
 
   filter = pdf_lookup_dict(stream_dict, "Filter");
-  if (!filter)
+  if (!filter) {
     pdf_add_stream(dst, stream_data, stream_length);
-#if HAVE_ZLIB
-  else {
+  } else {
     struct decode_parms parms;
     int    have_parms = 0;
 
@@ -2827,15 +2960,22 @@ pdf_concat_stream (pdf_obj *dst, pdf_obj *src)
       if (PDF_OBJ_ARRAYTYPE(tmp)) {
         if (pdf_array_length(tmp) > 1) {
           WARN("Unexpected size for DecodeParms array.");
+          pdf_release_obj(tmp);
           return -1;
+        } else {
+          pdf_obj *tmp2;
+          tmp2 = pdf_deref_obj(pdf_get_array(tmp, 0));
+          pdf_release_obj(tmp);
+          tmp  = tmp2;
         }
-        tmp = pdf_deref_obj(pdf_get_array(tmp, 0));
       }
       if (!PDF_OBJ_DICTTYPE(tmp)) {
         WARN("PDF dict expected for DecodeParms...");
+        pdf_release_obj(tmp);
         return -1;
       }
       error = get_decode_parms(&parms, tmp);
+      pdf_release_obj(tmp);
       if (error)
         ERROR("Invalid value(s) in DecodeParms dictionary.");
       have_parms = 1;
@@ -2846,17 +2986,19 @@ pdf_concat_stream (pdf_obj *dst, pdf_obj *src)
       pdf_obj *dec = NULL;
 
       num = pdf_array_length(filter);
-      for (i = 0; i < num; i++) {
+      for (i = 0; i < num && !error; i++) {
         tmp = pdf_get_array(filter, i);
         if (PDF_OBJ_NAMETYPE(tmp)) {
-          char *filter_name = pdf_name_value(filter);
+          char *filter_name = pdf_name_value(tmp);
           if (filter_name) {
-            if (!strcmp(filter_name, "FlateDecode")) {
-              dec = get_stream_flate_decoded(stream_data, stream_length, have_parms ? &parms : NULL);
-            } else if (!strcmp(filter_name, "ASCIIHexDecode")) {
+            if (!strcmp(filter_name, "ASCIIHexDecode")) {
               dec = get_stream_asciihex_decoded(stream_data, stream_length);
             } else if (!strcmp(filter_name, "ASCII85Decode")) {
-
+              dec = get_stream_ascii85_decoded(stream_data, stream_length);
+#if HAVE_ZLIB
+            } else if (!strcmp(filter_name, "FlateDecode")) {
+              dec = get_stream_flate_decoded(stream_data, stream_length, have_parms ? &parms : NULL);
+#endif /* HAVE_ZLIB */
             } else {
               WARN("DecodeFilter \"%s\" not supported.", filter_name);
               error = -1;
@@ -2864,8 +3006,10 @@ pdf_concat_stream (pdf_obj *dst, pdf_obj *src)
             if (prev)
               pdf_release_obj(prev);
             prev = dec;
-            stream_data   = pdf_stream_dataptr(dec);
-            stream_length = pdf_stream_length(dec);
+            if (dec) {
+              stream_data   = pdf_stream_dataptr(dec);
+              stream_length = pdf_stream_length(dec);
+            }
           }
         }
       }
@@ -2876,28 +3020,30 @@ pdf_concat_stream (pdf_obj *dst, pdf_obj *src)
       }
     } else if (PDF_OBJ_NAMETYPE(filter)) {
       char    *filter_name = pdf_name_value(filter);
-      pdf_obj *tmp = NULL;
+      pdf_obj *dec = NULL;
       if (filter_name) {
-        if (!strcmp(filter_name, "FlateDecode")) {
-          tmp = get_stream_flate_decoded(stream_data, stream_length, have_parms ? &parms : NULL);
-        } else if (!strcmp(filter_name, "ASCIIHexDecode")) {
-          tmp = get_stream_asciihex_decoded(stream_data, stream_length);
+        if (!strcmp(filter_name, "ASCIIHexDecode")) {
+          dec = get_stream_asciihex_decoded(stream_data, stream_length);
         } else if (!strcmp(filter_name, "ASCII85Decode")) {
-
+          dec = get_stream_ascii85_decoded(stream_data, stream_length);
+#if HAVE_ZLIB
+        } else if (!strcmp(filter_name, "FlateDecode")) {
+          dec = get_stream_flate_decoded(stream_data, stream_length, have_parms ? &parms : NULL);
+#endif /* HAVE_ZLIB */
         } else {
           WARN("DecodeFilter \"%s\" not supported.", filter_name);
           error = -1;
         }
-        if (tmp) {
+        if (dec) {
           if (!error)
-            pdf_add_stream(dst, pdf_stream_dataptr(tmp), pdf_stream_length(tmp));
-          pdf_release_obj(tmp);
+            pdf_add_stream(dst, pdf_stream_dataptr(dec), pdf_stream_length(dec));
+          pdf_release_obj(dec);
         }
       }
     } else {
-      ERROR("Broken PDF file?");
+      WARN("Invalid value for /Filter found.");
+      error = -1;
     }
-#endif /* HAVE_ZLIB */
   }
 
   return error;
