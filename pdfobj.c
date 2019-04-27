@@ -2518,11 +2518,11 @@ filter_stream_decode_Predictor (const void *src, size_t srclen, struct decode_pa
   pdf_obj             *dst;
   const unsigned char *p = (const unsigned char *) src;
   const unsigned char *endptr = p + srclen;
-  unsigned char        *prev, *buf;
-  int                   bits_per_pixel  = parms->colors * parms->bits_per_component;
-  int                   bytes_per_pixel = (bits_per_pixel + 7) / 8;
-  int                   length = (parms->columns * bits_per_pixel + 7) / 8;
-  int                   i, error = 0;
+  unsigned char       *prev, *buf;
+  int                  bits_per_pixel  = parms->colors * parms->bits_per_component;
+  int                  bytes_per_pixel = (bits_per_pixel + 7) / 8;
+  int                  length = (parms->columns * bits_per_pixel + 7) / 8;
+  int                  i, error = 0;
 
   dst  = pdf_new_stream(0);
 
