@@ -2802,119 +2802,110 @@ get_stream_asciihex_decoded (const void *data, size_t len)
   return dst;
 }
 
-static char b85example[] = "9jqo^BlbD-BleB1DJ+*+F(f,q/0JhKF<GL>Cj@.4Gp$d7F!,L7@<6@)/0JDEF<G%<+EV:2F!," \
-  "O<DJ+*.@<*K0@<6L(Df-\0Ec5e;DffZ(EZee.Bl.9pF\"AGXBPCsi+DGm>@3BB/F*&OCAfu2/AKY" \
-  "i(DIb:@FD,*)+C]U=@3BN#EcYf8ATD3s@q?d$AftVqCh[NqF<G:8+EV:.+Cf>-FD5W8ARlolDIa" \
-  "l(DId<j@<?3r@:F%a+D58'ATD4$Bl@l3De:,-DJs`8ARoFb/0JMK@qB4^F!,R<AKZ&-DfTqBG%G" \
-  ">uD.RTpAKYo'+CT/5+Cei#DII?(E,9)oF*2M7/c~>";
+/* Percent sign is not start of comment here. */
+#define is_space(c) ((c) == ' '  || (c) == '\t' || (c) == '\f' || \
+		     (c) == '\r' || (c) == '\n' || (c) == '\0')
+static void
+skip_white_a85 (const char **p, const char *endptr)
+{
+  while (*p < endptr && (is_space(**p))) {
+    (*p)++;
+  } 
+}
+
+static const char a85ex[] = "9jqo^BlbD-BleB1DJ+*+F(f,q/0JhKF<GL>Cj@.4Gp$d7F!,L7@<6@)/0JDEF<G%<+EV:2F!," \
+"O<DJ+*.@<*K0@<6L(Df-\\0Ec5e;DffZ(EZee.Bl.9pF\"AGXBPCsi+DGm>@3BB/F*&OCAfu2/AKY" \
+"i(DIb:@FD,*)+C]U=@3BN#EcYf8ATD3s@q?d$AftVqCh[NqF<G:8+EV:.+Cf>-FD5W8ARlolDIa" \
+"l(DId<j@<?3r@:F%a+D58'ATD4$Bl@l3De:,-DJs`8ARoFb/0JMK@qB4^F!,R<AKZ&-DfTqBG%G" \
+">uD.RTpAKYo'+CT/5+Cei#DII?(E,9)oF*2M7/c~>";
 
 static pdf_obj *
 get_stream_ascii85_decoded (const void *data, size_t len)
 {
   pdf_obj       *dst;
   int            eod, error;
-  const char    *p = (const char *) b85example;
-  const char    *endptr = p + len;
+  const char    *p = (const char *) a85ex;
+  const char    *endptr = p + strlen(a85ex);
   unsigned char *buf;
   size_t         n;
 
   WARN("%s", p);
-
-  buf = NEW(4*(len+4)/5, unsigned char);
-  skip_white(&p, endptr);
+  buf = NEW(((len+4)/5)*4 + 1, unsigned char); /* FIXME */
+  skip_white_a85(&p, endptr);
   n = 0; eod = 0; error = 0;
   while (p < endptr && !error && !eod) {
-    char q[5] = {0, 0, 0, 0, 0};
+    char q[5] = {'!', '!', '!', '!', '!'};
     int  m;
     char ch;
 
     ch = p[0];
     p++;
+    skip_white_a85(&p, endptr);
     if (ch == 'z') {
       memset(buf+n, 0, 4);
       n += 4;
-      p++;
       continue;
     } else if (ch == '~') {
-      skip_white(&p, endptr);
-      if (p < endptr) {
-        if (p[0] == '>') {
+      if (p < endptr && p[0] == '>') {
+        eod = 1;
+        p++;
+      } else {
+        error = -1;
+      }
+      break;
+    }
+    q[0] = ch;
+    for (m = 1; m < 5 && p < endptr; m++) {
+      ch = p[0];
+      p++;
+      skip_white_a85(&p, endptr);
+      if (ch == '~') {
+        if (p < endptr && p[0] == '>') {
           eod = 1;
           p++;
         } else {
           error = -1;
-          break;
         }
-      } else {
-        error = -1;
         break;
-      }
-    }
-    if (eod)
-     break;
-    q[0] = ch;
-    skip_white(&p, endptr);
-    for (m = 1; m < 5 && p < endptr; m++) {
-      ch = p[0];
-      p++;
-      if (ch == '~') {
-        skip_white(&p, endptr);
-        if (p < endptr) {
-          if (p[0] == '>') {
-            p++;
-            eod = 1;
-            break;
-          } else {
-            WARN("EOD corrupt");
-            error = -1;
-            break;
-          }
-        } else {
-          error = -1;
-          break;
-        }
       } else if (ch < '!' || ch > 'u') {
-        WARN("Invaid char: <%02x> <%c>", ch, ch);
         error = -1;
         break;
       } else {
         q[m] = ch;
       }
-      skip_white(&p, endptr);
     }
-    WARN("next ==> <%c%c%c%c%c>", p[0], p[1], p[2], p[3], p[4]);
-    if (eod)
-      break;
     if (!error) {
       uint32_t val = 0;
       int      i;
       if (m <= 1) {
-        WARN("Too few");
         error = -1;
         break;
       }
-      for (i = 0; i < 4; i++) {
-        val = 85 * val + (q[i] - '!');
-      }
+      val = 85*85*85*(q[0] - '!') + 85*85*(q[1] - '!')
+              + 85*(q[2] - '!') + (q[3] - '!');
       /* Check overflow */
-      if (val > UINT32_MAX / 85 && (q[4] - '!') > (UINT32_MAX & 0xff)) {
-        WARN("Overflow.");
+      if (val > UINT32_MAX / 85) {
         error = -1;
         break;
       } else {
-        val = 85 * val + (q[4] - '!');
+        val = 85 * val;
+        if (val > UINT32_MAX - (q[4] - '!')) {
+          error = -1;
+          break;
+        }
+        val += (q[4] - '!');
       }
       if (!error) {
         for (i = 3; i >= 0; i--) {
           buf[n + i] = val & 0xff;
           val /= 256;
         }
-        WARN("buf ==> <%c%c%c%c>", buf[n], buf[n+1], buf[n+2], buf[n+3]);
         n += m - 1;
       }
     }
-    skip_white(&p, endptr);
   }
+  buf[n] = '\0';
+  WARN("%s", buf);
   if (error) {
     WARN("Error in reading ASCII85 data.");
     dst = NULL;
@@ -3010,6 +3001,8 @@ pdf_concat_stream (pdf_obj *dst, pdf_obj *src)
             if (dec) {
               stream_data   = pdf_stream_dataptr(dec);
               stream_length = pdf_stream_length(dec);
+            } else {
+              error = -1;
             }
           }
         }
