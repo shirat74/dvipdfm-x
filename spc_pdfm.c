@@ -1810,7 +1810,7 @@ spc_handler_pdfm_mapline (struct spc_env *spe, struct spc_arg *ap)
   fontmap_rec *mrec;
   char        *map_name, opchr;
   int          error = 0;
-  static char  buffer[1024];
+  char        *buffer;
   const char  *p;
   char        *q;
 
@@ -1825,6 +1825,8 @@ spc_handler_pdfm_mapline (struct spc_env *spe, struct spc_arg *ap)
     ap->curptr++;
 
   skip_white(&ap->curptr, ap->endptr);
+
+  buffer = NEW(ap->endptr - ap->curptr + 1, char);
 
   switch (opchr) {
   case  '-':
@@ -1858,6 +1860,7 @@ spc_handler_pdfm_mapline (struct spc_env *spe, struct spc_arg *ap)
   }
   if (!error)
     ap->curptr = ap->endptr;
+  RELEASE(buffer);
 
   return 0;
 }
