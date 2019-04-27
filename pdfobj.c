@@ -700,6 +700,7 @@ pdf_out_flush (void)
 #if defined(PDFOBJ_DEBUG)
   {
     int i;
+    error_out = 1;
     MESG("\ndebug>> %d PDF objects created.", cur_obj_id);
     for (i = 0; i < cur_obj_id; i++) {
       pdf_obj *obj = bucket[i];
@@ -707,8 +708,12 @@ pdf_out_flush (void)
         if (obj->label > 0) {
           WARN("Object obj_id=<%lu, %u> unreleased...", obj->label, obj->generation);
           WARN("Reference count=%d", obj->refcount);
+          pdf_write_obj(p, obj);
+          MESG("\n");
         } else {
-          WARN("Unreleased object found: %d", i);
+          WARN("Unreleased object found: (unlabeled) id=%d", i);
+          pdf_write_obj(p, obj);
+          MESG("\n");
         }
       }
     }
@@ -2408,48 +2413,9 @@ pdf_add_stream (pdf_obj *stream, const void *stream_data, int length)
 
 #if HAVE_ZLIB
 #define WBUF_SIZE 4096
-int
-pdf_add_stream_flate (pdf_obj *dst, const void *data, int len)
-{
-  z_stream z;
-  Bytef    wbuf[WBUF_SIZE];
-
-  z.zalloc = Z_NULL; z.zfree = Z_NULL; z.opaque = Z_NULL;
-
-  z.next_in  = (z_const Bytef *) data; z.avail_in  = len;
-  z.next_out = (Bytef *) wbuf; z.avail_out = WBUF_SIZE;
-
-  if (inflateInit(&z) != Z_OK) {
-    WARN("inflateInit() failed.");
-    return -1;
-  }
-
-  for (;;) {
-    int status;
-    status = inflate(&z, Z_NO_FLUSH);
-    if (status == Z_STREAM_END)
-      break;
-    else if (status != Z_OK) {
-      WARN("inflate() failed. Broken PDF file?");
-      inflateEnd(&z);
-      return -1;
-    }
-
-    if (z.avail_out == 0) {
-      pdf_add_stream(dst, wbuf, WBUF_SIZE);
-      z.next_out  = wbuf;
-      z.avail_out = WBUF_SIZE;
-    }
-  }
-
-  if (WBUF_SIZE - z.avail_out > 0)
-    pdf_add_stream(dst, wbuf, WBUF_SIZE - z.avail_out);
-
-  return (inflateEnd(&z) == Z_OK ? 0 : -1);
-}
 
 static int
-get_decode_parms (struct decode_parms *parms, pdf_obj *dict)
+filter_get_DecodeParms_FlateDecode (struct decode_parms *parms, pdf_obj *dict)
 {
   pdf_obj *tmp;
 
@@ -2547,7 +2513,7 @@ filter_row_TIFF2 (unsigned char *dst, const unsigned char *src,
  * inefficient.
  */
 static pdf_obj *
-get_stream_predictor_decoded (const void *src, size_t srclen, struct decode_parms *parms)
+filter_stream_decode_Predictor (const void *src, size_t srclen, struct decode_parms *parms)
 {
   pdf_obj             *dst;
   const unsigned char *p = (const unsigned char *) src;
@@ -2694,7 +2660,7 @@ get_stream_predictor_decoded (const void *src, size_t srclen, struct decode_parm
 }
 
 static pdf_obj *
-get_stream_flate_decoded (const void *data, size_t len, struct decode_parms *parms)
+filter_stream_decode_FlateDecode (const void *data, size_t len, struct decode_parms *parms)
 {
   pdf_obj  *dst;
   pdf_obj  *tmp;
@@ -2736,7 +2702,7 @@ get_stream_flate_decoded (const void *data, size_t len, struct decode_parms *par
 
   if (inflateEnd(&z) == Z_OK) {
     if (parms) { 
-      dst = get_stream_predictor_decoded(pdf_stream_dataptr(tmp), pdf_stream_length(tmp), parms);
+      dst = filter_stream_decode_Predictor(pdf_stream_dataptr(tmp), pdf_stream_length(tmp), parms);
     } else {
       dst = pdf_link_obj(tmp);
     }
@@ -2750,7 +2716,7 @@ get_stream_flate_decoded (const void *data, size_t len, struct decode_parms *par
 #endif
 
 static pdf_obj *
-get_stream_asciihex_decoded (const void *data, size_t len)
+filter_stream_decode_ASCIIHexDecode (const void *data, size_t len)
 {
   pdf_obj       *dst;
   int            eod, error;
@@ -2802,7 +2768,9 @@ get_stream_asciihex_decoded (const void *data, size_t len)
   return dst;
 }
 
-/* Percent sign is not start of comment here. */
+/* Percent sign is not start of comment here.
+ * We need this for reading Ascii85 encoded data.
+ */
 #define is_space(c) ((c) == ' '  || (c) == '\t' || (c) == '\f' || \
 		     (c) == '\r' || (c) == '\n' || (c) == '\0')
 static void
@@ -2813,28 +2781,21 @@ skip_white_a85 (const char **p, const char *endptr)
   } 
 }
 
-static const char a85ex[] = "9jqo^BlbD-BleB1DJ+*+F(f,q/0JhKF<GL>Cj@.4Gp$d7F!,L7@<6@)/0JDEF<G%<+EV:2F!," \
-"O<DJ+*.@<*K0@<6L(Df-\\0Ec5e;DffZ(EZee.Bl.9pF\"AGXBPCsi+DGm>@3BB/F*&OCAfu2/AKY" \
-"i(DIb:@FD,*)+C]U=@3BN#EcYf8ATD3s@q?d$AftVqCh[NqF<G:8+EV:.+Cf>-FD5W8ARlolDIa" \
-"l(DId<j@<?3r@:F%a+D58'ATD4$Bl@l3De:,-DJs`8ARoFb/0JMK@qB4^F!,R<AKZ&-DfTqBG%G" \
-">uD.RTpAKYo'+CT/5+Cei#DII?(E,9)oF*2M7/c~>";
-
 static pdf_obj *
-get_stream_ascii85_decoded (const void *data, size_t len)
+filter_stream_decode_ASCII85Decode (const void *data, size_t len)
 {
   pdf_obj       *dst;
   int            eod, error;
-  const char    *p = (const char *) a85ex;
-  const char    *endptr = p + strlen(a85ex);
+  const char    *p = (const char *) data;
+  const char    *endptr = p + len;
   unsigned char *buf;
   size_t         n;
 
-  WARN("%s", p);
-  buf = NEW(((len+4)/5)*4 + 1, unsigned char); /* FIXME */
+  buf = NEW(((len+4)/5)*4, unsigned char);
   skip_white_a85(&p, endptr);
   n = 0; eod = 0; error = 0;
   while (p < endptr && !error && !eod) {
-    char q[5] = {'!', '!', '!', '!', '!'};
+    char q[5] = {'u', 'u', 'u', 'u', 'u'};
     int  m;
     char ch;
 
@@ -2904,8 +2865,7 @@ get_stream_ascii85_decoded (const void *data, size_t len)
       }
     }
   }
-  buf[n] = '\0';
-  WARN("%s", buf);
+
   if (error) {
     WARN("Error in reading ASCII85 data.");
     dst = NULL;
@@ -2921,123 +2881,129 @@ get_stream_ascii85_decoded (const void *data, size_t len)
   return dst;
 }
 
+static pdf_obj *
+filter_stream_decode (const char *filter_name, pdf_obj *src, pdf_obj *parm)
+{
+  pdf_obj    *dec;
+  const char *stream_data;
+  size_t      stream_length;
+
+  if (!filter_name)
+    return pdf_link_obj(src);
+
+  stream_data   = pdf_stream_dataptr(src);
+  stream_length = pdf_stream_length(src);
+
+  if (!strcmp(filter_name, "ASCIIHexDecode")) {
+    dec = filter_stream_decode_ASCIIHexDecode(stream_data, stream_length);
+  } else if (!strcmp(filter_name, "ASCII85Decode")) {
+    dec = filter_stream_decode_ASCII85Decode(stream_data, stream_length);
+#if HAVE_ZLIB
+  } else if (!strcmp(filter_name, "FlateDecode")) {
+    struct decode_parms decode_parm;
+    if (parm)
+      filter_get_DecodeParms_FlateDecode(&decode_parm, parm);
+    dec = filter_stream_decode_FlateDecode(stream_data, stream_length, parm ? &decode_parm : NULL);
+#endif /* HAVE_ZLIB */
+  } else {
+    WARN("DecodeFilter \"%s\" not supported.", filter_name);
+    dec = NULL;
+  }
+
+  return dec;
+}
+
 int
 pdf_concat_stream (pdf_obj *dst, pdf_obj *src)
 {
-  const char *stream_data;
-  size_t      stream_length;
-  pdf_obj    *stream_dict;
-  pdf_obj    *filter;
-  int         error = 0;
+  pdf_obj *filtered;
+  pdf_obj *stream_dict;
+  pdf_obj *filter, *parms;
+  int      error = 0;
 
-  if (!PDF_OBJ_STREAMTYPE(dst) || !PDF_OBJ_STREAMTYPE(src))
-    ERROR("Invalid type.");
+  if (!PDF_OBJ_STREAMTYPE(dst) || !PDF_OBJ_STREAMTYPE(src)) {
+    WARN("Passed invalid type in pdf_concat_stream().");
+    return -1;
+  }
 
-  stream_data   = pdf_stream_dataptr(src);
-  stream_length = pdf_stream_length (src);
-  stream_dict   = pdf_stream_dict   (src);
+  stream_dict = pdf_stream_dict(src);
 
   filter = pdf_lookup_dict(stream_dict, "Filter");
   if (!filter) {
-    pdf_add_stream(dst, stream_data, stream_length);
+    pdf_add_stream(dst, pdf_stream_dataptr(src), pdf_stream_length(src));
+    return 0;
+  }
+  if (pdf_lookup_dict(stream_dict, "DecodeParms")) {
+    /* Dictionary or array */
+    parms = pdf_deref_obj(pdf_lookup_dict(stream_dict, "DecodeParms"));
+    if (!parms) {
+      WARN("Failed to deref DeocdeParms...");
+      return -1;
+    } else if (!PDF_OBJ_ARRAYTYPE(parms) && !PDF_OBJ_DICTTYPE(parms)) {
+      WARN("PDF dict or array expected for DecodeParms...");
+      pdf_release_obj(parms);
+      return -1;
+    }
   } else {
-    struct decode_parms parms;
-    int    have_parms = 0;
+    parms = NULL;
+  }
+  if (PDF_OBJ_ARRAYTYPE(filter)) {
+    int      i, num;
+    pdf_obj *prev = NULL;
 
-    if (pdf_lookup_dict(stream_dict, "DecodeParms")) {
-      pdf_obj *tmp;
-
-      /* Dictionary or array */
-      tmp = pdf_deref_obj(pdf_lookup_dict(stream_dict, "DecodeParms"));
-      if (PDF_OBJ_ARRAYTYPE(tmp)) {
-        if (pdf_array_length(tmp) > 1) {
-          WARN("Unexpected size for DecodeParms array.");
-          pdf_release_obj(tmp);
-          return -1;
-        } else {
-          pdf_obj *tmp2;
-          tmp2 = pdf_deref_obj(pdf_get_array(tmp, 0));
-          pdf_release_obj(tmp);
-          tmp  = tmp2;
-        }
-      }
-      if (!PDF_OBJ_DICTTYPE(tmp)) {
-        WARN("PDF dict expected for DecodeParms...");
-        pdf_release_obj(tmp);
+    num = pdf_array_length(filter);
+    if (parms) {
+      if (!PDF_OBJ_ARRAYTYPE(parms) || pdf_array_length(parms) != num) {
+        WARN("Invalid DecodeParam object found.");
+        pdf_release_obj(parms);
         return -1;
       }
-      error = get_decode_parms(&parms, tmp);
-      pdf_release_obj(tmp);
-      if (error)
-        ERROR("Invalid value(s) in DecodeParms dictionary.");
-      have_parms = 1;
     }
-    if (PDF_OBJ_ARRAYTYPE(filter)) {
-      int      i, num;
-      pdf_obj *tmp = NULL, *prev = NULL;
-      pdf_obj *dec = NULL;
-
-      num = pdf_array_length(filter);
-      for (i = 0; i < num && !error; i++) {
-        tmp = pdf_get_array(filter, i);
-        if (PDF_OBJ_NAMETYPE(tmp)) {
-          char *filter_name = pdf_name_value(tmp);
-          if (filter_name) {
-            if (!strcmp(filter_name, "ASCIIHexDecode")) {
-              dec = get_stream_asciihex_decoded(stream_data, stream_length);
-            } else if (!strcmp(filter_name, "ASCII85Decode")) {
-              dec = get_stream_ascii85_decoded(stream_data, stream_length);
-#if HAVE_ZLIB
-            } else if (!strcmp(filter_name, "FlateDecode")) {
-              dec = get_stream_flate_decoded(stream_data, stream_length, have_parms ? &parms : NULL);
-#endif /* HAVE_ZLIB */
-            } else {
-              WARN("DecodeFilter \"%s\" not supported.", filter_name);
-              error = -1;
-            }
-            if (prev)
-              pdf_release_obj(prev);
-            prev = dec;
-            if (dec) {
-              stream_data   = pdf_stream_dataptr(dec);
-              stream_length = pdf_stream_length(dec);
-            } else {
-              error = -1;
-            }
-          }
-        }
-      }
-      if (dec) {
-        if (!error)
-          pdf_add_stream(dst, pdf_stream_dataptr(dec), pdf_stream_length(dec));
-        pdf_release_obj(dec);
-      }
-    } else if (PDF_OBJ_NAMETYPE(filter)) {
-      char    *filter_name = pdf_name_value(filter);
-      pdf_obj *dec = NULL;
-      if (filter_name) {
-        if (!strcmp(filter_name, "ASCIIHexDecode")) {
-          dec = get_stream_asciihex_decoded(stream_data, stream_length);
-        } else if (!strcmp(filter_name, "ASCII85Decode")) {
-          dec = get_stream_ascii85_decoded(stream_data, stream_length);
-#if HAVE_ZLIB
-        } else if (!strcmp(filter_name, "FlateDecode")) {
-          dec = get_stream_flate_decoded(stream_data, stream_length, have_parms ? &parms : NULL);
-#endif /* HAVE_ZLIB */
-        } else {
-          WARN("DecodeFilter \"%s\" not supported.", filter_name);
-          error = -1;
-        }
-        if (dec) {
-          if (!error)
-            pdf_add_stream(dst, pdf_stream_dataptr(dec), pdf_stream_length(dec));
-          pdf_release_obj(dec);
-        }
-      }
+    if (num == 0) {
+      filtered = pdf_link_obj(src);
     } else {
-      WARN("Invalid value for /Filter found.");
-      error = -1;
+      filtered = NULL;
+      prev = pdf_link_obj(src);
+      for (i = 0; i < num && prev != NULL; i++) {
+        pdf_obj *tmp1, *tmp2;
+
+        tmp1 = pdf_deref_obj(pdf_get_array(filter, i));
+        if (parms) {
+          tmp2 = pdf_deref_obj(pdf_get_array(parms, i));
+        } else {
+          tmp2 = NULL;
+        }
+        if (PDF_OBJ_NAMETYPE(tmp1)) {
+          filtered = filter_stream_decode(pdf_name_value(tmp1), prev, tmp2);
+        } else if (PDF_OBJ_NULLTYPE(tmp1)) {
+          filtered = pdf_link_obj(prev);
+        } else {
+          WARN("Unexpected object found for /Filter...");
+          filtered = NULL;
+        }
+        if (prev)
+          pdf_release_obj(prev);
+        if (tmp1)
+          pdf_release_obj(tmp1);
+        if (tmp2)
+          pdf_release_obj(tmp2);
+        prev = filtered;      
+      }
     }
+  } else if (PDF_OBJ_NAMETYPE(filter)) {
+    filtered = filter_stream_decode(pdf_name_value(filter), src, parms);
+  } else {
+    WARN("Invalid value for /Filter found.");
+    filtered = NULL;
+  }
+  if (parms)
+    pdf_release_obj(parms);
+  if (filtered) {
+    pdf_add_stream(dst, pdf_stream_dataptr(filtered), pdf_stream_length(filtered));
+    pdf_release_obj(filtered);
+    error = 0;
+  } else {
+    error = -1;
   }
 
   return error;
