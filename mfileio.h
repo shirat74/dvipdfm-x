@@ -36,7 +36,8 @@ int mfclose (FILE *file, const char *function, int line);
    mfclose((file),__FUNCTION__,__LINE__)
 #else
 #if defined(WIN32)
-#define MFOPEN(name,mode) fsyscp_fopen((name),(mode))
+extern FILE *generic_fsyscp_fopen(const char *fname, const char *mode);
+#define MFOPEN(name,mode) generic_fsyscp_fopen((name),(mode))
 #else
 #define MFOPEN(name,mode) fopen((name),(mode))
 #endif
