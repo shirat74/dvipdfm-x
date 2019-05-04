@@ -1769,7 +1769,6 @@ pdf_doc_add_annot (unsigned page_no, const pdf_rect *rect,
   pdf_doc  *p = &pdoc;
   pdf_page *page;
   pdf_obj  *rect_array;
-  double    annot_grow = p->options.annot_grow;
   double    xpos, ypos;
   pdf_rect  annbox;
 
@@ -1801,10 +1800,10 @@ pdf_doc_add_annot (unsigned page_no, const pdf_rect *rect,
   }
 
   rect_array = pdf_new_array();
-  pdf_add_array(rect_array, pdf_new_number(ROUND(annbox.llx - annot_grow, 0.001)));
-  pdf_add_array(rect_array, pdf_new_number(ROUND(annbox.lly - annot_grow, 0.001)));
-  pdf_add_array(rect_array, pdf_new_number(ROUND(annbox.urx + annot_grow, 0.001)));
-  pdf_add_array(rect_array, pdf_new_number(ROUND(annbox.ury + annot_grow, 0.001)));
+  pdf_add_array(rect_array, pdf_new_number(ROUND(annbox.llx, 0.001)));
+  pdf_add_array(rect_array, pdf_new_number(ROUND(annbox.lly, 0.001)));
+  pdf_add_array(rect_array, pdf_new_number(ROUND(annbox.urx, 0.001)));
+  pdf_add_array(rect_array, pdf_new_number(ROUND(annbox.ury, 0.001)));
   pdf_add_dict (annot_dict, pdf_new_name("Rect"), rect_array);
 
   pdf_add_array(page->annots, pdf_ref_obj(annot_dict));
@@ -2787,13 +2786,22 @@ pdf_doc_end_annot (void)
 void
 pdf_doc_break_annot (void)
 {
+  pdf_doc *p = &pdoc;
+  double   g = p->options.annot_grow;
+
   if (breaking_state.dirty) {
     pdf_obj  *annot_dict;
+    pdf_rect  rect;
 
     /* Copy dict */
     annot_dict = pdf_new_dict();
     pdf_merge_dict(annot_dict, breaking_state.annot_dict);
-    pdf_doc_add_annot(pdf_doc_current_page_number(), &(breaking_state.rect),
+    rect = breaking_state.rect;
+    rect.llx -= g;
+    rect.lly -= g;
+    rect.urx += g;
+    rect.ury += g;
+    pdf_doc_add_annot(pdf_doc_current_page_number(), &rect,
                       annot_dict, !breaking_state.broken);
     pdf_release_obj(annot_dict);
 
