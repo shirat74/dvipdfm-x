@@ -135,20 +135,22 @@ static void
 set_default_pdf_filename(void)
 {
   const char *dvi_base;
+  size_t      len = 0;
 
   dvi_base = xbasename(dvi_filename);
+  len = strlen(dvi_base) - 4;
   if (dpx_conf.compat_mode == dpx_mode_mpost_mode &&
       strlen(dvi_base) > 4 &&
-      FILESTRCASEEQ(".mps", dvi_base + strlen(dvi_base) - 4)) {
-    pdf_filename = NEW(strlen(dvi_base)+1, char);
-    strncpy(pdf_filename, dvi_base, strlen(dvi_base) - 4);
-    pdf_filename[strlen(dvi_base)-4] = '\0';
+      FILESTRCASEEQ(".mps", dvi_base + len)) {
+    pdf_filename = NEW(len + strlen(".pdf") + 1, char);
+    strncpy(pdf_filename, dvi_base, len);
+    pdf_filename[len] = '\0';
   } else if (strlen(dvi_base) > 4 &&
-             (FILESTRCASEEQ(".dvi", dvi_base+strlen(dvi_base)-4) ||
-              FILESTRCASEEQ(".xdv", dvi_base+strlen(dvi_base)-4))) {
-    pdf_filename = NEW(strlen(dvi_base)+1, char);
-    strncpy(pdf_filename, dvi_base, strlen(dvi_base)-4);
-    pdf_filename[strlen(dvi_base)-4] = '\0';
+             (FILESTRCASEEQ(".dvi", dvi_base+len) ||
+              FILESTRCASEEQ(".xdv", dvi_base+len))) {
+    pdf_filename = NEW(len + strlen(".pdf") + 1, char);
+    strncpy(pdf_filename, dvi_base, len);
+    pdf_filename[len] = '\0';
   } else {
     pdf_filename = NEW(strlen(dvi_base)+5, char);
     strcpy(pdf_filename, dvi_base);

@@ -32,7 +32,9 @@
 #endif
 
 #ifdef WIN32
+#ifdef _MSC_VER
 #  pragma warning(disable : 4101 4018)
+#endif /* _MSC_VER */
 #endif /* WIN32 */
 
 #endif /* _SYSTEM_H_ */
