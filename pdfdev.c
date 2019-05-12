@@ -2045,7 +2045,7 @@ pdf_dev_begin_actualtext (uint16_t *unicodes, int count)
 }
 
 void
-pdf_dev_end_actualtext ()
+pdf_dev_end_actualtext (void)
 {
   pdf_dev *p = current_device();
 

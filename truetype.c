@@ -129,7 +129,7 @@ pdf_font_open_truetype (pdf_font *font)
     length = tt_get_ps_fontname(sfont, fontname, 255);
     if (length < 1) {
       length = MIN(strlen(ident), 255);
-      strncpy(fontname, ident, length);
+      memcpy(fontname, ident, length);
     }
     fontname[length] = '\0';
     for (n = 0; n < length; n++) {
