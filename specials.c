@@ -57,13 +57,9 @@ void
 spc_warn (struct spc_env *spe, const char *fmt, ...)
 {
   va_list  ap;
-  static char buf[1024];
 
   va_start(ap, fmt);
-
-  vsprintf(buf, fmt, ap);
-  WARN(buf);
-
+  WARN(fmt, ap);
   va_end(ap);
 
   return;
