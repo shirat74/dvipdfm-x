@@ -158,7 +158,8 @@ spc_handler_pdfm__init (void *dp)
   static const char *default_taintkeys[] = {
     "Title",   "Author",   "Subject", "Keywords",
     "Creator", "Producer", "Contents", "Subj",
-    "TU",      "T",        "TM",        NULL /* EOD */
+    "TU",      "T",        "TM",
+    "RC",      "DS",       NULL /* EOD */
   };
   int  i;
 
@@ -438,12 +439,43 @@ spc_handler_pdfm_put (struct spc_env *spe, struct spc_arg *ap)
  */
 #include "cmap.h"
 
+static size_t
+calculate_size_utf16 (const unsigned char *p, const unsigned char *endptr)
+{
+  size_t len = 0;
+
+  while (p < endptr) {
+    unsigned char c = *p;
+    if (c < 0x80) {
+      len += 2;
+      p   += 1;
+    } else if (c < 0xE0) {
+      len += 2;
+      p   += 2;
+    } else if (c < 0xF0) {
+      len += 2;
+      p   += 3;
+    } else if (c < 0xF8) {
+      len += 4; /* Surrogate */
+      p   += 4;
+    } else if (c < 0xFC) {
+      len += 4; /* Surrogate */
+      p   += 5;
+    } else if (c < 0xFE) {
+      len += 4; /* Surrogate */
+      p   += 6;
+    }
+  }
+
+  return len;
+}
+
 static int
 reencodestring_from_utf8_to_utf16be (pdf_obj *instring)
 {
   int                  error = 0;
   unsigned char       *strptr;
-  size_t               strlen;
+  size_t               length;
   int                  non_ascii;
   const unsigned char *p, *endptr;
 
@@ -451,11 +483,11 @@ reencodestring_from_utf8_to_utf16be (pdf_obj *instring)
   ASSERT(PDF_OBJ_STRINGTYPE(instring));
 
   strptr = pdf_string_value(instring);
-  strlen = pdf_string_length(instring);
+  length = pdf_string_length(instring);
 
   /* check if the input string is strictly ASCII */
   p         = strptr;
-  endptr    = strptr + strlen;
+  endptr    = strptr + length;
   non_ascii = 0;
   for ( ; p < endptr; p++) {
     if (*p > 127)
@@ -472,7 +504,7 @@ reencodestring_from_utf8_to_utf16be (pdf_obj *instring)
 
     p      = strptr;
     /* Rough estimate of output length. */
-    len    = 2 * (strlen - non_ascii) + ((non_ascii + 1) / 2) * 4 + 2;
+    len    = calculate_size_utf16(p, endptr) + 2;
     buf    = NEW(len, unsigned char);
     q      = buf;
     limptr = buf + len;
@@ -508,9 +540,7 @@ reencodestring (CMap *cmap, pdf_obj *instring)
   if (!instring || !PDF_OBJ_STRINGTYPE(instring))
     return -1;
   
-  if (cmap == NULL) {
-    error = reencodestring_from_utf8_to_utf16be(instring);
-  } else {
+  if (cmap) {
     unsigned char       *obuf;
     unsigned char       *obufcur;
     const unsigned char *inbufcur;
@@ -587,7 +617,7 @@ modstrings (pdf_obj *kp, pdf_obj *vp, void *dp)
         r = reencodestring(cmap, vp);
     } else if ((dpx_conf.compat_mode == dpx_mode_xdv_mode) && cd && cd->taintkeys) {
       if (needreencode(kp, vp, cd))
-        r = reencodestring(NULL, vp);
+        r = reencodestring_from_utf8_to_utf16be(vp);
     }
     if (r < 0) /* error occured... */
       WARN("Input string conversion (to UTF16BE) failed for %s...", pdf_name_value(kp));
