@@ -632,7 +632,7 @@ reset_text_state (pdf_dev *p)
   /*
    * We need to reset the line matrix to handle slanted fonts.
    */
-  dev_out(p, " BT", 3);  /* op: BT */
+  dev_out(p, " q BT", 5);  /* op: BT */
   /*
    * text_state.matrix is identity at top of page.
    * This sometimes write unnecessary "Tm"s when transition from
@@ -684,7 +684,7 @@ graphics_mode (void)
     dev_out(p, p->text_state.is_mb ? ">]TJ" : ")]TJ", 4);  /* op: TJ */
     /* continue */
   case TEXT_MODE:
-    dev_out(p, " ET", 3);  /* op: ET */
+    dev_out(p, " ET Q", 5);  /* op: ET */
     p->text_state.force_reset =  0;
     p->text_state.font_id     = -1;
     break;
