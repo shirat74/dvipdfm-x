@@ -461,6 +461,18 @@ do_args_first_pass (int argc, char *argv[], const char *source, int unsafe)
     case 'v':
       verbose++;
       break;
+    
+    /* 'm' option placed here since other options set via special
+     * requires magnification already being determined for interpreting
+     * various length values.
+     */
+    case 'm':
+      {
+        char *nextptr;
+        if ((mag = strtod(optarg, &nextptr)) < 0.0 || nextptr == optarg)
+          ERROR("Invalid magnification specified: %s", optarg);
+      }
+      break;
 
     case 'M':
       dpx_conf.compat_mode = dpx_mode_mpost_mode;
@@ -505,6 +517,13 @@ do_args_second_pass (int argc, char *argv[], const char *source, int unsafe)
     switch(c) {
     case 'h': case 130: case 131: case 132: case 133: case 1000: case 'q': case 'v': case 'M': /* already done */
       break;
+    
+    /* 'm' option handled in first_pass */
+    case 'm':
+      if (unsafe) { /* FIXME: it's not actually 'unsafe'... just to know it's called from special */
+        WARN("Ignoring \"m\" option for dvipdfmx:config special. (too late)");
+      }
+      break;
 
     case 'D':
       if (unsafe) {
@@ -520,11 +539,6 @@ do_args_second_pass (int argc, char *argv[], const char *source, int unsafe)
     case 'r':
       if ((font_dpi = atoi(optarg)) <= 0)
         ERROR("Invalid bitmap font dpi specified: %s", optarg);
-      break;
-
-    case 'm':
-      if ((mag = strtod(optarg, &nextptr)) < 0.0 || nextptr == optarg)
-        ERROR("Invalid magnification specified: %s", optarg);
       break;
 
     case 'g':
