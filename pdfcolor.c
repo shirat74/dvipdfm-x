@@ -345,7 +345,7 @@ pdf_color_set (pdf_color *sc, pdf_color *fc)
 {
   pdf_color_copycolor(&color_stack.stroke[color_stack.current], sc);
   pdf_color_copycolor(&color_stack.fill[color_stack.current], fc);
-  pdf_dev_reset_color(0);
+  pdf_dev_reset_color(1);
 }
 
 void
@@ -367,7 +367,7 @@ pdf_color_pop (void)
     WARN("Color stack underflow. Just ignore.");
   } else {
     color_stack.current--;
-    pdf_dev_reset_color(0);
+    pdf_dev_reset_color(1);
   }
   return;
 }
