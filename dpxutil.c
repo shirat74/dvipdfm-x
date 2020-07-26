@@ -1,6 +1,6 @@
 /* This is dvipdfmx, an eXtended version of dvipdfm by Mark A. Wicks.
 
-    Copyright (C) 2002-2019 by Jin-Hwan Cho and Shunsaku Hirata,
+    Copyright (C) 2002-2020 by Jin-Hwan Cho and Shunsaku Hirata,
     the dvipdfmx project team.
 
     Copyright (C) 1998, 1999 by Mark A. Wicks <mwicks@kettering.edu>
@@ -33,9 +33,6 @@
 #include "system.h"
 #include "mem.h"
 #include "error.h"
-
-/* Only for skip_white()... */
-#include "pdfparse.h"
 
 #include "dpxutil.h"
 
@@ -72,6 +69,16 @@ max4 (double x1, double x2, double x3, double x4)
   return v;
 }
 
+/* Duplicate from pdfparse.c */
+static void
+skip_white (const char **pp, const char *endptr)
+{
+  while (*pp < endptr &&
+         (**pp == ' '  || **pp == '\t' || **pp == '\f' ||
+          **pp == '\r' || **pp == '\n' || **pp == '\0')) {
+    (*pp)++;
+  }
+}
 
 /* This need to allow 'true' prefix for unit and length value must be divided
  * by current magnification.
@@ -244,7 +251,7 @@ dpx_util_format_asn_date (char *date_string, int need_timezone)
   if (need_timezone) {
     if (bd_time->tm_isdst > 0) {
       tz_offset += 3600;
-    }   
+    }
     sprintf(date_string, "D:%04d%02d%02d%02d%02d%02d%c%02d'%02d'",
             bd_time->tm_year + 1900, bd_time->tm_mon + 1, bd_time->tm_mday,
             bd_time->tm_hour, bd_time->tm_min, bd_time->tm_sec,

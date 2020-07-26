@@ -1,6 +1,6 @@
 /* This is dvipdfmx, an eXtended version of dvipdfm by Mark A. Wicks.
 
-    Copyright (C) 2002-2019 by Jin-Hwan Cho and Shunsaku Hirata,
+    Copyright (C) 2002-2020 by Jin-Hwan Cho and Shunsaku Hirata,
     the dvipdfmx project team.
     
     Copyright (C) 1998, 1999 by Mark A. Wicks <mwicks@kettering.edu>
@@ -67,7 +67,9 @@ extern void     pdf_out_set_encrypt (int keybits, int32_t permission,
                                      int use_aes, int encrypt_metadata);
 extern void     pdf_out_flush     (void);
 
-extern int      pdf_get_version   (void);
+extern int      pdf_get_version       (void);
+extern int      pdf_get_version_major (void);
+extern int      pdf_get_version_minor (void);
 
 extern void     pdf_release_obj (pdf_obj *object);
 extern int      pdf_obj_typeof  (pdf_obj *object);
@@ -170,9 +172,11 @@ extern void        pdf_stream_set_predictor (pdf_obj *stream,
                                              int predictor, int32_t columns,
                                              int bpc, int colors);
 
-/* Compare label of two indirect reference object.
- */
+/* Compare label of two indirect reference object. */
 extern int         pdf_compare_reference (pdf_obj *ref1, pdf_obj *ref2);
+/* Compare objects. */
+extern int         pdf_compare_object    (pdf_obj *obj1, pdf_obj *obj2);
+
 
 /* The following routines are not appropriate for pdfobj.
  */
@@ -182,7 +186,7 @@ extern void      pdf_set_root     (pdf_obj *obj);
 
 extern void      pdf_files_init    (void);
 extern void      pdf_files_close   (void);
-extern int      check_for_pdf     (FILE *file);
+extern int       check_for_pdf     (FILE *file);
 extern pdf_file *pdf_open          (const char *ident, FILE *file);
 extern void      pdf_close         (pdf_file *pf);
 extern pdf_obj  *pdf_file_get_trailer (pdf_file *pf);

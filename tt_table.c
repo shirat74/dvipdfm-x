@@ -1,6 +1,6 @@
 /* This is dvipdfmx, an eXtended version of dvipdfm by Mark A. Wicks.
 
-    Copyright (C) 2002-2019 by Jin-Hwan Cho and Shunsaku Hirata,
+    Copyright (C) 2002-2020 by Jin-Hwan Cho and Shunsaku Hirata,
     the dvipdfmx project team.
     
     This program is free software; you can redistribute it and/or modify
@@ -290,7 +290,8 @@ tt_read_VORG_table (sfnt *sfont)
     vorg = NEW(1, struct tt_VORG_table);
 
     sfnt_locate_table(sfont, "VORG");
-    if (sfnt_get_ushort(sfont) != 1 || sfnt_get_ushort(sfont) != 0)
+    if (sfnt_get_ushort(sfont) != 1 ||
+	sfnt_get_ushort(sfont) != 0)
       ERROR("Unsupported VORG version.");
 
     vorg->defaultVertOriginY    = sfnt_get_short(sfont);
@@ -431,9 +432,12 @@ tt_get_name (sfnt *sfont, char *dest, USHORT destlen,
   USHORT length = 0;
   USHORT num_names, string_offset;
   ULONG  name_offset;
-  int    i;
+  int    i, j;
+  int    is_utf16_be;
 
   name_offset = sfnt_locate_table (sfont, "name");
+  is_utf16_be = (plat_id == 3) && (enco_id == 1) &&
+                (lang_id == 0x0409u) && (name_id == 6);
 
   if (sfnt_get_ushort(sfont)) 
     ERROR ("Expecting zero");
@@ -453,12 +457,22 @@ tt_get_name (sfnt *sfont, char *dest, USHORT destlen,
     /* language ID value 0xffffu for `accept any language ID' */
     if ((p_id == plat_id) && (e_id == enco_id) &&
         (lang_id == 0xffffu || l_id == lang_id) && (n_id == name_id)) {
+      if (is_utf16_be) {
+          length /= 2;
+      }
       if (length > destlen - 1) {
         WARN ("Name string too long (%u), truncating to %u", length, destlen);
         length = destlen - 1;
       }
       sfnt_seek_set (sfont, name_offset+string_offset+offset);
-      sfnt_read((unsigned char*)dest, length, sfont);
+      if (is_utf16_be) {
+        for (j=0;j<length;j++) {
+          dest[j] = (unsigned char)(sfnt_get_ushort(sfont) & 0x00FF);
+        }
+      }
+      else {
+        sfnt_read((unsigned char*)dest, length, sfont);
+      }
       dest[length] = '\0';
       break;
     }
@@ -470,70 +484,16 @@ tt_get_name (sfnt *sfont, char *dest, USHORT destlen,
   return length;
 }
 
-static
-USHORT validate_psname (char *dest, USHORT len)
-{
-  char *valid_name;
-  int   n, i;
-  const char *invalid_chars = "[](){}<>/%";
-  
-  valid_name = NEW(len + 1, char);
-  n = 0;
-  for (i = 0; i < len; i++) {
-    char c = dest[i];
-    if (c >= 32 && c <= 126) {
-      if (!strchr(invalid_chars, c)) {
-        valid_name[n] = c;
-        n++;
-      }
-    }
-  }
-  valid_name[n] = '\0';
-
-  if (n > 0) {
-    strcpy(dest, valid_name);
-  }
-  RELEASE(valid_name);
-
-  return n;
-}
-
 USHORT
 tt_get_ps_fontname (sfnt *sfont, char *dest, USHORT destlen)
 {
   USHORT namelen = 0;
 
-  /* First try Mac-Roman PS name */
-  // namelen = tt_get_name(sfont, dest, destlen, 1, 0, 0, 6);
-  if (namelen > 0) {
-    namelen = validate_psname(dest, namelen);
+  /* First try Mac-Roman PS name and then Win-Unicode PS name */
+  if ((namelen = tt_get_name(sfont, dest, destlen, 1, 0, 0, 6)) != 0 ||
+      (namelen = tt_get_name(sfont, dest, destlen, 3, 1, 0x409u, 6)) != 0 ||
+      (namelen = tt_get_name(sfont, dest, destlen, 3, 5, 0x412u, 6)) != 0)
     return namelen;
-  }
-  /* Next Windows-Unicode PS name
-   * Since OpenType version 1.8.2, Name strings for Windows Unicode is
-   * described as encoded in UTF-16 form.
-   */
-  namelen = tt_get_name(sfont, dest, destlen, 3, 1, 0x409u, 6);
-  if (namelen > 0) {
-    int i, n = 0;
-    for (i = 0; i < namelen; i += 2) {
-      if (dest[i] == 0) {
-        dest[n] = dest[i+1];
-        n++;
-      } /* else skip */
-    }
-    dest[n] = '\0';
-    namelen = n;
-    namelen = validate_psname(dest, namelen);
-    return namelen;   
-  }
-  /* Dont't know what encoding is used here.
-   * The purpose of using this lang ID is unclear...
-   */
-  namelen = tt_get_name(sfont, dest, destlen, 3, 5, 0x412u, 6);
-  if (namelen > 0) {
-    return namelen;
-  }
 
   WARN ("No valid PostScript name available");
   /*
@@ -547,9 +507,6 @@ tt_get_ps_fontname (sfnt *sfont, char *dest, USHORT destlen)
       Mac Roman name field. 
     */
     namelen = tt_get_name(sfont, dest, destlen, 1, 0, 0, 1);
-    if (namelen > 0) {
-      namelen = validate_psname(dest, namelen);
-    }
   }
 
   return namelen;

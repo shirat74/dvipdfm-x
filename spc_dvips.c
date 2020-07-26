@@ -1,6 +1,6 @@
 /* This is dvipdfmx, an eXtended version of dvipdfm by Mark A. Wicks.
 
-    Copyright (C) 2002-2019 by Jin-Hwan Cho and Shunsaku Hirata,
+    Copyright (C) 2002-2020 by Jin-Hwan Cho and Shunsaku Hirata,
     the dvipdfmx project team.
     
     Copyright (C) 1998, 1999 by Mark A. Wicks <mwicks@kettering.edu>
@@ -75,7 +75,7 @@ spc_handler_ps_header (struct spc_env *spe, struct spc_arg *args)
   }
   args->curptr++;
 
-  pro = NEW(args->endptr - args->curptr + 1, char);
+  pro = malloc(args->endptr - args->curptr + 1);
   strncpy(pro, args->curptr, args->endptr - args->curptr);
   pro[args->endptr - args->curptr] = 0;
   ps_header = kpse_find_file(pro, kpse_tex_ps_header_format, 0);
@@ -83,10 +83,10 @@ spc_handler_ps_header (struct spc_env *spe, struct spc_arg *args)
     spc_warn(spe, "PS header %s not found.", pro);
     return -1;
   }
-  RELEASE(pro);
+  free(pro);
 
   if (!(num_ps_headers & 0x0f))
-    ps_headers = RENEW(ps_headers, num_ps_headers + 16, char *);
+    ps_headers = realloc(ps_headers, sizeof(char*) * (num_ps_headers + 16));
   ps_headers[num_ps_headers++] = ps_header;
   args->curptr = args->endptr;
   return 0;
@@ -164,7 +164,7 @@ spc_handler_ps_file (struct spc_env *spe, struct spc_arg *args)
     return  -1;
   }
 
-  form_id = pdf_ximage_findresource(filename, options);
+  form_id = pdf_ximage_load_image(NULL, filename, options);
   if (form_id < 0) {
     spc_warn(spe, "Failed to read image file: %s", filename);
     RELEASE(filename);
@@ -198,7 +198,7 @@ spc_handler_ps_plotfile (struct spc_env *spe, struct spc_arg *args)
     return -1;
   }
 
-  form_id = pdf_ximage_findresource(filename, options);
+  form_id = pdf_ximage_load_image(NULL, filename, options);
   if (form_id < 0) {
     spc_warn(spe, "Could not open PS file: %s", filename);
     error = -1;
@@ -378,7 +378,7 @@ spc_handler_ps_tricks_bput (struct spc_env *spe, struct spc_arg *args, int must_
   }
 
   pdf_dev_currentmatrix(&M);
-  formula = NEW(args->endptr - args->curptr + 120, char);
+  formula = malloc(args->endptr - args->curptr + 120);
   if (label != 0) {
     sprintf(formula, "[%f %f %f %f %f %f] concat %f %f moveto\n", M.a, M.b, M.c, M.d, M.e, M.f, spe->x_user + get_origin(1), spe->y_user + get_origin(0));
   } else
@@ -389,7 +389,7 @@ spc_handler_ps_tricks_bput (struct spc_env *spe, struct spc_arg *args, int must_
   *(PutBegin + 8) = 0;
   if (calculate_PS(formula, strlen(formula), &tr.x, &tr.y, 0, 0, 0, 0) == 0) {
     if (!(++put_stack_depth & 0x0f))
-      put_stack = RENEW(put_stack, put_stack_depth + 16, pdf_coord);
+      put_stack = realloc(put_stack, (put_stack_depth + 16) * sizeof(pdf_coord));
     put_stack[put_stack_depth] = tr;
   }
   T.e = tr.x; T.f = tr.y;
@@ -414,7 +414,7 @@ spc_handler_ps_tricks_bput (struct spc_env *spe, struct spc_arg *args, int must_
     fclose(fp);
   }
 
-  RELEASE(formula);
+  free(formula);
   return 0;
 }
 
@@ -444,10 +444,10 @@ spc_handler_ps_tricks_brotate (struct spc_env *spe, struct spc_arg *args)
   static const char *post = "= end";
 
   if (!(++RAngleCount & 0x0f))
-    RAngles = RENEW(RAngles, RAngleCount + 16, double);
+    RAngles = realloc(RAngles, (RAngleCount + 16) * sizeof(double));
   for (i = 0; i < RAngleCount; i++)
     RAngle += RAngles[i];
-  cmd = NEW(l + strlen(pre) + strlen(post) + 12, char);
+  cmd = calloc(l + strlen(pre) + strlen(post) + 12, 1);
   sprintf(cmd, pre, RAngle);
   strncat(cmd, args->curptr, l);
   RotBegin = strstr(cmd, "RotBegin");
@@ -476,13 +476,14 @@ spc_handler_ps_tricks_erotate (struct spc_env *spe, struct spc_arg *args)
 static int
 spc_handler_ps_tricks_transform (struct spc_env *spe, struct spc_arg *args)
 {
-  double  d1, d2, d3, d4, d5, d6;
-  char   *cmd, *concat;
-  int     l = args->endptr - args->curptr;
+  double d1, d2, d3, d4, d5, d6;
+  char *cmd, *concat;
+  int l = args->endptr - args->curptr;
+
   static const char *post = "concat matrix currentmatrix ==";
 
-  cmd = NEW(l + 41, char);
-  strncpy(cmd, "matrix setmatrix ", 18); /* Including trailing NULL */
+  cmd = calloc(l + 41, 1);
+  strncpy(cmd, "matrix setmatrix ", 18);
   strncpy(cmd + 17, args->curptr, l);
   concat = strstr(cmd, "concat");
   if (concat != 0) {
@@ -699,7 +700,8 @@ spc_handler_ps_tricks_render (struct spc_env *spe, struct spc_arg *args)
     fprintf(fp, " showpage\n");
     fclose(fp);
 
-    error = dpx_file_apply_filter(distiller_template, gs_in, gs_out, pdf_get_version());
+    error = dpx_file_apply_filter(distiller_template, gs_in, gs_out,
+      pdf_get_version());
     if (error) {
       WARN("Image format conversion for PSTricks failed.");
       RELEASE(gs_in);
@@ -707,7 +709,7 @@ spc_handler_ps_tricks_render (struct spc_env *spe, struct spc_arg *args)
       return error;
     }
 
-    form_id = pdf_ximage_findresource(gs_out, options);
+    form_id = pdf_ximage_load_image(NULL, gs_out, options);
     if (form_id < 0) {
       spc_warn(spe, "Failed to read converted PSTricks image file.");
       RELEASE(gs_in);
@@ -784,14 +786,14 @@ spc_handler_ps_trickscmd (struct spc_env *spe, struct spc_arg *args)
    * packages.  So pstricks generate specials won't signal what
    * to expect for you.
    */
-  test_string = NEW(args->endptr - args->curptr + 1, char);
+  test_string = malloc(args->endptr - args->curptr + 1);
   strncpy(test_string, args->curptr, args->endptr - args->curptr);
   test_string[args->endptr - args->curptr] = 0;
   for (k = 0; k < sizeof(pstricks_key) / sizeof(pstricks_key[0]); k++) {
     if (strstr(test_string, pstricks_key[k].key) != 0)
       f_exec |= pstricks_key[k].exec;
   }
-  RELEASE(test_string);
+  free(test_string);
 
   if (f_exec & new_temp)
     error |= spc_handler_ps_tricks_tdef(spe, args);
@@ -903,7 +905,7 @@ spc_dvips_at_end_document (void)
   if (ps_headers) {
     while (num_ps_headers > 0)
       RELEASE(ps_headers[--num_ps_headers]);
-    RELEASE(ps_headers);
+    free(ps_headers);
     ps_headers = NULL;
   }
   dpx_delete_temp_file(global_defs, true);
@@ -1017,11 +1019,11 @@ spc_dvips_setup_handler (struct spc_handler *handle,
 }
 
 #ifdef __EMX__
-#define GS_CALCULATOR "gsos2 -q -dNOPAUSE -dBATCH -sDEVICE=nullpage -f "
+#define GS_CALCULATOR "gsos2 -q -dDELAYSAFER -dNOPAUSE -dBATCH -sDEVICE=nullpage -f "
 #elif defined(WIN32)
-#define GS_CALCULATOR "rungs -q -dNOPAUSE -dBATCH -sDEVICE=nullpage -f "
+#define GS_CALCULATOR "rungs -q -dDELAYSAFER -dNOPAUSE -dBATCH -sDEVICE=nullpage -f "
 #else
-#define GS_CALCULATOR "gs -q -dNOPAUSE -dBATCH -sDEVICE=nullpage -f "
+#define GS_CALCULATOR "gs -q -dDELAYSAFER -dNOPAUSE -dBATCH -sDEVICE=nullpage -f "
 #endif
 
 static

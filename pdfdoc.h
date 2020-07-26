@@ -1,6 +1,6 @@
 /* This is dvipdfmx, an eXtended version of dvipdfm by Mark A. Wicks.
 
-    Copyright (C) 2002-2019 by Jin-Hwan Cho and Shunsaku Hirata,
+    Copyright (C) 2002-2020 by Jin-Hwan Cho and Shunsaku Hirata,
     the dvipdfmx project team.
     
     Copyright (C) 1998, 1999 by Mark A. Wicks <mwicks@kettering.edu>
@@ -153,6 +153,9 @@ extern void pdf_doc_end_annot(void);
 extern void pdf_doc_break_annot(void);
 extern void pdf_doc_expand_box(const pdf_rect *rect);
 
+/* Manual thumbnail */
+extern void pdf_doc_enable_manual_thumbnails(void);
+
 #if 0
 /* PageLabels - */
 extern void     pdf_doc_set_pagelabel (int  page_start,
@@ -164,5 +167,8 @@ extern void     pdf_doc_set_pagelabel (int  page_start,
 /* Similar to bop_content */
 #include "pdfcolor.h"
 extern void pdf_doc_set_bgcolor(const pdf_color *color);
+
+/* Sorry no appropriate place to put this... */
+extern struct ht_table *global_names;
 
 #endif /* _PDFDOC_H_ */

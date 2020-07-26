@@ -1,6 +1,6 @@
 /* This is dvipdfmx, an eXtended version of dvipdfm by Mark A. Wicks.
 
-    Copyright (C) 2002-2019 by Jin-Hwan Cho and Shunsaku Hirata,
+    Copyright (C) 2002-2020 by Jin-Hwan Cho and Shunsaku Hirata,
     the dvipdfmx project team.
     
     Copyright (C) 1998, 1999 by Mark A. Wicks <mwicks@kettering.edu>
@@ -236,13 +236,14 @@ struct dev_font {
 
   int      is_unicode;
 };
+
 /*
  * Unit conversion, formatting and others.
  */
 
 #define TEX_ONE_HUNDRED_BP 6578176
 struct dev_unit {
-  double dvi2pts;
+  double dvi2pts;    /* multiplier for DVI unit to bpt conversion           */
   int    min_bp_val; /* Shortest resolvable distance in the output PDF.     */
   int    precision;  /* Number of decimal digits (in fractional part) kept. */
 };
@@ -258,10 +259,20 @@ struct pdf_dev {
   int               max_dev_fonts;
   int               num_phys_fonts;
   char              format_buffer[FORMAT_BUF_SIZE+1];
+
+  /* Just to support pdf:bcontent special...
+   * Text position adjustment inside the pdf:bcontent and pdf:econtent.
+   */
+  pdf_coord        *dev_coords;
+  int               num_dev_coords;
+  int               max_dev_coords;
 };
 
-/* For a moment declare as static variable here */
-pdf_dev pdev;
+/*
+ * For a moment declare as static variable here
+ * 2020/07/23 Most of the static variables put into single struct pdev
+ */
+static pdf_dev pdev;
 
 static pdf_dev *
 current_device (void)
@@ -273,13 +284,6 @@ static void
 dev_out (pdf_dev *p, const char *str, size_t len)
 {
   pdf_doc_add_page_content(str, len);
-}
-
-/* Not working yet... */
-double
-pdf_dev_scale (void)
-{
-  return 1.0;
 }
 
 static double
@@ -509,50 +513,7 @@ pdf_dev_sprint_number (pdf_dev *p, char *buf, double value)
   return  len;
 }
 
-/* Compatibility functions.... */
-double
-dev_unit_dviunit (void)
-{
-  pdf_dev *p = current_device();
-  return pdf_dev_unit_dviunit(p);
-}
-
-int
-pdf_sprint_matrix (char *buf, const pdf_tmatrix *M)
-{
-  pdf_dev *p = current_device();
-  return (int) pdf_dev_sprint_matrix(p, buf, M);
-}
-
-int
-pdf_sprint_rect (char *buf, const pdf_rect *rect)
-{
-  pdf_dev *p = current_device();
-  return (int) pdf_dev_sprint_rect(p, buf, rect);
-}
-
-int
-pdf_sprint_coord (char *buf, const pdf_coord *c)
-{
-  pdf_dev *p = current_device();
-  return (int) pdf_dev_sprint_coord(p, buf, c);
-}
-
-int
-pdf_sprint_length (char *buf, double value)
-{
-  pdf_dev *p = current_device();
-  return (int) pdf_dev_sprint_length(p, buf, value);
-}
-
-int
-pdf_sprint_number (char *buf, double value)
-{
-  pdf_dev *p = current_device();
-  return (int) pdf_dev_sprint_number(p, buf, value);
-}
-
-
+/* Text handling */
 #define CURRENTFONT(p) (((p)->text_state.font_id < 0) ? \
   NULL : &((p)->fonts[(p)->text_state.font_id]))
 #define GET_FONT(p, n)   (&((p)->fonts[(n)]))
@@ -632,7 +593,7 @@ reset_text_state (pdf_dev *p)
   /*
    * We need to reset the line matrix to handle slanted fonts.
    */
-  dev_out(p, " q BT", 5);  /* op: BT */
+  dev_out(p, " BT", 3);  /* op: BT */
   /*
    * text_state.matrix is identity at top of page.
    * This sometimes write unnecessary "Tm"s when transition from
@@ -654,7 +615,7 @@ reset_text_state (pdf_dev *p)
 }
 
 static void
-text_mode (pdf_dev *p)
+pdf_dev_text_mode (pdf_dev *p)
 {
   ASSERT(p);
 
@@ -672,11 +633,9 @@ text_mode (pdf_dev *p)
   p->text_state.offset = 0;
 }
 
-void
-graphics_mode (void)
+static void
+pdf_dev_graphics_mode (pdf_dev *p)
 {
-  pdf_dev *p = current_device();
-
   switch (p->motion_state) {
   case GRAPHICS_MODE:
     break;
@@ -684,7 +643,12 @@ graphics_mode (void)
     dev_out(p, p->text_state.is_mb ? ">]TJ" : ")]TJ", 4);  /* op: TJ */
     /* continue */
   case TEXT_MODE:
-    dev_out(p, " ET Q", 5);  /* op: ET */
+    if (p->text_state.bold_param != 0.0) {
+      /* fake-bold "2 Tr" is still active */
+      dev_out(p, " 0 Tr", 5);  /* op: Tr */
+      p->text_state.bold_param = 0.0;
+    }  
+    dev_out(p, " ET", 3);  /* op: ET */
     p->text_state.force_reset =  0;
     p->text_state.font_id     = -1;
     break;
@@ -862,8 +826,7 @@ start_string (pdf_dev *p,
 }
 
 static void
-string_mode (pdf_dev *p,
-             spt_t xpos, spt_t ypos, double slant, double extend, int rotate)
+pdf_dev_string_mode (pdf_dev *p, spt_t xpos, spt_t ypos, double slant, double extend, int rotate)
 {
   ASSERT(p);
 
@@ -911,7 +874,7 @@ pdf_dev_set_font (pdf_dev *p, int font_id)
   ASSERT(p);
 
   /* text_mode() must come before text_state.is_mb is changed. */
-  text_mode(p);
+  pdf_dev_text_mode(p);
 
   font = GET_FONT(p, font_id);
   ASSERT(font); /* Caller should check font_id. */
@@ -976,23 +939,9 @@ pdf_dev_set_font (pdf_dev *p, int font_id)
   return  0;
 }
 
-
-/* Access text state parameters.
+/* These tmp buffers can't be removed since the pointer to this can be
+ * used as the return value of handle_multibyte_string(): str_ptr can point these.
  */
-int
-pdf_dev_get_font_wmode (int font_id)
-{
-  pdf_dev *p = current_device();
-  struct dev_font *font;
-
-  font = GET_FONT(p, font_id);
-  if (font) {
-    return font->wmode;
-  }
-
-  return 0;
-}
-
 static unsigned char sbuf0[FORMAT_BUF_SIZE];
 static unsigned char sbuf1[FORMAT_BUF_SIZE];
 
@@ -1097,37 +1046,6 @@ handle_multibyte_string (struct dev_font *font,
   return 0;
 }
 
-
-static pdf_coord *dev_coords = NULL;
-static int num_dev_coords = 0;
-static int max_dev_coords = 0;
-
-void pdf_dev_get_coord(double *xpos, double *ypos)
-{
-  if (num_dev_coords > 0) {
-    *xpos = dev_coords[num_dev_coords-1].x;
-    *ypos = dev_coords[num_dev_coords-1].y;
-  } else {
-    *xpos = *ypos = 0.0;
-  }
-}
-
-void pdf_dev_push_coord(double xpos, double ypos)
-{
-  if (num_dev_coords >= max_dev_coords) {
-    max_dev_coords += 4;
-    dev_coords = RENEW(dev_coords, max_dev_coords, pdf_coord);
-  }
-  dev_coords[num_dev_coords].x = xpos;
-  dev_coords[num_dev_coords].y = ypos;
-  num_dev_coords++;
-}
-
-void pdf_dev_pop_coord(void)
-{
-  if (num_dev_coords > 0) num_dev_coords--;
-}
-
 /*
  * ctype:
  *  -1 input string contains 2-byte Freetype glyph index values
@@ -1146,14 +1064,14 @@ pdf_dev_set_string (spt_t xpos, spt_t ypos,
                     spt_t width,
                     int   font_id, int ctype)
 {
-  pdf_dev *p = current_device();
-  struct dev_font *font;
-  struct dev_font *real_font;
+  pdf_dev             *p = current_device();
+  struct dev_font     *font;
+  struct dev_font     *real_font;
   const unsigned char *str_ptr; /* Pointer to the reencoded string. */
-  int              length, i, len = 0;
-  spt_t            kern, delh, delv;
-  spt_t            text_xorigin;
-  spt_t            text_yorigin;
+  int                  length, i, len = 0;
+  spt_t                kern, delh, delv;
+  spt_t                text_xorigin;
+  spt_t                text_yorigin;
 
   if (font_id < 0 || font_id >= p->num_dev_fonts) {
     ERROR("Invalid font: %d (%d)", font_id, p->num_dev_fonts);
@@ -1198,9 +1116,9 @@ pdf_dev_set_string (spt_t xpos, spt_t ypos,
     }
   }
 
-  if (num_dev_coords > 0) {
-    xpos -= bpt2spt(p, dev_coords[num_dev_coords-1].x);
-    ypos -= bpt2spt(p, dev_coords[num_dev_coords-1].y);
+  if (p->num_dev_coords > 0) {
+    xpos -= bpt2spt(p, p->dev_coords[p->num_dev_coords-1].x);
+    ypos -= bpt2spt(p, p->dev_coords[p->num_dev_coords-1].y);
   }
 
   /*
@@ -1245,7 +1163,7 @@ pdf_dev_set_string (spt_t xpos, spt_t ypos,
   if (p->text_state.force_reset ||
       labs(delv) > p->unit.min_bp_val ||
       labs(delh) > WORD_SPACE_MAX(font)) {
-    text_mode(p);
+    pdf_dev_text_mode(p);
     kern = 0;
   } else {
     kern = (spt_t) (1000.0 / font->extend * delh / font->sptsize);
@@ -1256,8 +1174,8 @@ pdf_dev_set_string (spt_t xpos, spt_t ypos,
    * If you really care about accuracy, you should compensate this here too.
    */
   if (p->motion_state != STRING_MODE)
-    string_mode(p, xpos, ypos,
-                font->slant, font->extend, p->text_state.matrix.rotate);
+    pdf_dev_string_mode(p, xpos, ypos,
+                        font->slant, font->extend, p->text_state.matrix.rotate);
   else if (kern != 0) {
     /*
      * Same issues as earlier. Use floating point for simplicity.
@@ -1337,14 +1255,15 @@ pdf_init_device (double dvi2pts, int precision, int black_and_white)
 
   p->param.colormode = (black_and_white ? 0 : 1);
 
-  graphics_mode();
+  pdf_dev_graphics_mode(p);
   pdf_color_clear_stack();
   pdf_dev_init_gstates();
 
   p->num_dev_fonts  = p->max_dev_fonts = 0;
-  p->fonts      = NULL;
-  num_dev_coords = max_dev_coords = 0;
-  dev_coords     = NULL;
+  p->fonts          = NULL;
+  p->num_dev_coords = 0;
+  p->max_dev_coords = 0;
+  p->dev_coords     = NULL;
 
   return;
 }
@@ -1368,7 +1287,9 @@ pdf_close_device (void)
     RELEASE(p->fonts);
     p->fonts = NULL;
   }
-  if (dev_coords) RELEASE(dev_coords);
+  if (p->dev_coords)
+    RELEASE(p->dev_coords);
+  p->dev_coords = NULL;
   pdf_dev_clear_gstates();
 }
 
@@ -1414,7 +1335,7 @@ pdf_dev_bop (const pdf_tmatrix *M)
 {
   pdf_dev *p = current_device();
 
-  graphics_mode();
+  pdf_dev_graphics_mode(p);
 
   p->text_state.force_reset  = 0;
 
@@ -1423,14 +1344,16 @@ pdf_dev_bop (const pdf_tmatrix *M)
 
   pdf_dev_reset_fonts(1);
   pdf_dev_reset_color(0);
+  pdf_dev_reset_xgstate(0);
 }
 
 void
 pdf_dev_eop (void)
 {
-  int  depth;
+  pdf_dev *p = current_device();
+  int      depth;
 
-  graphics_mode();
+  pdf_dev_graphics_mode(p);
 
   depth = pdf_dev_current_depth();
   if (depth != 1) {
@@ -1646,12 +1569,12 @@ pdf_dev_set_rule (spt_t xpos, spt_t ypos, spt_t width, spt_t height)
   int      len = 0;
   double   width_in_bp;
 
-  if (num_dev_coords > 0) {
-    xpos -= bpt2spt(p, dev_coords[num_dev_coords-1].x);
-    ypos -= bpt2spt(p, dev_coords[num_dev_coords-1].y);
+  if (p->num_dev_coords > 0) {
+    xpos -= bpt2spt(p, p->dev_coords[p->num_dev_coords-1].x);
+    ypos -= bpt2spt(p, p->dev_coords[p->num_dev_coords-1].y);
   }
 
-  graphics_mode();
+  pdf_dev_graphics_mode(p);
 
   p->format_buffer[len++] = ' ';
   p->format_buffer[len++] = 'q';
@@ -1880,9 +1803,9 @@ pdf_dev_put_image (int             id,
   pdf_rect     r;
   int          len = 0;
 
-  if (num_dev_coords > 0) {
-    ref_x -= dev_coords[num_dev_coords-1].x;
-    ref_y -= dev_coords[num_dev_coords-1].y;
+  if (p->num_dev_coords > 0) {
+    ref_x -= p->dev_coords[p->num_dev_coords-1].x;
+    ref_y -= p->dev_coords[p->num_dev_coords-1].y;
   }
 
   pdf_copymatrix(&M, &(ti->matrix));
@@ -1895,7 +1818,7 @@ pdf_dev_put_image (int             id,
     tmp = -M.c; M.c = M.d; M.d = tmp;
   }
 
-  graphics_mode();
+  pdf_dev_graphics_mode(p);
   pdf_dev_gsave();
 
   pdf_ximage_scale_image(id, &M1, &r, ti);
@@ -1904,18 +1827,7 @@ pdf_dev_put_image (int             id,
 
   /* Clip */
   if (ti->flags & INFO_DO_CLIP) {
-#if  0
-    pdf_dev_newpath();
-    pdf_dev_moveto(r.llx, r.lly);
-    pdf_dev_lineto(r.urx, r.lly);
-    pdf_dev_lineto(r.urx, r.ury);
-    pdf_dev_lineto(r.llx, r.ury);
-    pdf_dev_closepath();
-    pdf_dev_clip();
-    pdf_dev_newpath();
-#else
     pdf_dev_rectclip(r.llx, r.lly, r.urx - r.llx, r.ury - r.lly);
-#endif
   }
 
   res_name = pdf_ximage_get_resname(id);
@@ -1936,12 +1848,12 @@ pdf_dev_put_image (int             id,
 
   if (dvi_is_tracking_boxes()) {
     pdf_tmatrix P;
-    int i;
-    pdf_rect rect;
-    pdf_coord corner[4];
+    int         i;
+    pdf_rect    rect;
+    pdf_coord   corner[4];
 
     pdf_dev_set_rect(&rect, 65536 * ref_x, 65536 * ref_y,
-	65536 * (r.urx - r.llx), 65536 * (r.ury - r.lly), 0);
+                     65536 * (r.urx - r.llx), 65536 * (r.ury - r.lly), 0);
 
     corner[0].x = rect.llx; corner[0].y = rect.lly;
     corner[1].x = rect.llx; corner[1].y = rect.ury;
@@ -1978,7 +1890,6 @@ pdf_dev_put_image (int             id,
   return 0;
 }
 
-
 void
 transform_info_clear (transform_info *info)
 {
@@ -2002,7 +1913,7 @@ void
 pdf_dev_begin_actualtext (uint16_t *unicodes, int count)
 {
   pdf_dev *p = current_device();
-  int len, i, pdf_doc_enc = 1;
+  int      len, i, pdf_doc_enc = 1;
 
   /* check whether we can use PDFDocEncoding for this string
      (we punt on the 0x80..0xA0 range that does not directly correspond to unicode)  */
@@ -2013,35 +1924,33 @@ pdf_dev_begin_actualtext (uint16_t *unicodes, int count)
     }
   }
 
-  graphics_mode();
+  pdf_dev_graphics_mode(p);
 
-  len = sprintf(work_buffer, "\n/Span<</ActualText(");
-  if (!pdf_doc_enc) {
-    len += sprintf(work_buffer + len, "\xFE\xFF");
-  }
-  dev_out(p, work_buffer, len);
+  dev_out(p, "\n/Span << /ActualText (", 23);
+  if (!pdf_doc_enc)
+    dev_out(p, "\xFE\xFF", 2);
 
   while (count-- > 0) {
     unsigned char s[2] = { *unicodes >> 8, *unicodes & 0xff };
+    char          buf[32];
     i = pdf_doc_enc; /* if using PDFDocEncoding, we only care about the low 8 bits,
                         so start with the second byte of our pair */
     len = 0;
     for (; i < 2; i++) {
       unsigned char c = s[i];
       if (c == '(' || c == ')' || c == '\\') {
-        len += sprintf(work_buffer + len, "\\%c", c);
+        len += sprintf(buf + len, "\\%c", c);
       } else if (c < ' ') {
-        len += sprintf(work_buffer + len, "\\%03o", c);
+        len += sprintf(buf + len, "\\%03o", c);
       } else {
-        len += sprintf(work_buffer + len, "%c", c);
+        len += sprintf(buf + len, "%c", c);
       }
     }
-    dev_out(p, work_buffer, len);
+    dev_out(p, buf, len);
     ++unicodes;
   }
 
-  len = sprintf(work_buffer, ")>>BDC");
-  dev_out(p, work_buffer, len);
+  dev_out(p, ") >> BDC", 8);
 }
 
 void
@@ -2049,7 +1958,110 @@ pdf_dev_end_actualtext (void)
 {
   pdf_dev *p = current_device();
 
-  graphics_mode();
+  pdf_dev_graphics_mode(p);
 
   dev_out(p, " EMC", 4);
+}
+
+/* Compatibility functions.... For other files still using old interface */
+void
+graphics_mode (void)
+{
+  pdf_dev *p = current_device();
+
+  pdf_dev_graphics_mode(p);
+}
+
+double
+dev_unit_dviunit (void)
+{
+  pdf_dev *p = current_device();
+  return pdf_dev_unit_dviunit(p);
+}
+
+int
+pdf_sprint_matrix (char *buf, const pdf_tmatrix *M)
+{
+  pdf_dev *p = current_device();
+  return (int) pdf_dev_sprint_matrix(p, buf, M);
+}
+
+int
+pdf_sprint_rect (char *buf, const pdf_rect *rect)
+{
+  pdf_dev *p = current_device();
+  return (int) pdf_dev_sprint_rect(p, buf, rect);
+}
+
+int
+pdf_sprint_coord (char *buf, const pdf_coord *c)
+{
+  pdf_dev *p = current_device();
+  return (int) pdf_dev_sprint_coord(p, buf, c);
+}
+
+int
+pdf_sprint_length (char *buf, double value)
+{
+  pdf_dev *p = current_device();
+  return (int) pdf_dev_sprint_length(p, buf, value);
+}
+
+int
+pdf_sprint_number (char *buf, double value)
+{
+  pdf_dev *p = current_device();
+  return (int) pdf_dev_sprint_number(p, buf, value);
+}
+
+/* Access text state parameters. */
+int
+pdf_dev_get_font_wmode (int font_id)
+{
+  pdf_dev *p = current_device();
+  struct dev_font *font;
+
+  font = GET_FONT(p, font_id);
+  if (font) {
+    return font->wmode;
+  }
+
+  return 0;
+}
+
+/* Saved text position compensation */
+void
+pdf_dev_get_coord (double *xpos, double *ypos)
+{
+  pdf_dev *p = current_device();
+
+  if (p->num_dev_coords > 0) {
+    *xpos = p->dev_coords[p->num_dev_coords-1].x;
+    *ypos = p->dev_coords[p->num_dev_coords-1].y;
+  } else {
+    *xpos = *ypos = 0.0;
+  }
+}
+
+void
+pdf_dev_push_coord (double xpos, double ypos)
+{
+  pdf_dev *p = current_device();
+
+  if (p->num_dev_coords >= p->max_dev_coords) {
+    p->max_dev_coords += 4;
+    p->dev_coords = RENEW(p->dev_coords, p->max_dev_coords, pdf_coord);
+  }
+  p->dev_coords[p->num_dev_coords].x = xpos;
+  p->dev_coords[p->num_dev_coords].y = ypos;
+  p->num_dev_coords++;
+}
+
+void
+pdf_dev_pop_coord (void)
+{
+  pdf_dev *p = current_device();
+
+  if (p->num_dev_coords > 0)
+    p->num_dev_coords--;
 }

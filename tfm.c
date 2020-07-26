@@ -1,6 +1,6 @@
 /* This is dvipdfmx, an eXtended version of dvipdfm by Mark A. Wicks.
 
-    Copyright (C) 2002-2019 by Jin-Hwan Cho and Shunsaku Hirata,
+    Copyright (C) 2002-2020 by Jin-Hwan Cho and Shunsaku Hirata,
     the dvipdfmx project team.
     
     Copyright (C) 1998, 1999 by Mark A. Wicks <mwicks@kettering.edu>
@@ -446,7 +446,8 @@ tfm_get_sizes (FILE *tfm_file, off_t tfm_file_size, struct tfm_font *tfm)
 }
 
 #ifndef WITHOUT_ASCII_PTEX
-static unsigned int get_unsigned_triple_kanji(FILE *file)
+static unsigned int
+get_unsigned_triple_kanji(FILE *file)
 {
   unsigned int triple = get_unsigned_byte(file);
   triple = (triple << 8) | get_unsigned_byte(file);
@@ -1207,6 +1208,22 @@ tfm_is_vert (int font_id)
 }
 #endif /* !WITHOUT_ASCII_PTEX */
 #endif
+
+#ifndef WITHOUT_ASCII_PTEX
+int
+tfm_is_jfm (int font_id)
+{
+  CHECK_ID(font_id);
+
+  return (fms[font_id].source == SOURCE_TYPE_JFM) ? 1 : 0;
+}
+#else /* WITHOUT_ASCII_PTEX */
+int
+tfm_is_jfm (int font_id)
+{
+  return 0;
+}
+#endif /* !WITHOUT_ASCII_PTEX */
 
 int
 tfm_exists (const char *tfm_name)

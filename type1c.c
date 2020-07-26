@@ -1,6 +1,6 @@
 /* This is dvipdfmx, an eXtended version of dvipdfm by Mark A. Wicks.
 
-    Copyright (C) 2002-2019 by Jin-Hwan Cho, Matthias Franz, and Shunsaku Hirata,
+    Copyright (C) 2002-2020 by Jin-Hwan Cho, Matthias Franz, and Shunsaku Hirata,
     the dvipdfmx project team.
 
     Copyright (C) 1998, 1999 by Mark A. Wicks <mwicks@kettering.edu>
@@ -94,7 +94,7 @@ pdf_font_open_type1c (pdf_font *font)
 
   offset = sfnt_find_table_pos(sfont, "CFF ");
   if (offset < 1) {
-    ERROR("No \"CFF \" table found; not a CFF/OpenType font (10)?");
+    ERROR("No \"CFF \" table found; not a CFF/OpenType font (or variable font?) (10)?");
   }
 
   cffont = cff_open(sfont->stream, offset, 0);
@@ -296,7 +296,7 @@ pdf_font_load_type1c (pdf_font *font)
   }
   if (sfont->type != SFNT_TYPE_POSTSCRIPT ||
       (offset = sfnt_find_table_pos(sfont, "CFF ")) == 0) {
-    ERROR("Not a CFF/OpenType font (11)?");
+    ERROR("Not a CFF/OpenType font (or variable font?) (11)?");
   }
 
   cffont = cff_open(fp, offset, 0);

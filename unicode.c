@@ -1,6 +1,6 @@
 /* This is dvipdfmx, an eXtended version of dvipdfm by Mark A. Wicks.
 
-    Copyright (C) 2002-2019 by Jin-Hwan Cho and Shunsaku Hirata,
+    Copyright (C) 2002-2020 by Jin-Hwan Cho and Shunsaku Hirata,
     the dvipdfmx project team.
 
     Copyright (C) 1998, 1999 by Mark A. Wicks <mwicks@kettering.edu>
@@ -78,7 +78,7 @@ UC_UTF16BE_is_valid_string (const unsigned char *p, const unsigned char *endptr)
 int
 UC_UTF8_is_valid_string (const unsigned char *p, const unsigned char *endptr)
 {
-  if (p  >= endptr)
+  if (p >= endptr)
    return 0;
   while (p < endptr) {
     int32_t ucv = UC_UTF8_decode_char(&p, endptr);
