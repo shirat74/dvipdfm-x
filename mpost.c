@@ -203,7 +203,6 @@ clear_fonts (void)
     clear_mp_font_struct(&font_stack[currentfont]);
     currentfont--;
   }
-  currentfont = 0;
 }
 
 static int
