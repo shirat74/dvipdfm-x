@@ -658,34 +658,10 @@ parse_pdf_dict_with_tounicode (const char **pp, const char *endptr, struct touni
 static void
 set_rect (pdf_rect *rect, pdf_coord cp1, pdf_coord cp2, pdf_coord cp3, pdf_coord cp4)
 {
-  rect->llx = cp1.x;
-  if (cp2.x < rect->llx)
-    rect->llx = cp2.x;
-  if (cp3.x < rect->llx)
-    rect->llx = cp3.x;
-  if (cp4.x < rect->llx)
-    rect->llx = cp4.x;
-  rect->urx = cp1.x;
-  if (cp2.x > rect->urx)
-    rect->urx = cp2.x;
-  if (cp3.x > rect->urx)
-    rect->urx = cp3.x;
-  if (cp4.x > rect->urx)
-    rect->urx = cp4.x;
-  rect->lly = cp1.y;
-  if (cp2.y < rect->lly)
-    rect->lly = cp2.y;
-  if (cp3.y < rect->lly)
-    rect->lly = cp3.y;
-  if (cp4.y < rect->lly)
-    rect->lly = cp4.y;
-  rect->ury = cp1.y;
-  if (cp2.y > rect->ury)
-    rect->ury = cp2.y;
-  if (cp3.y > rect->ury)
-    rect->ury = cp3.y;
-  if (cp4.y > rect->ury)
-    rect->ury = cp4.y;
+  rect->llx = min4(cp1.x, cp2.x, cp3.x, cp4.x);
+  rect->lly = min4(cp1.y, cp2.y, cp3.y, cp4.y);
+  rect->urx = max4(cp1.x, cp2.x, cp3.x, cp4.x);
+  rect->ury = max4(cp1.y, cp2.y, cp3.y, cp4.y);
 }
 
 static int
