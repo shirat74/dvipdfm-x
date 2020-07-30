@@ -80,6 +80,7 @@ static struct {
   {NULL,    NULL,       { 0,  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
     0, 0, 0, 0, 0}}
 };
+#define SUP_IDX_MAX 20
 #define UCS_CC    0
 #define ACC_START 1
 #define ACC_END   4
@@ -709,6 +710,7 @@ get_cidsysinfo (const char *map_name, fontmap_opt *fmap_opt)
   int i, csi_idx = -1, n, m;
 
   sup_idx = pdf_get_version() - 10;
+  sup_idx = (sup_idx > SUP_IDX_MAX) ? SUP_IDX_MAX : sup_idx;
 
   if (!fmap_opt || !fmap_opt->charcoll)
     return NULL;
@@ -775,6 +777,18 @@ get_cidsysinfo (const char *map_name, fontmap_opt *fmap_opt)
         csi_idx = i;
         break;
       }
+    }
+  }
+
+  if (csi && csi_idx >= 0) {
+    if (csi->supplement > CIDFont_stdcc_def[csi_idx].supplement[sup_idx]
+        && (fmap_opt->flags & FONTMAP_OPT_NOEMBED)) {
+      WARN("%s: Heighest supplement number supported in PDF-%d.%d for %s-%s is %d.",
+           CIDFONT_DEBUG_STR, pdf_get_version_major(), pdf_get_version_minor(),
+           csi->registry, csi->ordering,
+           CIDFont_stdcc_def[csi_idx].supplement[sup_idx]);
+      WARN("%s: Some character may not shown without embedded font (--> %s).",
+           CIDFONT_DEBUG_STR, map_name);
     }
   }
 
