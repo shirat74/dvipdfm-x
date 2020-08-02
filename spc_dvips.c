@@ -172,7 +172,7 @@ spc_handler_ps_file (struct spc_env *spe, struct spc_arg *args)
   }
   RELEASE(filename);
 
-  pdf_dev_put_image(form_id, &ti, spe->x_user, spe->y_user);
+  spc_put_image(spe, form_id, &ti, spe->x_user, spe->y_user);
 
   return  0;
 }
@@ -211,7 +211,7 @@ spc_handler_ps_plotfile (struct spc_env *spe, struct spc_arg *args)
 		      block_pending ? pending_x : spe->x_user,
 		      block_pending ? pending_y : spe->y_user);
 #endif
-    pdf_dev_put_image(form_id, &p, 0, 0);
+    spc_put_image(spe, form_id, &p, 0, 0);
   }
   RELEASE(filename);
 
@@ -261,13 +261,13 @@ spc_handler_ps_literal (struct spc_env *spe, struct spc_arg *args)
 
   skip_white(&args->curptr, args->endptr);
   if (args->curptr < args->endptr) {
+    double xoff, yoff;
 
     st_depth = mps_stack_depth();
     gs_depth = pdf_dev_current_depth();
 
-    error = mps_exec_inline(&args->curptr,
-			    args->endptr,
-			    x_user, y_user);
+    spc_get_coord(spe, &xoff, &yoff);
+    error = mps_exec_inline(&args->curptr, args->endptr, x_user - xoff, y_user - yoff);
     if (error) {
       spc_warn(spe, "Interpreting PS code failed!!! Output might be broken!!!");
       pdf_dev_grestore_to(gs_depth);
@@ -717,7 +717,7 @@ spc_handler_ps_tricks_render (struct spc_env *spe, struct spc_arg *args)
       RELEASE(gs_out);
       return  -1;
     }
-    pdf_dev_put_image(form_id, &p, 0, 0);
+    spc_put_image(spe, form_id, &p, 0, 0);
 
     dpx_delete_temp_file(gs_out, true);
     dpx_delete_temp_file(gs_in, true);
@@ -843,12 +843,13 @@ spc_handler_ps_default (struct spc_env *spe, struct spc_arg *args)
 
   {
     pdf_tmatrix M;
-    M.a = M.d = 1.0; M.b = M.c = 0.0; M.e = spe->x_user; M.f = spe->y_user;
+    double      xoff, yoff;
+
+    spc_get_coord(spe, &xoff, &yoff);
+    M.a = M.d = 1.0; M.b = M.c = 0.0; M.e = spe->x_user - xoff; M.f = spe->y_user - yoff;
     pdf_dev_concat(&M);
-  error = mps_exec_inline(&args->curptr,
-			  args->endptr,
-			  spe->x_user, spe->y_user);
-    M.e = -spe->x_user; M.f = -spe->y_user;
+    error = mps_exec_inline(&args->curptr, args->endptr, spe->x_user - xoff, spe->y_user - yoff);
+    M.e = -(spe->x_user - xoff); M.f = -(spe->y_user - yoff);
     pdf_dev_concat(&M);
   }
   if (error)

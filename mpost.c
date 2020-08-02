@@ -901,8 +901,7 @@ do_texfig_operator (int opcode, double x_user, double y_user)
       fig_p.flags   |= INFO_HAS_USER_BBOX;
 
       sprintf(resname, "__tf%d__", count);
-      xobj_id = pdf_doc_begin_grabbing(resname,
-				       fig_p.bbox.llx, fig_p.bbox.ury, &fig_p.bbox);
+      xobj_id = pdf_doc_begin_grabbing(resname, fig_p.bbox.llx, fig_p.bbox.ury, &fig_p.bbox);
       
       in_tfig = 1;
       count++;
@@ -913,7 +912,7 @@ do_texfig_operator (int opcode, double x_user, double y_user)
       ERROR("endTexFig without valid startTexFig!.");
 
     pdf_doc_end_grabbing(NULL);
-    pdf_dev_put_image(xobj_id, &fig_p, x_user, y_user);
+    pdf_dev_put_image(xobj_id, &fig_p, x_user, y_user, NULL); /* FIXME */
     in_tfig = 0;
     break;
   default:

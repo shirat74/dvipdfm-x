@@ -698,7 +698,7 @@ spc_html__img_empty (struct spc_env *spe, pdf_obj *attr)
                                 pdf_ximage_get_reference(id));
     }
 #else
-    pdf_dev_put_image(id, &ti, spe->x_user, spe->y_user);
+    spc_put_image(spe, id, &ti, spe->x_user, spe->y_user);
 #endif /* ENABLE_HTML_SVG_XXX */
   }
 
