@@ -87,7 +87,7 @@ extern int      pdf_font_get_flags      (pdf_font *font);
 #endif /* 0 */
 extern double   pdf_font_get_param      (pdf_font *font, int type);
 
-extern int      pdf_font_get_index      (pdf_font *font);
+extern uint32_t pdf_font_get_index      (pdf_font *font);
 
 extern int      pdf_font_set_fontname   (pdf_font *font, const char *fontname);
 extern int      pdf_font_set_flags      (pdf_font *font, int flags);
