@@ -307,134 +307,18 @@ spc_clear_objects (struct spc_env *spe)
   /* Do nothing... */
 }
 
-typedef struct stack_elem
-{
-  void              *data;
-  struct stack_elem *prev;
-} stack_elem;
-
-struct dpx_stack
-{
-  int         size;
-  stack_elem *top;
-  stack_elem *bottom;
-};
-
-dpx_stack *
-dpx_stack_new (void)
-{
-  dpx_stack *stack;
-
-  stack = NEW(1, dpx_stack);
-
-  stack->size   = 0;
-  stack->top    = NULL;
-  stack->bottom = NULL;
-
-  return stack;
-}
-
-void
-dpx_stack_delete (dpx_stack **stack, void (free_fn) (void *data))
-{
-  void *p;
-
-  ASSERT(stack && *stack);
-  while ((p = dpx_stack_pop(*stack)) != NULL) {
-    if (free_fn)
-      free_fn(p);
-  }
-
-  RELEASE(*stack);
-
-  *stack = NULL;
-}
-
-void
-dpx_stack_push (dpx_stack *stack, void *data)
-{
-  stack_elem  *elem;
-
-  ASSERT(stack);
-
-  elem = NEW(1, stack_elem);
-  elem->prev = stack->top;
-  elem->data = data;
-
-  stack->top = elem;
-  if (stack->size == 0)
-    stack->bottom = elem;
-
-  stack->size++;
-
-  return;
-}
-
-void *
-dpx_stack_pop (dpx_stack *stack)
-{
-  stack_elem *elem;
-  void       *data;
-
-  ASSERT(stack);
-
-  if (stack->size == 0)
-    return NULL;
-
-  data = stack->top->data;
-  elem = stack->top;
-  stack->top = elem->prev;
-  if (stack->size == 1)
-    stack->bottom = NULL;
-  RELEASE(elem);
-
-  stack->size--;
-
-  return data;
-}
-
-void *
-dpx_stack_top (dpx_stack *stack)
-{
-  void  *data;
-
-  ASSERT(stack);
-
-  if (stack->size == 0)
-    return NULL;
-
-  data = stack->top->data;
-
-  return data;
-}
-
-int
-dpx_stack_depth (dpx_stack *stack)
-{
-  ASSERT(stack);
-
-  return stack->size;
-}
-
 /* Migrated form pdf_dev.c
  * No need to palce this into pdfdev.c at all.
  */
-static dpx_stack *coords = NULL;
-
-static void
-release_coord (void *p)
-{
-   if (p)
-     RELEASE(p);
-}
+static dpx_stack coords;
 
 void
 spc_get_coord (struct spc_env *spe, double *x, double *y)
 {
   ASSERT(x && y );
 
-  if (coords && dpx_stack_depth(coords) > 0) {
-    pdf_coord *p = dpx_stack_top(coords);
+  if (dpx_stack_depth(&coords) > 0) {
+    pdf_coord *p = dpx_stack_top(&coords);
     *x = p->x;
     *y = p->y;
   } else {
@@ -446,24 +330,23 @@ void
 spc_push_coord (struct spc_env *spe, double x, double y)
 {
   pdf_coord *p;
-  if (!coords)
-    coords = dpx_stack_new();
+
   p = NEW(1, pdf_coord);
   p->x = x; p->y = y;
-  dpx_stack_push(coords, p);
+  dpx_stack_push(&coords, p);
   dvi_set_compensation(x, y);
 }
 
 void
 spc_pop_coord (struct spc_env *spe)
 {
-  double x, y;
+  double     x, y;
+  pdf_coord *p;
 
-  if (coords) {
-    pdf_coord *p;
-    p = dpx_stack_pop(coords);
+  p = dpx_stack_pop(&coords);
+  if (p)
     RELEASE(p);
-  }
+
   spc_get_coord(spe, &x, &y);
   dvi_set_compensation(x, y);
 }
@@ -474,16 +357,14 @@ spc_pop_coord (struct spc_env *spe)
  *
  */
 
-static dpx_stack *pt_fixee = NULL;
+static dpx_stack pt_fixee;
 
 void
 spc_set_fixed_point (struct spc_env *spe, double x, double y)
 {
   pdf_coord *p;
 
-  ASSERT(pt_fixee);
-
-  p = dpx_stack_top(pt_fixee);
+  p = dpx_stack_top(&pt_fixee);
   if (p) {
     p->x = x;
     p->y = y;
@@ -495,10 +376,9 @@ spc_get_fixed_point (struct spc_env *spe, double *x, double *y)
 {
   pdf_coord *p;
 
-  ASSERT(pt_fixee);
   ASSERT(x && y);
 
-  p = dpx_stack_top(pt_fixee);
+  p = dpx_stack_top(&pt_fixee);
   if (p) {
     *x = p->x;
     *y = p->y;
@@ -510,12 +390,10 @@ spc_put_fixed_point (struct spc_env *spe, double x, double y)
 {
   pdf_coord *p;
 
-  if (!pt_fixee)
-    pt_fixee = dpx_stack_new();
   p = NEW(1, pdf_coord);
   p->x = x;
   p->y = y;
-  dpx_stack_push(pt_fixee, p);
+  dpx_stack_push(&pt_fixee, p);
 }
 
 void
@@ -523,17 +401,17 @@ spc_dup_fixed_point (struct spc_env *spe)
 {
   pdf_coord *p1, *p2;
 
-  p1 = dpx_stack_top(pt_fixee);
+  p1 = dpx_stack_top(&pt_fixee);
   p2 = NEW(1, pdf_coord);
   p2->x = p1->x; p2->y = p1->y;
-  dpx_stack_push(pt_fixee, p2);
+  dpx_stack_push(&pt_fixee, p2);
 }
 
 void
 spc_pop_fixed_point (struct spc_env *spe)
 {
   pdf_coord *p;
-  p = dpx_stack_pop(pt_fixee);
+  p = dpx_stack_pop(&pt_fixee);
   if (p)
     RELEASE(p);
 }
@@ -544,7 +422,7 @@ spc_clear_fixed_point (struct spc_env *spe)
   pdf_coord *p;
 
   for (;;) {
-    p = dpx_stack_pop(pt_fixee);
+    p = dpx_stack_pop(&pt_fixee);
     if (!p)
       break;
     else
@@ -759,14 +637,18 @@ spc_exec_at_begin_document (void)
     }
   }
   
+  dpx_stack_init(&coords);
+  dpx_stack_init(&pt_fixee);
+
   return error;
 }
 
 int
 spc_exec_at_end_document (void)
 {
-  int  error = 0;
-  int  i;
+  int        error = 0;
+  int        i;
+  pdf_coord *p;
 
   for (i = 0; known_specials[i].key != NULL; i++) {
     if (known_specials[i].eodhk_func) {
@@ -774,10 +656,12 @@ spc_exec_at_end_document (void)
     }
   }
 
-  if (coords)
-    dpx_stack_delete(&coords, release_coord);
-  if (pt_fixee)
-    dpx_stack_delete(&pt_fixee, release_coord);
+  while ((p = dpx_stack_pop(&coords)) != NULL) {  
+    RELEASE(p);
+  }
+  while ((p = dpx_stack_pop(&pt_fixee)) != NULL) {  
+    RELEASE(p);
+  }
 
   return error;
 }

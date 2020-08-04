@@ -97,12 +97,4 @@ extern int      spc_exec_at_end_document   (void);
 
 extern int      spc_exec_special (const char *p, int32_t size, double x_user, double y_user, double mag, int *is_drawable, pdf_rect *rect);
 
-typedef struct dpx_stack dpx_stack;
-extern dpx_stack *dpx_stack_new    (void);
-extern void       dpx_stack_delete (dpx_stack **st, void (free_fn) (void *d));
-extern void      *dpx_stack_pop    (dpx_stack *st);
-extern void       dpx_stack_push   (dpx_stack *st, void *data);
-extern int        dpx_stack_depth  (dpx_stack *st);
-extern void      *dpx_stack_top    (dpx_stack *st);
-
 #endif /* _SPECIALS_H_ */

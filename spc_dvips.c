@@ -221,22 +221,22 @@ spc_handler_ps_plotfile (struct spc_env *spe, struct spc_arg *args)
 static int
 spc_handler_ps_literal (struct spc_env *spe, struct spc_arg *args)
 {
-  int     error = 0;
-  int     st_depth, gs_depth;
-  double  x_user, y_user;
+  int       error = 0;
+  int       st_depth, gs_depth;
+  double    x_user, y_user;
+  pdf_coord cp;
 
-  ASSERT(spe && args && args->curptr <= args->endptr);
-
+  spc_get_current_point(spe, &cp);
   if (args->curptr + strlen(":[begin]") <= args->endptr &&
       !strncmp(args->curptr, ":[begin]", strlen(":[begin]"))) {
     block_pending++;
     position_set = 1;
 
-    x_user = pending_x = spe->x_user;
-    y_user = pending_y = spe->y_user;
+    x_user = pending_x = cp.x;
+    y_user = pending_y = cp.y;
     args->curptr += strlen(":[begin]");
   } else if (args->curptr + strlen(":[end]") <= args->endptr &&
-	     !strncmp(args->curptr, ":[end]", strlen(":[end]"))) {
+             !strncmp(args->curptr, ":[end]", strlen(":[end]"))) {
     if (block_pending <= 0) {
       spc_warn(spe, "No corresponding ::[begin] found.");
       return -1;
@@ -248,26 +248,23 @@ spc_handler_ps_literal (struct spc_env *spe, struct spc_arg *args)
     x_user = pending_x;
     y_user = pending_y;
     args->curptr += strlen(":[end]");
-  } else if (args->curptr < args->endptr &&
-	     args->curptr[0] == ':') {
-    x_user = position_set ? pending_x : spe->x_user;
-    y_user = position_set ? pending_y : spe->y_user;
+  } else if (args->curptr < args->endptr && args->curptr[0] == ':') {
+    x_user = position_set ? pending_x : cp.x;
+    y_user = position_set ? pending_y : cp.y;
     args->curptr++;
   } else {
     position_set = 1;
-    x_user = pending_x = spe->x_user;
-    y_user = pending_y = spe->y_user;
+    x_user = pending_x = cp.x;
+    y_user = pending_y = cp.y;
   }
 
   skip_white(&args->curptr, args->endptr);
   if (args->curptr < args->endptr) {
-    double xoff, yoff;
 
     st_depth = mps_stack_depth();
     gs_depth = pdf_dev_current_depth();
 
-    spc_get_coord(spe, &xoff, &yoff);
-    error = mps_exec_inline(&args->curptr, args->endptr, x_user - xoff, y_user - yoff);
+    error = mps_exec_inline(&args->curptr, args->endptr, x_user, y_user);
     if (error) {
       spc_warn(spe, "Interpreting PS code failed!!! Output might be broken!!!");
       pdf_dev_grestore_to(gs_depth);
@@ -843,13 +840,13 @@ spc_handler_ps_default (struct spc_env *spe, struct spc_arg *args)
 
   {
     pdf_tmatrix M;
-    double      xoff, yoff;
+    pdf_coord   cp;
 
-    spc_get_coord(spe, &xoff, &yoff);
-    M.a = M.d = 1.0; M.b = M.c = 0.0; M.e = spe->x_user - xoff; M.f = spe->y_user - yoff;
+    spc_get_current_point(spe, &cp);
+    M.a = M.d = 1.0; M.b = M.c = 0.0; M.e = cp.x; M.f = cp.y;
     pdf_dev_concat(&M);
-    error = mps_exec_inline(&args->curptr, args->endptr, spe->x_user - xoff, spe->y_user - yoff);
-    M.e = -(spe->x_user - xoff); M.f = -(spe->y_user - yoff);
+    error = mps_exec_inline(&args->curptr, args->endptr, cp.x, cp.y);
+    M.e = -cp.x; M.f = -cp.y;
     pdf_dev_concat(&M);
   }
   if (error)
