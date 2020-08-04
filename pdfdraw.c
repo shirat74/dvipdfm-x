@@ -950,8 +950,7 @@ typedef struct pdf_gstate_
   /* internal */
   pdf_path  path;
   int       flags;
-  /* bookkeeping the origin of the last transform applied */
-  pdf_coord pt_fixee;
+
   pdf_obj  *extgstate;
 } pdf_gstate;
 
@@ -980,8 +979,6 @@ init_a_gstate (pdf_gstate *gs)
   /* Internal variables */
   gs->flags = 0;
   init_a_path(&gs->path);
-  gs->pt_fixee.x = 0;
-  gs->pt_fixee.y = 0;
 
   gs->extgstate  = NULL;
 
@@ -1032,8 +1029,6 @@ copy_a_gstate (pdf_gstate *gs1, pdf_gstate *gs2)
 
   pdf_color_copycolor(&gs1->fillcolor  , &gs2->fillcolor);
   pdf_color_copycolor(&gs1->strokecolor, &gs2->strokecolor);
-  gs1->pt_fixee.x = gs2->pt_fixee.x;
-  gs1->pt_fixee.y = gs2->pt_fixee.y;
 
   gs1->extgstate  = gs2->extgstate ? pdf_link_obj(gs2->extgstate) : NULL;
 
@@ -1955,22 +1950,4 @@ pdf_dev_rectadd (double x, double y,
   path_added = 1;
 
   return  pdf_dev__rectshape(&r, NULL, ' ');
-}
-
-void
-pdf_dev_set_fixed_point (double x, double y)
-{
-  dpx_stack  *gss = &gs_stack;
-  pdf_gstate *gs  = dpx_stack_top(gss);
-  gs->pt_fixee.x = x;
-  gs->pt_fixee.y = y;
-}
-
-void
-pdf_dev_get_fixed_point (pdf_coord *p)
-{
-  dpx_stack  *gss = &gs_stack;
-  pdf_gstate *gs  = dpx_stack_top(gss);
-  p->x = gs->pt_fixee.x;
-  p->y = gs->pt_fixee.y;
 }

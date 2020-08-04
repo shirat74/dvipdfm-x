@@ -310,7 +310,7 @@ spc_handler_ps_tricks_pdef (struct spc_env *spe, struct spc_arg *args)
   pdf_coord pt;
 
   pdf_dev_currentmatrix(&M);
-  pdf_dev_get_fixed_point(&pt);
+  spc_get_fixed_point(spe, &pt.x, &pt.y);
   T.e = pt.x;
   T.f = pt.y;
   pdf_concatmatrix(&M, &T);
@@ -453,10 +453,10 @@ spc_handler_ps_tricks_brotate (struct spc_env *spe, struct spc_arg *args)
     return -1;
   RAngles[RAngleCount] = value;
 
-  return  spc_handler_xtx_do_transform (spe->x_user, spe->y_user,
-      cos(value * M_PI / 180), sin(value * M_PI / 180),
-      -sin(value * M_PI / 180), cos(value * M_PI / 180),
-      0, 0);
+  return  spc_handler_xtx_do_transform (spe, spe->x_user, spe->y_user,
+                                        cos(value * M_PI / 180), sin(value * M_PI / 180),
+                                        -sin(value * M_PI / 180), cos(value * M_PI / 180),
+                                        0, 0);
 }
 
 static int
@@ -464,10 +464,10 @@ spc_handler_ps_tricks_erotate (struct spc_env *spe, struct spc_arg *args)
 {
   double value = RAngles[RAngleCount--];
 
-  return  spc_handler_xtx_do_transform (spe->x_user, spe->y_user,
-      cos(value * M_PI / 180), -sin(value * M_PI / 180),
-      sin(value * M_PI / 180), cos(value * M_PI / 180),
-      0, 0);
+  return  spc_handler_xtx_do_transform (spe, spe->x_user, spe->y_user,
+                                        cos(value * M_PI / 180), -sin(value * M_PI / 180),
+                                        sin(value * M_PI / 180), cos(value * M_PI / 180),
+                                        0, 0);
 }
 
 static int
@@ -492,7 +492,7 @@ spc_handler_ps_tricks_transform (struct spc_env *spe, struct spc_arg *args)
       return -1;
     if (spc_handler_xtx_gsave (0, 0) != 0)
       return -1;
-    return spc_handler_xtx_do_transform (spe->x_user, spe->y_user, d1, d2, d3, d4, d5, d6);
+    return spc_handler_xtx_do_transform (spe, spe->x_user, spe->y_user, d1, d2, d3, d4, d5, d6);
   }
   return  spc_handler_xtx_grestore (0, 0);
 }
