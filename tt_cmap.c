@@ -1320,18 +1320,18 @@ otf_load_Unicode_CMap (const char *map_name, uint32_t ttc_index, /* 0 for non-TT
     len = strlen(map_name)+strlen("-UCS4-H")+strlen(otl_tags)+32;
     cmap_name = NEW(len, char);
     if (wmode)
-      snprintf(cmap_name, len, "%s:d:%s-UCS4-V", map_name, ttc_index, otl_tags);
+      snprintf(cmap_name, len, "%s:%d:%s-UCS4-V", map_name, ttc_index, otl_tags);
     else
-      snprintf(cmap_name, len, "%s:d:%s-UCS4-H", map_name, ttc_index, otl_tags);
+      snprintf(cmap_name, len, "%s:%d:%s-UCS4-H", map_name, ttc_index, otl_tags);
     cmap_name[len-1] = '\0';
   } else {
     size_t len;
     len = strlen(map_name)+strlen("-UCS4-H")+32;
     cmap_name = NEW(len, char);
     if (wmode)
-      snprintf(cmap_name, len, "%s:d-UCS4-V", map_name, ttc_index);
+      snprintf(cmap_name, len, "%s:%d-UCS4-V", map_name, ttc_index);
     else {
-      snprintf(cmap_name, len, "%s:d-UCS4-H", map_name, ttc_index);
+      snprintf(cmap_name, len, "%s:%d-UCS4-H", map_name, ttc_index);
     }
     cmap_name[len-1] = '\0';
   }
