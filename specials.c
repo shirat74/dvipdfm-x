@@ -368,6 +368,11 @@ spc_set_fixed_point (struct spc_env *spe, double x, double y)
   if (p) {
     p->x = x;
     p->y = y;
+  } else {
+    p = NEW(1, pdf_coord);
+    p->x = x;
+    p->y = y;
+    dpx_stack_push(&pt_fixee, p);
   }
 }
 
@@ -382,6 +387,9 @@ spc_get_fixed_point (struct spc_env *spe, double *x, double *y)
   if (p) {
     *x = p->x;
     *y = p->y;
+  } else {
+    *x = 0.0;
+    *y = 0.0;
   }
 }
 
@@ -403,7 +411,11 @@ spc_dup_fixed_point (struct spc_env *spe)
 
   p1 = dpx_stack_top(&pt_fixee);
   p2 = NEW(1, pdf_coord);
-  p2->x = p1->x; p2->y = p1->y;
+  if (p1) {
+    p2->x = p1->x; p2->y = p1->y;
+  } else {
+    p2->x = 0.0; p2->y = 0.0;
+  }
   dpx_stack_push(&pt_fixee, p2);
 }
 
