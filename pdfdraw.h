@@ -113,7 +113,6 @@ extern int    pdf_dev_rectstroke    (double x, double y,
 
 extern int    pdf_dev_rectfill      (double x, double y, double w, double h);
 extern int    pdf_dev_rectclip      (double x, double y, double w, double h);
-extern int    pdf_dev_rectadd       (double x, double y, double w, double h);
  
 extern int    pdf_dev_flushpath     (char p_op, int fill_rule);
 

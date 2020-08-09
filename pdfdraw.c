@@ -751,7 +751,7 @@ pdf_dev__rectshape (const pdf_rect    *r,
 
   ASSERT(r && PT_OP_VALID(opchr));
 
-  isclip = (opchr == 'W' || opchr == ' ') ? 1 : 0;
+  isclip = (opchr == 'W') ? 1 : 0;
 
   /* disallow matrix for clipping.
    * q ... clip Q does nothing and
@@ -788,20 +788,16 @@ pdf_dev__rectshape (const pdf_rect    *r,
   buf[len++] = ' ';
   buf[len++] = 'r'; buf[len++] = 'e';
 
-  if (opchr != ' ') {
-    buf[len++] = ' ';
-    buf[len++] = opchr;
+  buf[len++] = ' ';
+  buf[len++] = opchr;
 
-    buf[len++] = ' ';
-    buf[len++] = isclip ? 'n' : 'Q';
-  }
+  buf[len++] = ' ';
+  buf[len++] = isclip ? 'n' : 'Q';
 
   pdf_doc_add_page_content(buf, len);  /* op: q cm n re Q */
 
   return 0;
 }
-
-static int path_added = 0;
 
 /* FIXME */
 static int
@@ -824,10 +820,9 @@ pdf_dev__flushpath (pdf_path  *pa,
 
   isclip = (opchr == 'W') ? 1 : 0;
 
-  if (PA_LENGTH(pa) <= 0 && path_added == 0)
+  if (PA_LENGTH(pa) <= 0)
     return 0;
 
-  path_added = 0;
   graphics_mode();
   isrect = pdf_path__isarect(pa, ignore_rule); 
   if (isrect) {
@@ -860,7 +855,7 @@ pdf_dev__flushpath (pdf_path  *pa,
       b[len++] = PE_OPCHR(pe);
       if (len + 128 > b_len) {
         pdf_doc_add_page_content(b, len);  /* op: m l c v y h */
-	len = 0;
+        len = 0;
       }
     }
     if (len > 0) {
@@ -1935,19 +1930,4 @@ pdf_dev_rectclip (double x, double y,
   r.ury = y + h;
   
   return  pdf_dev__rectshape(&r, NULL, 'W');
-}
-
-int
-pdf_dev_rectadd (double x, double y,
-                  double w, double h)
-{
-  pdf_rect r;
-
-  r.llx = x;
-  r.lly = y;
-  r.urx = x + w;
-  r.ury = y + h;
-  path_added = 1;
-
-  return  pdf_dev__rectshape(&r, NULL, ' ');
 }
