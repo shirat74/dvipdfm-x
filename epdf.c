@@ -360,7 +360,7 @@ pdf_copy_clip (FILE *image_file, int pageNo, double x_user, double y_user)
       obj = parse_pdf_string(&p, endptr);
       break;
     case '<':
-      if (p < endptr - 1 && *p == '<') {
+      if (p < endptr - 1 && p[1] == '<') {
         obj = parse_pdf_dict(&p, endptr, NULL);
       } else {
         obj = parse_pdf_string(&p, endptr);
@@ -407,9 +407,9 @@ pdf_copy_clip (FILE *image_file, int pageNo, double x_user, double y_user)
             buf[len++] = ' ';
             len += pdf_sprint_coord(buf+len, &p0);
             buf[len++] = ' ';
-            len += pdf_sprint_number(buf+len, w);
+            len += pdf_sprint_length(buf+len, w);
             buf[len++] = ' ';
-            len += pdf_sprint_number(buf+len, h);
+            len += pdf_sprint_length(buf+len, h);
             len += sprintf(buf+len, " re");
           } else {
             /* Converted to lineto */
