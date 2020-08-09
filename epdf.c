@@ -240,22 +240,22 @@ static struct operator
   {"f*", action_clip, 0},
   {"re", action_rect, 4},
   {"W*", action_path, 0},
-  {"b",	 action_clip, 0},
-  {"B",	 action_clip, 0},
-  {"c",	 action_path, 6},
-  {"f",	 action_clip, 0},
-  {"F",	 action_clip, 0},
-  {"h",	 action_path, 0},
-  {"l",	 action_path, 2},
-  {"m",	 action_path, 2},
-  {"n",	 action_path, 0},
-  {"q",	 action_save, 0},
-  {"Q",	 action_restore, 0},
-  {"s",	 action_clip, 0},
-  {"S",	 action_clip, 0},
-  {"v",	 action_path, 4},
-  {"W",	 action_path, 0},
-  {"y",	 action_path, 4}
+  {"b",  action_clip, 0},
+  {"B",  action_clip, 0},
+  {"c",  action_path, 6},
+  {"f",  action_clip, 0},
+  {"F",  action_clip, 0},
+  {"h",  action_path, 0},
+  {"l",  action_path, 2},
+  {"m",  action_path, 2},
+  {"n",  action_path, 0},
+  {"q",  action_save, 0},
+  {"Q",  action_restore, 0},
+  {"s",  action_clip, 0},
+  {"S",  action_clip, 0},
+  {"v",  action_path, 4},
+  {"W",  action_path, 0},
+  {"y",  action_path, 4}
 };
 
 #include "dpxutil.h"
@@ -326,7 +326,7 @@ pdf_copy_clip (FILE *image_file, int pageNo, double x_user, double y_user)
 
   skip_white(&p, endptr);
   while (p < endptr && !error) {
-    enum action  action = action_unknown;
+    enum action  action = action_discard;
     char        *token  = NULL;
     pdf_obj     *obj    = NULL;
     int          n_args = 0;
