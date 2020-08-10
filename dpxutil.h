@@ -76,6 +76,7 @@ extern void      *dpx_stack_pop    (dpx_stack *st);
 extern void       dpx_stack_push   (dpx_stack *st, void *data);
 extern int        dpx_stack_depth  (dpx_stack *st);
 extern void      *dpx_stack_top    (dpx_stack *st);
+extern void      *dpx_stack_at     (dpx_stack *st, int pos);
 
 
 #define HASH_TABLE_SIZE 503

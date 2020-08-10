@@ -182,3 +182,93 @@ pst_get_token (unsigned char **inbuf, unsigned char *inbufend)
 
   return obj;
 }
+
+pst_obj *
+pst_scan_token (unsigned char **inbuf, unsigned char *inbufend)
+{
+  pst_obj *obj = NULL;
+  unsigned char c;
+
+  ASSERT(*inbuf <= inbufend && !*inbufend);
+
+  skip_white_spaces(inbuf, inbufend);
+  skip_comments(inbuf, inbufend);
+  if (*inbuf >= inbufend)
+    return NULL;
+  c = **inbuf;
+  switch (c) {
+#if 0
+  case '%':
+    obj = pst_parse_comment(inbuf, inbufend);
+    break;
+#endif
+  case '/':
+    obj = pst_parse_name_literal(inbuf, inbufend);
+    break;
+  case '[':
+    obj = pst_new_mark();
+    (*inbuf)++;
+    break;
+  case '<':
+    if (*inbuf + 1 >= inbufend)
+      return NULL;
+    c = *(*inbuf+1);
+    if (c == '<') {
+      obj = pst_new_mark();
+      *inbuf += 2;
+    } else if (isxdigit(c))
+      obj = pst_parse_string(inbuf, inbufend);
+    else if (c == '~') /* ASCII85 */
+      obj = pst_parse_string(inbuf, inbufend);
+    break;
+  case '(':
+    obj = pst_parse_string(inbuf, inbufend);
+    break;
+  case '>':
+    if (*inbuf + 1 >= inbufend || *(*inbuf+1) != '>') {
+      ERROR("Unexpected end of ASCII hex string marker.");
+    } else  {
+      char *mark;
+
+      mark = NEW(3, char);
+      mark[0] = '>'; mark[1] = '>'; mark[2] = '\0';
+      obj = pst_new_name(mark, 1);
+      (*inbuf) += 2;
+    }
+    break;
+  case ']': case '}': 
+    {
+      char *mark;
+
+      mark = NEW(2, char);
+      mark[0] = c; mark[1] = '\0';
+      obj = pst_new_name(mark, 1);
+      (*inbuf)++;
+    }
+    break;
+  case '{': /* This is wrong */
+    {
+      char *mark;
+
+      mark = NEW(2, char);
+      mark[0] = c; mark[1] = '\0';
+      obj = pst_new_obj(PST_TYPE_UNKNOWN, mark);
+      (*inbuf)++;
+    }
+    break;
+  default:
+    if (c == 't' || c == 'f')
+      obj = pst_parse_boolean(inbuf, inbufend);
+    else if (c == 'n')
+      obj = pst_parse_null(inbuf, inbufend);
+    else if (c == '+' || c == '-' || isdigit(c) || c == '.')
+      obj = pst_parse_number(inbuf, inbufend);
+    break;
+  }
+
+  if (!obj) {
+    obj = pst_parse_name(inbuf, inbufend);
+  }
+
+  return obj;
+}

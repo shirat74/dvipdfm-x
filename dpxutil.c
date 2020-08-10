@@ -342,6 +342,26 @@ dpx_stack_top (dpx_stack *stack)
   return data;
 }
 
+void *
+dpx_stack_at (dpx_stack *stack, int pos)
+{
+  void       *data = NULL;
+  stack_elem *elem;
+
+  if (stack->size == 0)
+    return NULL;
+
+  elem = stack->top;
+  while (pos) {
+    elem = elem->prev;
+    pos--;
+  }
+  if (elem)
+    data = elem->data;
+  
+  return data;
+}
+
 int
 dpx_stack_depth (dpx_stack *stack)
 {

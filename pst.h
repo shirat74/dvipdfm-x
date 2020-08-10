@@ -33,16 +33,35 @@
 #define PST_TYPE_STRING     5
 #define PST_TYPE_NAME       6
 #define PST_TYPE_MARK       7
+#define PST_TYPE_ARRAY      8
+#define PST_TYPE_DICT       9
+#define PST_TYPE_OPERATOR  10
+
+typedef int pst_type;
+
+struct pst_obj {
+  pst_type type;
+  struct {
+    int is_exec;
+  } attr;
+  int      link; /* link count for composite object */
+  void    *data;
+};
 
 typedef struct pst_obj pst_obj;
-typedef int            pst_type;
 
 extern pst_obj *pst_get_token (unsigned char **inbuf, unsigned char *inbufend);
+extern pst_obj *pst_scan_token (unsigned char **inbuf, unsigned char *inbufend);
 
 extern pst_obj *pst_new_obj    (pst_type type, void *data);
 extern void     pst_release_obj(pst_obj *obj);
 extern pst_obj *pst_new_mark   (void);
+extern pst_obj *pst_new_boolean (int v);
+extern pst_obj *pst_new_integer (int v);
+extern pst_obj *pst_new_real    (double v);
+extern pst_obj *pst_new_name    (const char *v, int is_exec);
 
+extern int      pst_obj_is_exec (pst_obj *obj);
 extern pst_type pst_type_of   (pst_obj *obj);
 extern int      pst_length_of (pst_obj *obj);
 
@@ -65,6 +84,9 @@ extern void    *pst_data_ptr (pst_obj *obj);
 #define PST_REALTYPE(o)    (pst_type_of((o)) == PST_TYPE_REAL)
 #define PST_NUMBERTYPE(o)  (PST_INTEGERTYPE((o))||PST_REALTYPE((o)))
 #define PST_MARKTYPE(o)    (pst_type_of((o)) == PST_TYPE_MARK)
+#define PST_OPERATORTYPE(o) (pst_typeof((o)) == PST_TYPE_OPERATOR)
+#define PST_ARRAYTYPE(o)    (pst_typeof((o)) == PST_TYPE_ARRAY)
+#define PST_DICTTYPE(o)     (pst_typeof((o)) == PST_TYPE_DICT)
 #define PST_UNKNOWNTYPE(o) (pst_type_of((o)) < 0)
 
 #define PST_TOKEN_END(s,e) ((s) == (e) || is_delim(*(s)) || is_space(*(s)))

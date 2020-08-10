@@ -35,12 +35,6 @@
 #include "pst.h"
 #include "pst_obj.h"
 
-struct pst_obj
-{
-  pst_type type;
-  void    *data;
-};
-
 static const char *pst_const_null  = "null";
 static const char *pst_const_mark  = "mark";
 /*
@@ -122,6 +116,12 @@ pst_new_obj (pst_type type, void *data)
   return obj;
 }
 
+int
+pst_obj_is_exec (pst_obj *obj)
+{
+  return obj->attr.is_exec;
+}
+
 pst_obj *
 pst_new_mark (void)
 {
@@ -131,6 +131,25 @@ pst_new_mark (void)
   strcpy(q, pst_const_mark);
   return pst_new_obj(PST_TYPE_MARK, (void *)q);
 }
+
+pst_obj *
+pst_new_boolean (int v)
+{
+  return pst_new_obj(PST_TYPE_BOOLEAN, pst_boolean_new(v));
+}
+
+pst_obj *
+pst_new_integer (int v)
+{
+  return pst_new_obj(PST_TYPE_INTEGER, pst_integer_new(v));
+}
+
+pst_obj *
+pst_new_real (double v)
+{
+  return pst_new_obj(PST_TYPE_REAL, pst_real_new(v));
+}
+
 
 void
 pst_release_obj (pst_obj *obj)
@@ -575,6 +594,19 @@ pst_parse_number (unsigned char **inbuf, unsigned char *inbufend)
  * \0 is not allowed for name object.
  */
 
+pst_obj *
+pst_new_name (const char *v, int is_exec)
+{
+  pst_obj  *obj;
+  pst_name *data;
+
+  data = pst_name_new(v);
+  obj  = pst_new_obj(PST_TYPE_NAME, data);
+  obj->attr.is_exec = is_exec;
+
+  return obj;
+}
+
 static pst_name *
 pst_name_new (const char *name)
 {
@@ -666,15 +698,12 @@ getxpair (unsigned char **s)
 }
 
 pst_obj *
-pst_parse_name (unsigned char **inbuf, unsigned char *inbufend) /* / is required */
+pst_parse_name (unsigned char **inbuf, unsigned char *inbufend)
 {
+  pst_obj *obj;
   unsigned char  wbuf[PST_NAME_LEN_MAX+1];
   unsigned char  c, *p = wbuf, *cur = *inbuf;
   int     len = 0;
-
-  if (*cur != '/')
-    return NULL;
-  cur++;
 
   while (!PST_TOKEN_END(cur, inbufend)) {
     c = *cur++;
@@ -700,8 +729,26 @@ pst_parse_name (unsigned char **inbuf, unsigned char *inbufend) /* / is required
   if (len > PST_NAME_LEN_MAX)
     WARN("String too long for name object. Output will be truncated.");
 
+  obj = pst_new_obj(PST_TYPE_NAME, pst_name_new((char *)wbuf));
+  obj->attr.is_exec = 1;
+
   *inbuf = cur;
-  return pst_new_obj(PST_TYPE_NAME, pst_name_new((char *)wbuf));
+  return obj;
+}
+
+pst_obj *
+pst_parse_name_literal (unsigned char **inbuf, unsigned char *inbufend)
+{
+  pst_obj *obj;
+
+  if (**inbuf != '/')
+    return NULL;
+  *inbuf += 1;
+
+  obj = pst_parse_name(inbuf, inbufend);
+  if (obj)
+    obj->attr.is_exec = 0;
+  return obj;
 }
 
 static int

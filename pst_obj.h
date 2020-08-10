@@ -28,6 +28,7 @@
 extern pst_obj *pst_parse_null   (unsigned char **inbuf, unsigned char *inbufend);
 extern pst_obj *pst_parse_boolean(unsigned char **inbuf, unsigned char *inbufend);
 extern pst_obj *pst_parse_name   (unsigned char **inbuf, unsigned char *inbufend);
+extern pst_obj *pst_parse_name_literal (unsigned char **inbuf, unsigned char *inbufend);
 extern pst_obj *pst_parse_number (unsigned char **inbuf, unsigned char *inbufend);
 extern pst_obj *pst_parse_string (unsigned char **inbuf, unsigned char *inbufend);
 
