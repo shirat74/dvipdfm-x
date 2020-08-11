@@ -236,7 +236,7 @@ pst_scan_token (unsigned char **inbuf, unsigned char *inbufend)
       (*inbuf) += 2;
     }
     break;
-  case ']': case '}': 
+  case ']': 
     {
       char *mark;
 
@@ -246,7 +246,7 @@ pst_scan_token (unsigned char **inbuf, unsigned char *inbufend)
       (*inbuf)++;
     }
     break;
-  case '{': /* This is wrong */
+  case '{': case '}': /* This is wrong */
     {
       char *mark;
 

@@ -244,10 +244,10 @@ mps_count_to_mark (mpsi *p)
     pst_obj *obj;
     obj = dpx_stack_at(&p->stack.operand, i);
     if (PST_MARKTYPE(obj))
-      break;
+      return i;
   }
 
-  return i;
+  return -1;
 }
 
 static int mps_op__exch (mpsi *p)
@@ -393,12 +393,15 @@ static int mps_op__def (mpsi *p)
   char      *str;
   
   /* NYI: */
+  WARN("stack: %d", dpx_stack_depth(s));
   if (dpx_stack_depth(s) >= 2) {
     value = dpx_stack_pop(s);
     key   = dpx_stack_pop(s);
     if (PST_NAMETYPE(key)) {
       str   = pst_getSV(key);
+      WARN("interp: %s", str);
       ht_insert_table(&p->userdict, str, strlen(str), value);
+      RELEASE(str);
     } else {
       error = -1;
     }
@@ -415,17 +418,22 @@ static int mps_op__bracket_close_sq (mpsi *p)
   int        error = 0;
   dpx_stack *s = &p->stack.operand;
   int        count;
-  pst_obj   *obj;
+  pst_obj   *obj, *elem, *mark;
   pst_array *array;
 
   count = mps_count_to_mark(p);
+  if (count < 0)
+    return -1;
   array = NEW(1, pst_array);
   array->size   = count;
   array->values = NEW(count, pst_obj *);
   while (count-- > 0) {
-    obj = dpx_stack_pop(s);
-    array->values[count] = obj;
+    elem = dpx_stack_pop(s);
+    array->values[count] = elem;
   }
+  mark = dpx_stack_pop(s); /* mark */
+  pst_release_obj(mark);
+
   obj = NEW(1, pst_obj);
   obj->link = 0;
   obj->attr.is_exec = 0;
@@ -442,19 +450,25 @@ static int mps_op__equal (mpsi *p)
   int        error = 0;
   dpx_stack *s = &p->stack.operand;
   pst_obj   *obj;
-  char      *str;
 
   obj = dpx_stack_pop(s);
   if (!obj) {
     error = -1;
   } else {
-    str = (char *)pst_getSV(obj);
+    char *str = (char *)pst_getSV(obj);
+    if (str) {
+      WARN(str);
+      RELEASE(str);
+    }
     pst_release_obj(obj);
-    WARN(str);
-    RELEASE(str);
   }
 
   return error;
+}
+
+static int mps_op__noop (mpsi *p)
+{
+  return 0;
 }
 
 static pst_operator operators[] = {
@@ -472,6 +486,7 @@ static pst_operator operators[] = {
 
   {"def",          mps_op__def},
 
+  {"bind",         mps_op__noop}, /* NYI */
   {"]",            mps_op__bracket_close_sq},
   {"=",            mps_op__equal}
 };
@@ -511,9 +526,34 @@ mps_clean_intrp (mpsi *p)
     pst_release_obj(obj);
   }
 
-  ht_clear_table(&p->systemdict);
+  // ht_clear_table(&p->systemdict); NYI
+  // ht_clear_table(&p->globaldict); NYI
+  // ht_clear_table(&p->userdict); NYI
 
   return 0;
+}
+
+static pst_obj *
+mps_scan_dict_stack (mpsi *p, const char *key, int len)
+{
+  pst_obj         *obj = NULL;
+  struct ht_table *d;
+  int              i, count;
+
+  /* NYI: systemdict can be at top of stack... */
+  count = dpx_stack_depth(&p->stack.dictionary);
+  for (i = 0; !obj && i < count; i++) {
+    d = dpx_stack_at(&p->stack.dictionary, i);
+    obj = ht_lookup_table(d, key, len);
+  }
+  if (!obj)
+    obj = ht_lookup_table(&p->userdict, key, len);
+  if (!obj)
+    obj = ht_lookup_table(&p->globaldict, key, len);
+  if (!obj)
+    obj = ht_lookup_table(&p->systemdict, key, len);
+
+  return obj;
 }
 
 static int
@@ -536,17 +576,27 @@ mps_exec (mpsi *p, pst_obj *obj)
         if (elem->attr.is_exec) {
           error = mps_exec(p, elem);
         } else {
-          dpx_stack_push(s, elem);        
+          pst_obj *copy = pst_copy_obj(elem);
+          dpx_stack_push(s, copy);
         }
       }
     }
     break;
   case PST_TYPE_NAME:
     if (obj->attr.is_exec) {
-
+      char *name = pst_getSV(obj);
+      if (name) {
+        pst_obj *op = mps_scan_dict_stack(p, name, strlen(name));
+        if (op) {
+          error = mps_exec(p, op);
+        }
+        RELEASE(name);
+      }
     } else {
-      dpx_stack_push(s, obj);
+      pst_obj *copy = pst_copy_obj(obj);
+      dpx_stack_push(s, copy);
     }
+    break;
   case PST_TYPE_OPERATOR:
     {
       pst_operator *op = obj->data;
@@ -556,7 +606,11 @@ mps_exec (mpsi *p, pst_obj *obj)
     }
     break;
   default:
-    dpx_stack_push(s, obj);
+    {
+      pst_obj *copy= pst_copy_obj(obj);
+
+      dpx_stack_push(s, copy);
+    }
   }
 
   return error;
@@ -578,58 +632,64 @@ mp_parse_body (mpsi *mps, const char **p, const char *endptr, double x_user, dou
   while (*p < endptr && !error) {
     obj = pst_scan_token((unsigned char **)p, (unsigned char *)endptr);
     if (obj) {
-      if (PST_NAMETYPE(obj) && pst_obj_is_exec(obj)) {
+      if (PST_NAMETYPE(obj) && obj->attr.is_exec) {
         pst_obj *op   = NULL;
         char    *name = (char *)pst_getSV(obj);
         WARN("scanner: %s", name);
         if (scanning_proc) {
           dpx_stack_push(s, obj);
-        } else if (!strcmp(name, "}")) {
-          pst_obj   *array;
-          pst_array *data;
-          int        count;
-
-          scanning_proc--;
-          count = mps_count_to_mark(mps);
-          data  = NEW(1, pst_array);
-          data->size = count;
-          data->values = NEW(count, pst_obj *);
-          while (!error && count-- > 0) {
-            pst_obj *elem = dpx_stack_pop(&mps->stack.operand);
-            if (elem) {
-              data->values[count] = elem;
-            } else {
-              error = -1;
-            }
-          }
-          if (error) {
-            RELEASE(data->values);
-            RELEASE(data);
-          } else {
-            array = NEW(1, pst_obj);
-            array->attr.is_exec = 1;
-            array->link = 0;
-            array->type = PST_TYPE_ARRAY;
-            array->data = data;
-            dpx_stack_push(s, array);
-          }
         } else {
           /* NYI: scan dict stack */
-          op = ht_lookup_table(&mps->userdict, name, strlen(name));
+          op = mps_scan_dict_stack(mps, name, strlen(name));
           if (op) {
             error = mps_exec(mps, op);
-          } else {
-            op = ht_lookup_table(&mps->systemdict, name, strlen(name)); 
-            if (op) {
-              error = mps_exec(mps, op);
-            }
           }
         }
         RELEASE(name);
       } else if (PST_UNKNOWNTYPE(obj)) {
         char *name = (char *)pst_getSV(obj);
-        if (!strcmp(name, "{")) {
+        WARN("scanner: %s", name);
+        if (name && !strcmp(name, "{")) {
           scanning_proc++;
+          dpx_stack_push(s, pst_new_mark());
+          RELEASE(name);
+        } else if (name && !strcmp(name, "}")) {
+          pst_obj   *array;
+          pst_array *data;
+          int        count;
+
+          scanning_proc--;
+          RELEASE(name);
+          count = mps_count_to_mark(mps);
+          if (count < 0) {
+            error = -1;
+          } else {
+            WARN("count: %d", count);
+            data  = NEW(1, pst_array);
+            data->size = count;
+            data->values = NEW(count, pst_obj *);
+            while (!error && count-- > 0) {
+              pst_obj *elem = dpx_stack_pop(&mps->stack.operand);
+              if (elem) {
+                data->values[count] = elem;
+              } else {
+                error = -1;
+              }
+            }
+            if (error) {
+              RELEASE(data->values);
+              RELEASE(data);
+            } else {
+              pst_obj *mark = dpx_stack_pop(s);
+              pst_release_obj(mark);
+              array = NEW(1, pst_obj);
+              array->attr.is_exec = 1;
+              array->link = 0;
+              array->type = PST_TYPE_ARRAY;
+              array->data = data;
+              dpx_stack_push(s, array);
+            }
+          }
         }
       } else {
         dpx_stack_push(s, obj);
@@ -683,7 +743,6 @@ mps_exec_inline (const char **p, const char *endptr, double x_user, double y_use
   pdf_dev_moveto(x_user, y_user);
   mps_init_intrp(&mps_intrp);
   error = mp_parse_body(&mps_intrp, p, endptr, x_user, y_user);
-
   mps_clean_intrp(&mps_intrp);
 
   //pdf_color_pop(); /* ... */
@@ -766,6 +825,7 @@ mps_include_page (const char *ident, FILE *fp)
   mps_init_intrp(&mps_intrp);
   error = mp_parse_body(&mps_intrp, &p, endptr, 0.0, 0.0);
   RELEASE(buffer);
+  mps_clean_intrp(&mps_intrp);
 
   if (error) {
     WARN("Errors occured while interpreting MPS file.");
@@ -828,7 +888,7 @@ mps_do_page (FILE *image_file)
 
   mps_init_intrp(&mps_intrp);
   error = mp_parse_body(&mps_intrp, &start, end, 0.0, 0.0);
-
+  mps_clean_intrp(&mps_intrp);
   if (error) {
     WARN("Errors occured while interpreting MetaPost file.");
   }

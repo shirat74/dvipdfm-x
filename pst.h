@@ -60,8 +60,10 @@ extern pst_obj *pst_new_boolean (int v);
 extern pst_obj *pst_new_integer (int v);
 extern pst_obj *pst_new_real    (double v);
 extern pst_obj *pst_new_name    (const char *v, int is_exec);
+extern pst_obj *pst_new_null    (void);
 
-extern int      pst_obj_is_exec (pst_obj *obj);
+extern pst_obj *pst_copy_obj    (pst_obj *obj);
+
 extern pst_type pst_type_of   (pst_obj *obj);
 extern int      pst_length_of (pst_obj *obj);
 

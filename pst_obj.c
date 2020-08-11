@@ -112,14 +112,10 @@ pst_new_obj (pst_type type, void *data)
   obj = NEW(1, struct pst_obj);
   obj->type = type;
   obj->data = data;
+  obj->attr.is_exec = 0;
+  obj->link = 0;
 
   return obj;
-}
-
-int
-pst_obj_is_exec (pst_obj *obj)
-{
-  return obj->attr.is_exec;
 }
 
 pst_obj *
@@ -130,6 +126,16 @@ pst_new_mark (void)
   q = NEW(strlen(pst_const_mark)+1, char);
   strcpy(q, pst_const_mark);
   return pst_new_obj(PST_TYPE_MARK, (void *)q);
+}
+
+pst_obj *
+pst_new_null (void)
+{
+  char *q;
+
+  q = NEW(strlen(pst_const_mark)+1, char);
+  strcpy(q, pst_const_null);
+  return pst_new_obj(PST_TYPE_NULL, (void *)q);
 }
 
 pst_obj *
@@ -150,11 +156,74 @@ pst_new_real (double v)
   return pst_new_obj(PST_TYPE_REAL, pst_real_new(v));
 }
 
+pst_obj *
+pst_copy_obj (pst_obj *src)
+{
+  pst_obj *dst = NULL;
+
+  switch (src->type) {
+  case PST_TYPE_BOOLEAN:
+    {
+      pst_boolean *data;
+      data = src->data;
+      dst  = pst_new_boolean(data->value);      
+    }
+    break;
+  case PST_TYPE_INTEGER:
+    {
+      pst_integer *data;
+      data = src->data;
+      dst  = pst_new_integer(data->value);
+    }
+    break;
+  case PST_TYPE_REAL:
+    {
+      pst_real *data;
+      data = src->data;
+      dst  = pst_new_real(data->value);
+    }
+    break;
+  case PST_TYPE_NAME:
+    {
+      pst_name *data;
+      data = src->data;
+      dst  = pst_new_name(data->value, src->attr.is_exec);
+    }
+    break;
+  case PST_TYPE_STRING:
+    dst = src;
+    src->link++;
+    break;
+  case PST_TYPE_NULL:
+    dst = pst_new_null();
+    break;
+  case PST_TYPE_MARK:
+    dst = pst_new_mark();
+    break;
+  case PST_TYPE_ARRAY:
+  case PST_TYPE_DICT:
+    dst = src;
+    src->link++;
+    break;
+  case PST_TYPE_OPERATOR:
+    dst = src;
+    src->link++;
+    break;
+  default:
+    ERROR("Unrecognized object type: %d", src->type);
+  }
+
+  return dst;
+}
 
 void
 pst_release_obj (pst_obj *obj)
 {
   ASSERT(obj);
+  if (obj->link > 0) {
+    obj->link--;
+    return;
+  }
   switch (obj->type) {
   case PST_TYPE_BOOLEAN: pst_boolean_release(obj->data); break;
   case PST_TYPE_INTEGER: pst_integer_release(obj->data); break;
@@ -163,6 +232,9 @@ pst_release_obj (pst_obj *obj)
   case PST_TYPE_STRING:  pst_string_release(obj->data);  break;
   case PST_TYPE_NULL:
   case PST_TYPE_MARK:
+  case PST_TYPE_ARRAY: /* NYI */
+  case PST_TYPE_DICT:
+  case PST_TYPE_OPERATOR:
   case PST_TYPE_UNKNOWN:
     if (obj->data)
       RELEASE(obj->data);
