@@ -352,7 +352,7 @@ dpx_stack_at (dpx_stack *stack, int pos)
     return NULL;
 
   elem = stack->top;
-  while (pos) {
+  while (pos > 0) {
     elem = elem->prev;
     pos--;
   }
@@ -360,6 +360,29 @@ dpx_stack_at (dpx_stack *stack, int pos)
     data = elem->data;
   
   return data;
+}
+
+void
+dpx_stack_roll (dpx_stack *stack, int n, int j)
+{
+  if (n > stack->size)
+    return;
+  if (n == 1)
+    return;
+  j = j % n;
+  while (j-- > 0) {
+    int         m = n;
+    stack_elem *elem, *prev, *top;
+
+    elem = top = stack->top;
+    while (--m > 0) {
+      elem = elem->prev;
+    }
+    prev = elem->prev;
+    stack->top = top->prev;
+    elem->prev = top;
+    top->prev  = prev;
+  }
 }
 
 int

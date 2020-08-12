@@ -183,91 +183,128 @@ pst_get_token (unsigned char **inbuf, unsigned char *inbufend)
   return obj;
 }
 
+static pst_obj *
+pst_scan_proc (unsigned char **pp, unsigned char *endptr)
+{
+  pst_obj   *obj = NULL;
+  int        error = 0;
+  dpx_stack  stack;
+
+  skip_white_spaces(pp, endptr);
+  skip_comments(pp, endptr);
+  if (*pp >= endptr)
+    return NULL;
+
+  if (**pp != '{')
+    return NULL;
+
+  dpx_stack_init(&stack);
+  (*pp)++;
+  skip_white_spaces(pp, endptr);
+  while (!obj && *pp < endptr && !error) {
+    if (**pp == '}') {
+      pst_array *data;
+      int        count;
+
+      count = dpx_stack_depth(&stack);
+      data  = NEW(1, pst_array);
+      data->size   = count;
+      data->values = NEW(count, pst_obj *);
+      while (!error && count-- > 0) {
+        pst_obj *elem = dpx_stack_pop(&stack);
+        if (elem) {
+          data->values[count] = elem;
+        } else {
+          error = -1;
+        }
+      }
+      if (!error) {
+        obj = pst_new_obj(PST_TYPE_ARRAY, data);
+        obj->attr.is_exec = 1;
+      }
+      (*pp)++;
+    } else {
+      pst_obj *elem = pst_scan_token(pp, endptr);
+      if (elem) {
+        dpx_stack_push(&stack, elem);
+      } else {
+        error = -1;
+      }
+    }
+    skip_white_spaces(pp, endptr);
+  }
+  {
+    pst_obj *elem;
+
+    while ((elem = dpx_stack_pop(&stack)) != NULL) {
+      pst_release_obj(elem);
+    }
+  }
+
+  return obj;
+}
+
 pst_obj *
-pst_scan_token (unsigned char **inbuf, unsigned char *inbufend)
+pst_scan_token (unsigned char **pp, unsigned char *endptr)
 {
   pst_obj *obj = NULL;
-  unsigned char c;
+  char     c;
 
-  ASSERT(*inbuf <= inbufend && !*inbufend);
-
-  skip_white_spaces(inbuf, inbufend);
-  skip_comments(inbuf, inbufend);
-  if (*inbuf >= inbufend)
+  skip_white_spaces(pp, endptr);
+  skip_comments(pp, endptr);
+  if (*pp >= endptr)
     return NULL;
-  c = **inbuf;
+
+  c = **pp;
   switch (c) {
-#if 0
-  case '%':
-    obj = pst_parse_comment(inbuf, inbufend);
+  case '0': case '1': case '2': case '3': case '4':
+  case '5': case '6': case '7': case '8': case '9':
+  case '+': case '-': case '.':
+    obj = pst_parse_number(pp, endptr);
     break;
-#endif
   case '/':
-    obj = pst_parse_name_literal(inbuf, inbufend);
+    obj = pst_parse_name_literal(pp, endptr);
     break;
   case '[':
-    obj = pst_new_mark();
-    (*inbuf)++;
+    obj = pst_new_name("[", 1);
+    (*pp)++;
     break;
   case '<':
-    if (*inbuf + 1 >= inbufend)
+    if (*pp + 1 >= endptr)
       return NULL;
-    c = *(*inbuf+1);
+    c = *(*pp+1);
     if (c == '<') {
-      obj = pst_new_mark();
-      *inbuf += 2;
+      obj = pst_new_name("<<", 1);
+      *pp += 2;
     } else if (isxdigit(c))
-      obj = pst_parse_string(inbuf, inbufend);
+      obj = pst_parse_string(pp, endptr);
     else if (c == '~') /* ASCII85 */
-      obj = pst_parse_string(inbuf, inbufend);
+      obj = pst_parse_string(pp, endptr);
     break;
   case '(':
-    obj = pst_parse_string(inbuf, inbufend);
+    obj = pst_parse_string(pp, endptr);
     break;
   case '>':
-    if (*inbuf + 1 >= inbufend || *(*inbuf+1) != '>') {
-      ERROR("Unexpected end of ASCII hex string marker.");
-    } else  {
-      char *mark;
-
-      mark = NEW(3, char);
-      mark[0] = '>'; mark[1] = '>'; mark[2] = '\0';
-      obj = pst_new_name(mark, 1);
-      (*inbuf) += 2;
-    }
+    if (*pp + 1 >= endptr || *(*pp+1) != '>')
+      return NULL;
+    obj = pst_new_name(">>", 1);
+    (*pp) += 2;
     break;
   case ']': 
-    {
-      char *mark;
-
-      mark = NEW(2, char);
-      mark[0] = c; mark[1] = '\0';
-      obj = pst_new_name(mark, 1);
-      (*inbuf)++;
-    }
+    obj = pst_new_name("]", 1);
+    (*pp)++;
     break;
-  case '{': case '}': /* This is wrong */
-    {
-      char *mark;
-
-      mark = NEW(2, char);
-      mark[0] = c; mark[1] = '\0';
-      obj = pst_new_obj(PST_TYPE_UNKNOWN, mark);
-      (*inbuf)++;
-    }
+  case '{':
+    obj = pst_scan_proc(pp, endptr);
     break;
   default:
-    if (c == 't' || c == 'f')
-      obj = pst_parse_boolean(inbuf, inbufend);
-    else if (c == 'n')
-      obj = pst_parse_null(inbuf, inbufend);
-    else if (c == '+' || c == '-' || isdigit(c) || c == '.')
-      obj = pst_parse_number(inbuf, inbufend);
+    if (*pp + 3 < endptr && !memcmp(*pp, "null", 4))
+      obj = pst_parse_null(pp, endptr);
     break;
   }
 
   if (!obj) {
-    obj = pst_parse_name(inbuf, inbufend);
+    obj = pst_parse_name(pp, endptr);
   }
 
   return obj;

@@ -49,7 +49,8 @@ typedef struct { double  value; }  pst_real;
 typedef struct { char   *value; }  pst_name;
 typedef struct
 {
-  unsigned int   length;
+  int            link;
+  size_t         length;
   unsigned char *value;
 } pst_string;
 
@@ -113,7 +114,7 @@ pst_new_obj (pst_type type, void *data)
   obj->type = type;
   obj->data = data;
   obj->attr.is_exec = 0;
-  obj->link = 0;
+  obj->attr.access  = 0;
 
   return obj;
 }
@@ -191,8 +192,11 @@ pst_copy_obj (pst_obj *src)
     }
     break;
   case PST_TYPE_STRING:
-    dst = src;
-    src->link++;
+    {
+      pst_string *data = src->data;
+      data->link++;
+      dst = pst_new_obj(PST_TYPE_STRING, data);
+    }
     break;
   case PST_TYPE_NULL:
     dst = pst_new_null();
@@ -201,13 +205,21 @@ pst_copy_obj (pst_obj *src)
     dst = pst_new_mark();
     break;
   case PST_TYPE_ARRAY:
+    {
+      pst_array *data = src->data;
+      data->link++;
+      dst = pst_new_obj(PST_TYPE_ARRAY, data);
+    }
+    break;
   case PST_TYPE_DICT:
-    dst = src;
-    src->link++;
+    {
+      pst_dict *data = src->data;
+      data->link++;
+      dst = pst_new_obj(PST_TYPE_DICT, data);
+    }
     break;
   case PST_TYPE_OPERATOR:
     dst = src;
-    src->link++;
     break;
   default:
     ERROR("Unrecognized object type: %d", src->type);
@@ -220,10 +232,7 @@ void
 pst_release_obj (pst_obj *obj)
 {
   ASSERT(obj);
-  if (obj->link > 0) {
-    obj->link--;
-    return;
-  }
+
   switch (obj->type) {
   case PST_TYPE_BOOLEAN: pst_boolean_release(obj->data); break;
   case PST_TYPE_INTEGER: pst_integer_release(obj->data); break;
@@ -232,9 +241,42 @@ pst_release_obj (pst_obj *obj)
   case PST_TYPE_STRING:  pst_string_release(obj->data);  break;
   case PST_TYPE_NULL:
   case PST_TYPE_MARK:
-  case PST_TYPE_ARRAY: /* NYI */
+  case PST_TYPE_ARRAY:
+    {
+      pst_array *data = obj->data;
+
+      if (data->link > 0) {
+        data->link--;
+      } else {
+        int i;
+        
+        for (i = 0; i < data->size; i++) {
+          if (data->values[i])
+            pst_release_obj(data->values[i]);
+        }
+        RELEASE(data->values);
+        RELEASE(data);
+      }
+    }
+    break;
   case PST_TYPE_DICT:
+    {
+      pst_dict *data = obj->data;
+
+      if (data->link > 0) {
+        data->link--;
+      } else {
+        struct ht_table *tab;
+
+        tab = data->values;
+        ht_clear_table(tab);
+        RELEASE(tab);
+        RELEASE(data);
+      }
+    }
+    break;
   case PST_TYPE_OPERATOR:
+    break;
   case PST_TYPE_UNKNOWN:
     if (obj->data)
       RELEASE(obj->data);
@@ -264,6 +306,18 @@ pst_length_of (pst_obj *obj)
   case PST_TYPE_REAL:    len = pst_real_length();             break;
   case PST_TYPE_NAME:    len = pst_name_length(obj->data);    break;
   case PST_TYPE_STRING:  len = pst_string_length(obj->data);  break;
+  case PST_TYPE_ARRAY:
+    {
+      pst_array *data = obj->data;
+      len = data->size;
+    }
+    break;
+  case PST_TYPE_DICT:
+    {
+      pst_dict *data = obj->data;
+      len = ht_table_size(data->values);
+    }
+    break;
   case PST_TYPE_NULL:
   case PST_TYPE_MARK:
     TYPE_ERROR();                     
@@ -291,7 +345,9 @@ pst_getIV (pst_obj *obj)
   case PST_TYPE_NAME:    iv = pst_name_IV();             break;
   case PST_TYPE_STRING:  iv = pst_string_IV(obj->data);  break;
   case PST_TYPE_NULL:
-  case PST_TYPE_MARK: 
+  case PST_TYPE_MARK:
+  case PST_TYPE_ARRAY:
+  case PST_TYPE_DICT:
     TYPE_ERROR(); 
     break;
   case PST_TYPE_UNKNOWN:
@@ -318,6 +374,8 @@ pst_getRV (pst_obj *obj)
   case PST_TYPE_STRING:  rv = pst_string_RV(obj->data);  break;
   case PST_TYPE_NULL:
   case PST_TYPE_MARK:
+  case PST_TYPE_ARRAY:
+  case PST_TYPE_DICT:
     TYPE_ERROR();                  
     break;
   case PST_TYPE_UNKNOWN:
@@ -343,6 +401,9 @@ pst_getSV (pst_obj *obj)
   case PST_TYPE_REAL:    sv = pst_real_SV(obj->data);    break;
   case PST_TYPE_NAME:    sv = pst_name_SV(obj->data);    break;
   case PST_TYPE_STRING:  sv = pst_string_SV(obj->data);  break;
+  case PST_TYPE_ARRAY:
+  case PST_TYPE_DICT:
+    break;
   case PST_TYPE_NULL:
   case PST_TYPE_MARK:
     TYPE_ERROR(); 
@@ -353,11 +414,11 @@ pst_getSV (pst_obj *obj)
 
       len = strlen((char *) obj->data);
       if (len > 0) {
-	sv = NEW(len+1, unsigned char);
-	memcpy(sv, obj->data, len);
-	sv[len] = '\0';
+        sv = NEW(len+1, unsigned char);
+        memcpy(sv, obj->data, len);
+        sv[len] = '\0';
       } else {
-	sv = NULL;
+        sv = NULL;
       }
       break;
     }
@@ -380,6 +441,8 @@ pst_data_ptr (pst_obj *obj)
   case PST_TYPE_REAL:    p = pst_real_data_ptr(obj->data);    break;
   case PST_TYPE_NAME:    p = pst_name_data_ptr(obj->data);    break;
   case PST_TYPE_STRING:  p = pst_string_data_ptr(obj->data);  break;
+  case PST_TYPE_ARRAY:
+  case PST_TYPE_DICT:
   case PST_TYPE_NULL:
   case PST_TYPE_MARK: 
     TYPE_ERROR();
@@ -873,8 +936,9 @@ pst_string_new (unsigned char *str, unsigned int len)
 {
   pst_string *obj;
   obj = NEW(1, pst_string);
-  obj->length  = len;
-  obj->value = NULL;
+  obj->link   = 0;
+  obj->length = len;
+  obj->value  = NULL;
   if (len > 0) {
     obj->value = NEW(len, unsigned char);
     if (str)
@@ -887,9 +951,13 @@ static void
 pst_string_release (pst_string *obj)
 {
   ASSERT(obj);
-  if (obj->value)
-    RELEASE(obj->value);
-  RELEASE(obj);
+  if (obj->link > 1) {
+    obj->link--;
+  } else {
+    if (obj->value)
+      RELEASE(obj->value);
+    RELEASE(obj);
+  }
 }
 
 pst_obj *
