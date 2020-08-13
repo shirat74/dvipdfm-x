@@ -45,9 +45,26 @@ struct pst_obj {
     int is_exec;
     int access;
   } attr;
+  struct {
+    size_t off;
+    size_t size;
+  } comp;
   void    *data;
 };
 typedef struct pst_obj pst_obj;
+
+typedef char *                     pst_null;
+typedef struct { char    value; }  pst_boolean;
+typedef struct { int     value; }  pst_integer;
+typedef struct { double  value; }  pst_real;
+typedef struct { char   *value; }  pst_name;
+
+typedef struct
+{
+  int            link;
+  size_t         length;
+  unsigned char *value;
+} pst_string;
 
 typedef struct {
   int       link;
