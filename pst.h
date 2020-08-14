@@ -74,6 +74,7 @@ typedef struct {
 
 typedef struct {
   int       link;
+  int       size;
   void     *values;
 } pst_dict;
 

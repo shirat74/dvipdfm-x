@@ -205,23 +205,17 @@ typedef struct {
   mps_op_fn_ptr  action;
 } pst_operator;
 
+static void
+release_obj (void *obj)
+{
+  if (obj)
+    pst_release_obj(obj);
+}
 
 static mpsi mps_intrp;
 
 static int mps_parse_body (mpsi *p, const char **strptr, const char *endptr);
 static pst_obj *mps_search_dict_stack (mpsi *p, const char *name);
-
-static int mps_eval__push (mpsi *p, pst_obj *obj)
-{
-  int error = 0;
-  
-  ASSERT(p);
-  ASSERT(obj);
-
-  dpx_stack_push(&p->stack.operand, pst_copy_obj(obj));
-
-  return error;
-}
 
 static int mps_eval__name (mpsi *p, pst_obj *obj)
 {
@@ -270,7 +264,7 @@ static int mps_eval__string (mpsi *p, pst_obj *obj)
 {
   int            error = 0;
   pst_obj       *first = NULL, *remain = NULL;
-  unsigned char *ptr, *endptr;
+  unsigned char *ptr, *endptr, *save;
   size_t         off;
 
   ASSERT(p);
@@ -278,6 +272,7 @@ static int mps_eval__string (mpsi *p, pst_obj *obj)
   ASSERT(PST_STRINGTYPE(obj));
 
   ptr    = pst_data_ptr(obj);
+  save   = ptr;
   endptr = ptr + pst_length_of(obj);
   if (ptr) {
     first = pst_scan_token(&ptr, endptr);
@@ -285,20 +280,24 @@ static int mps_eval__string (mpsi *p, pst_obj *obj)
   if (ptr < endptr) {
     pst_string *data = obj->data;
 
-    off = ptr - (unsigned char *) pst_data_ptr(obj);
+    off = ptr - save;
     remain = NEW(1, pst_obj);
     remain->type = PST_TYPE_STRING;
     remain->data = data;
     data->link++;
     remain->attr.is_exec = 1;
-    remain->comp.off  = off;
+    remain->comp.off  = obj->comp.off  + off;
     remain->comp.size = obj->comp.size - off;
   }
   if (remain) {
     dpx_stack_push(&p->stack.exec, remain);
   }
   if (first) {
-    dpx_stack_push(&p->stack.exec, first);
+    if (PST_ARRAYTYPE(first)) {
+      dpx_stack_push(&p->stack.operand, first);
+    } else {
+      dpx_stack_push(&p->stack.exec, first);
+    }
   }
 
   return error;
@@ -334,7 +333,6 @@ static int mps_eval__array (mpsi *p, pst_obj *obj)
     dpx_stack_push(&p->stack.exec, remain);
   }
   if (first) {
-    /* TODO: different for array ? */
     if (PST_ARRAYTYPE(first)) {
       dpx_stack_push(&p->stack.operand, first);
     } else {
@@ -1552,6 +1550,130 @@ static int mps_op__exit (mpsi *p)
   return 0;
 }
 
+static int mps_op__dict (mpsi *p)
+{
+  int        error = 0;
+  dpx_stack *stk   = &p->stack.operand;
+  pst_obj   *num, *dict;
+  pst_dict  *data;
+  int        n;
+
+  if (dpx_stack_depth(stk) < 1)
+    return -1;
+  num = dpx_stack_top(stk);
+  if (!PST_INTEGERTYPE(num))
+    return -1;
+  
+  num = dpx_stack_pop(stk);
+  n   = pst_getIV(num);
+  pst_release_obj(num);
+
+  data = NEW(1, pst_dict);
+  data->link = 0;
+  data->values = NEW(1, struct ht_table);
+  ht_init_table(data->values, release_obj);
+  data->size   = n; /* max size */
+
+  dict = pst_new_obj(PST_TYPE_DICT, data);
+  dpx_stack_push(stk, dict);
+
+  return error;
+}
+
+/* NYI: length maxlength */
+
+static int mps_op__begin (mpsi *p)
+{
+  int        error = 0;
+  dpx_stack *stk   = &p->stack.operand;
+  pst_obj   *dict;
+
+  if (dpx_stack_depth(stk) < 1)
+    return -1;
+  dict = dpx_stack_top(stk);
+  if (!PST_DICTTYPE(dict))
+    return -1;
+  
+  dict = dpx_stack_pop(stk);
+  dpx_stack_push(&p->stack.dict, dict);
+
+  return error;
+}
+
+static int mps_op__end (mpsi *p)
+{
+  pst_obj *dict;
+
+  if (dpx_stack_depth(&p->stack.dict) < 1)
+    return -1;
+  dict = dpx_stack_pop(&p->stack.dict);
+  pst_release_obj(dict);
+
+  return 0;
+}
+
+static int mps_op__def (mpsi *p)
+{
+  int        error = 0;
+  dpx_stack *stk   = &p->stack.operand;
+  pst_obj   *key, *value;
+  pst_obj   *dict;
+  char      *str;
+
+  if (dpx_stack_depth(stk) < 2)
+    return -1;
+
+  /* NYI: max_size */
+  value = dpx_stack_pop(stk);
+  key   = dpx_stack_pop(stk);
+  /* FIXME */
+  if (PST_NAMETYPE(key)) {
+    str   = (char *) pst_getSV(key);
+    dict  = dpx_stack_top(&p->stack.dict);
+    if (dict) {
+      pst_dict *data = dict->data;
+      ht_insert_table(data->values, str, strlen(str), value);
+    } else {
+      ht_insert_table(&p->userdict, str, strlen(str), value);
+    }
+    RELEASE(str);
+  } else {
+    error = -1;
+  }
+  pst_release_obj(key);
+
+  return error;
+}
+
+static int mps_op__load (mpsi *p)
+{
+  int        error = 0;
+  dpx_stack *stk   = &p->stack.operand;
+  pst_obj   *obj;
+  char      *key;
+
+  if (dpx_stack_depth(stk) < 1)
+    return -1;
+  obj = dpx_stack_top(stk);
+  if (!PST_NAMETYPE(obj))
+    return -1;
+  
+  obj = dpx_stack_pop(stk);
+  key = (char *) pst_getSV(obj);
+  pst_release_obj(obj);
+
+  obj = mps_search_dict_stack(p, key);
+  RELEASE(key);
+  if (obj) {
+    dpx_stack_push(stk, pst_copy_obj(obj));
+  } else {
+    error = -1;
+  }
+
+  return error;
+}
+
+
 static int mps_op__cvlit (mpsi *p)
 {
   int        error = 0;
@@ -1584,30 +1706,6 @@ static int mps_op__cvx (mpsi *p)
   return error;
 }
 
-static int mps_op__def (mpsi *p)
-{
-  int        error = 0;
-  dpx_stack *stk   = &p->stack.operand;
-  pst_obj   *key, *value;
-  char      *str;
-
-  if (dpx_stack_depth(stk) < 2)
-    return -1;
-
-  value = dpx_stack_pop(stk);
-  key   = dpx_stack_pop(stk);
-  if (PST_NAMETYPE(key)) {
-    str   = (char *) pst_getSV(key);
-    ht_insert_table(&p->userdict, str, strlen(str), value);
-    RELEASE(str);
-  } else {
-    error = -1;
-  }
-  pst_release_obj(key);
-
-  return error;
-}
-
 static int mps_op__bracket_close_sq (mpsi *p)
 {
   int        error = 0;
@@ -1620,6 +1718,7 @@ static int mps_op__bracket_close_sq (mpsi *p)
   if (count < 0)
     return -1;
   array = NEW(1, pst_array);
+  array->link   = 0;
   array->size   = count;
   array->values = NEW(count, pst_obj *);
   while (count-- > 0) {
@@ -1657,6 +1756,79 @@ static int mps_op__equal (mpsi *p)
     }
     pst_release_obj(obj);
   }
+
+  return error;
+}
+
+static int
+mps_bind_proc (mpsi *p, pst_obj *proc)
+{
+  int        error = 0;
+  int        i, n;
+  pst_array *data;
+
+  ASSERT(p);
+  ASSERT(proc);
+  ASSERT(PST_ARRAYTYPE(proc));
+  ASSERT(proc->attr.is_exec);
+
+  n = pst_length_of(proc);
+  if (n == 0)
+    return 0;
+
+  data = proc->data;
+  for (i = 0; !error && i < n; i++) {
+    pst_obj *obj = data->values[i];
+
+    if (!obj)
+      continue;
+    switch (obj->type) {
+    case PST_TYPE_NAME:
+      if (obj->attr.is_exec) {
+        pst_obj *repl;
+        char    *name;
+
+        name = (char *) pst_getSV(obj);
+        repl = mps_search_dict_stack(p, name);
+        pst_release_obj(obj);
+        data->values[i] = pst_copy_obj(repl);
+      }
+      break;
+    case PST_TYPE_ARRAY:
+      if (obj->attr.is_exec) {
+        error = mps_bind_proc(p, obj);
+      }
+      break; 
+    }
+  }
+
+  return error;
+}
+
+static int mps_op__bind (mpsi *p)
+{
+  int        error = 0;
+  dpx_stack *stk = &p->stack.operand;
+  pst_obj   *proc;
+
+  if (dpx_stack_depth(stk) < 1)
+    return -1;
+  proc = dpx_stack_top(stk);
+  if (!PST_ARRAYTYPE(proc) || !proc->attr.is_exec)
+    return -1;
+
+  proc  = dpx_stack_pop(stk);
+  error = mps_bind_proc(p, proc);
+
+  return error;
+}
+
+static int mps_op__null (mpsi *p)
+{
+  int        error = 0;
+  dpx_stack *stk = &p->stack.operand;
+
+  dpx_stack_push(stk, pst_new_null());
 
   return error;
 }
@@ -1724,24 +1896,23 @@ static pst_operator operators[] = {
   {"loop",         mps_op__loop},
   {"exit",         mps_op__exit},
 
+  {"dict",         mps_op__dict},
+  {"begin",        mps_op__begin},
+  {"end",          mps_op__end},
+  {"def",          mps_op__def},
+  {"load",         mps_op__load},
+
   {"cvlit",        mps_op__cvlit},
   {"cvx",          mps_op__cvx},
-  {"def",          mps_op__def},
 
-  {"bind",         mps_op__noop}, /* NYI */
+  {"null",         mps_op__null},
+  {"bind",         mps_op__bind},
   {"[",            mps_op__mark},
   {"]",            mps_op__bracket_close_sq},
   {"<<",           mps_op__mark},
   {">>",           mps_op__noop}, /* NYI */
   {"=",            mps_op__equal}
 };
-
-static void
-release_obj (void *obj)
-{
-  if (obj)
-    pst_release_obj(obj);
-}
 
 static int
 mps_init_intrp (mpsi *p)
@@ -1791,15 +1962,18 @@ mps_clean_intrp (mpsi *p)
 static pst_obj *
 mps_search_dict_stack (mpsi *p, const char *key)
 {
-  pst_obj         *obj = NULL;
-  struct ht_table *d;
-  int              i, count;
+  pst_obj *obj = NULL;
+  int      i, count;
 
   /* NYI: systemdict can be at top of stack... */
   count = dpx_stack_depth(&p->stack.dict);
   for (i = 0; !obj && i < count; i++) {
-    d = dpx_stack_at(&p->stack.dict, i);
-    obj = ht_lookup_table(d, key, strlen(key));
+    pst_obj  *dict;
+    pst_dict *data;
+
+    dict = dpx_stack_at(&p->stack.dict, i);
+    data = dict->data;
+    obj  = ht_lookup_table(data->values, key, strlen(key));
   }
   if (!obj)
     obj = ht_lookup_table(&p->userdict, key, strlen(key));
@@ -1832,15 +2006,14 @@ mps_parse_body (mpsi *p, const char **strptr, const char *endptr)
       break;
     }
     if (PST_NAMETYPE(obj) && obj->attr.is_exec) {
-      error = mps_eval__name(p, obj);
+      dpx_stack_push(&p->stack.exec, obj);
     } else {
-      error = mps_eval__push(p, obj);
+      dpx_stack_push(&p->stack.operand, obj);
     }
-    // pst_release_obj(obj);
 
     while ((obj = dpx_stack_pop(&p->stack.exec)) != NULL) {
       if (!obj->attr.is_exec) {
-        error = mps_eval__push(p, obj);
+        dpx_stack_push(&p->stack.operand, pst_copy_obj(obj));
         continue;
       }
       switch (obj->type) {
@@ -1857,8 +2030,9 @@ mps_parse_body (mpsi *p, const char **strptr, const char *endptr)
         error = mps_eval__string(p, obj);
         break;
       default:
-        error = mps_eval__push(p, obj);
+        dpx_stack_push(&p->stack.operand, pst_copy_obj(obj));
       }
+      /* FIXME */
       // pst_release_obj(obj);
     }
     skip_white(strptr, endptr);

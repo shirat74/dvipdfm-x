@@ -297,10 +297,6 @@ pst_scan_token (unsigned char **pp, unsigned char *endptr)
   case '{':
     obj = pst_scan_proc(pp, endptr);
     break;
-  default:
-    if (*pp + 3 < endptr && !memcmp(*pp, "null", 4))
-      obj = pst_parse_null(pp, endptr);
-    break;
   }
 
   if (!obj) {
