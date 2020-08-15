@@ -81,9 +81,9 @@ static unsigned int     pst_name_length   (pst_name *obj);
 static pst_string *pst_string_parse_literal (unsigned char **inbuf, unsigned char *inbufend);
 static pst_string *pst_string_parse_hex     (unsigned char **inbuf, unsigned char *inbufend);
 
-static pst_string *pst_string_new      (unsigned char *str, unsigned int len);
-static int         pst_string_IV       (pst_string *obj)       ;
-static double      pst_string_RV       (pst_string *obj)       ;
+static pst_string *pst_string_new (unsigned char *str, size_t len);
+static int         pst_string_IV  (pst_string *obj, size_t off, size_t size);
+static double      pst_string_RV  (pst_string *obj, size_t off, size_t size);
 
 #define TYPE_ERROR() ERROR("Operation not defined for this type of object.")
 
@@ -135,7 +135,7 @@ pst_new_null (void)
 {
   char *q;
 
-  q = NEW(strlen(pst_const_mark)+1, char);
+  q = NEW(strlen(pst_const_null)+1, char);
   strcpy(q, pst_const_null);
   return pst_new_obj(PST_TYPE_NULL, (void *)q);
 }
@@ -190,7 +190,6 @@ pst_copy_obj (pst_obj *src)
       pst_name *data;
       data = src->data;
       dst  = pst_new_name(data->value, src->attr.is_exec);
-      dst->attr = src->attr;
     }
     break;
   case PST_TYPE_STRING:
@@ -199,7 +198,6 @@ pst_copy_obj (pst_obj *src)
       data->link++;
       dst = pst_new_obj(PST_TYPE_STRING, data);
       dst->comp = src->comp;
-      dst->attr = src->attr;
     }
     break;
   case PST_TYPE_NULL:
@@ -214,7 +212,6 @@ pst_copy_obj (pst_obj *src)
       data->link++;
       dst = pst_new_obj(PST_TYPE_ARRAY, data);
       dst->comp = src->comp;
-      dst->attr = src->attr;
     }
     break;
   case PST_TYPE_DICT:
@@ -223,18 +220,17 @@ pst_copy_obj (pst_obj *src)
       data->link++;
       dst = pst_new_obj(PST_TYPE_DICT, data);
       dst->comp = src->comp;
-      dst->attr = src->attr;
     }
     break;
   case PST_TYPE_OPERATOR:
     {
       dst = pst_new_obj(PST_TYPE_OPERATOR, src->data);
-      dst->attr = src->attr;
     }
     break;
   default:
     ERROR("Unrecognized object type: %d", src->type);
   }
+  dst->attr = src->attr;
 
   return dst;
 }
@@ -368,7 +364,9 @@ pst_getIV (pst_obj *obj)
   case PST_TYPE_INTEGER: iv = pst_integer_IV(obj->data); break;
   case PST_TYPE_REAL:    iv = pst_real_IV(obj->data);    break;
   case PST_TYPE_NAME:    iv = pst_name_IV();             break;
-  case PST_TYPE_STRING:  iv = pst_string_IV(obj->data);  break;
+  case PST_TYPE_STRING:
+    iv = pst_string_IV(obj->data, obj->comp.off, obj->comp.size);
+    break;
   case PST_TYPE_NULL:
   case PST_TYPE_MARK:
   case PST_TYPE_ARRAY:
@@ -396,7 +394,9 @@ pst_getRV (pst_obj *obj)
   case PST_TYPE_INTEGER: rv = pst_integer_RV(obj->data); break;
   case PST_TYPE_REAL:    rv = pst_real_RV(obj->data);    break;
   case PST_TYPE_NAME:    rv = pst_name_RV();             break;
-  case PST_TYPE_STRING:  rv = pst_string_RV(obj->data);  break;
+  case PST_TYPE_STRING:
+    rv = pst_string_RV(obj->data, obj->comp.off, obj->comp.size);
+    break;
   case PST_TYPE_NULL:
   case PST_TYPE_MARK:
   case PST_TYPE_ARRAY:
@@ -971,9 +971,10 @@ pst_name_length (pst_name *obj)
  * TODO: ascii85 string <~ .... ~>
  */
 static pst_string *
-pst_string_new (unsigned char *str, unsigned int len)
+pst_string_new (unsigned char *str, size_t len)
 {
   pst_string *obj;
+
   obj = NEW(1, pst_string);
   obj->link   = 0;
   obj->length = len;
@@ -1155,23 +1156,23 @@ pst_string_parse_hex (unsigned char **inbuf, unsigned char *inbufend)
 }
 
 static int
-pst_string_IV (pst_string *obj)
+pst_string_IV (pst_string *obj, size_t off, size_t size)
 {
-  return (int) pst_string_RV(obj);
+  return (int) pst_string_RV(obj, off, size);
 }
 
 static double
-pst_string_RV (pst_string *obj)
+pst_string_RV (pst_string *obj, size_t off, size_t size)
 {
-  pst_obj *nobj;
-  unsigned char  *p, *end;
-  double   rv;
+  pst_obj       *nobj;
+  unsigned char *p, *endptr;
+  double         rv;
 
   ASSERT(obj);
-  p   = obj->value;
-  end = p + obj->length;
-  nobj = pst_parse_number(&p, end);
-  if (nobj == NULL || p != end)
+  p      = obj->value + off;
+  endptr = p + size;
+  nobj   = pst_parse_number(&p, endptr);
+  if (nobj == NULL || p != endptr)
     ERROR("Cound not convert string to real value.");
   rv = pst_getRV(nobj);
   pst_release_obj(nobj);
