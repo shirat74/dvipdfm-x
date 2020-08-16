@@ -1117,15 +1117,34 @@ static int mps_op__rrand (mpsi *p)
   return error;
 }
 
-static int check_obj_eq (mpsi *p, int *r)
+static int typecheck_compare_obj_eq (mpsi *p)
 {
-  int         error = 0;
-  dpx_stack  *stk   = &p->stack.operand;
-  pst_obj    *obj1, *obj2;
+  int        error = 0;
+  dpx_stack *stk = &p->stack.operand;
+  pst_obj   *obj1, *obj2;
 
-  *r = 0;
-  if (dpx_stack_depth(stk) < 2)
-    return -1;
+  obj1 = dpx_stack_at(stk, 0);
+  obj2 = dpx_stack_at(stk, 1);
+  if (PST_NUMBERTYPE(obj1) && PST_NUMBERTYPE(obj2)) {
+    error = 0;
+  } else if ((PST_STRINGTYPE(obj1) || PST_NAMETYPE(obj1)) &&
+             (PST_STRINGTYPE(obj2) || PST_NAMETYPE(obj2))) {
+    error = 0;
+  } else if (pst_type_of(obj1) == pst_type_of(obj2)) {
+    error = 0;
+  } else {
+    error = -1; /* typecheck */
+  }
+
+  return error;
+}
+
+
+static int compare_obj_eq (mpsi *p)
+{
+  int         r   = 0;
+  dpx_stack  *stk = &p->stack.operand;
+  pst_obj    *obj1, *obj2;
 
   obj1 = dpx_stack_pop(stk);
   obj2 = dpx_stack_pop(stk);
@@ -1133,23 +1152,29 @@ static int check_obj_eq (mpsi *p, int *r)
     double v1, v2;
     v1 = pst_getRV(obj1);
     v2 = pst_getRV(obj2);
-    *r = (v1 == v2) ? 1 : 0;
+    r = (v2 == v1) ? 1 : 0;
   } else if ((PST_NAMETYPE(obj1) || PST_STRINGTYPE(obj1)) &&
              (PST_NAMETYPE(obj2) || PST_STRINGTYPE(obj2))) {
-    size_t len1, len2;
+    size_t         len1, len2;
+    unsigned char *v1, *v2;
+    int            c;
+
     len1 = pst_length_of(obj1);
     len2 = pst_length_of(obj2);
+    v1   = pst_data_ptr(obj1);
+    v2   = pst_data_ptr(obj2);
     if (len1 == len2) {
-      if (!memcpy(pst_data_ptr(obj1), pst_data_ptr(obj2), len1)) {
-        *r = 1;
-      }
+      c  = memcmp(v2, v1, len1);
+    } else {
+      c  = len2 - len1;
     }
+    r    = (c == 0) ? 1 : 0;
   }
   /* else dict & array: NYI */
   pst_release_obj(obj1);
   pst_release_obj(obj2);
 
-  return error;
+  return r;
 }
 
 static int mps_op__eq (mpsi *p)
@@ -1158,9 +1183,14 @@ static int mps_op__eq (mpsi *p)
   dpx_stack *stk = &p->stack.operand;
   int        r = 0;
 
-  error = check_obj_eq(p, &r);
-  if (!error)
-    dpx_stack_push(stk, pst_new_boolean(r));
+  if (dpx_stack_depth(stk) < 2)
+    return -1; /* stackunderflow */
+  error = typecheck_compare_obj_eq(p);
+  if (error)
+    return error;
+
+  r = compare_obj_eq(p);
+  dpx_stack_push(stk, pst_new_boolean(r));
 
   return error;
 }
@@ -1171,51 +1201,99 @@ static int mps_op__ne (mpsi *p)
   dpx_stack *stk = &p->stack.operand;
   int        r = 0;
 
-  error = check_obj_eq(p, &r);
-  if (!error)
-    dpx_stack_push(stk, pst_new_boolean(!r));
+  if (dpx_stack_depth(stk) < 2)
+    return -1; /* stackunderflow */
+  error = typecheck_compare_obj_eq(p);
+  if (error)
+    return error;
+
+  r = compare_obj_eq(p);
+  dpx_stack_push(stk, pst_new_boolean(!r));
 
   return error;
+}
+
+static int typecheck_compare_obj (mpsi *p)
+{
+  int        error = 0;
+  dpx_stack *stk = &p->stack.operand;
+  pst_obj   *obj1, *obj2;
+
+  obj1 = dpx_stack_at(stk, 0);
+  obj2 = dpx_stack_at(stk, 1);
+  if (PST_NUMBERTYPE(obj1) && PST_NUMBERTYPE(obj2)) {
+    error = 0;
+  } else if (PST_STRINGTYPE(obj1) && PST_STRINGTYPE(obj2)) {
+    error = 0;
+  } else {
+    error = -1; /* typecheck */
+  }
+
+  return error;
+}
+
+static int compare_obj (mpsi *p, const char *op)
+{
+  int         r   = 0;
+  dpx_stack  *stk = &p->stack.operand;
+  pst_obj    *obj1, *obj2;
+
+  obj1 = dpx_stack_pop(stk);
+  obj2 = dpx_stack_pop(stk);
+  if (PST_NUMBERTYPE(obj1) && PST_NUMBERTYPE(obj2)) {
+    double v1, v2;
+    v1 = pst_getRV(obj1);
+    v2 = pst_getRV(obj2);
+    if (!strcmp(op, "ge")) {
+      r = (v2 >= v1) ? 1 : 0;
+    } else if (!strcmp(op, "gt")) {
+      r = (v2 >  v1) ? 1: 0;
+    } else if (!strcmp(op, "le")) {
+      r = (v2 <= v1) ? 1 : 0;
+    } else if (!strcmp(op, "lt")) {
+      r = (v2 <  v1) ? 1: 0;
+    }
+  } else if (PST_STRINGTYPE(obj1) && PST_STRINGTYPE(obj2)) {
+    size_t         len1, len2;
+    unsigned char *v1, *v2;
+    int            c;
+
+    len1 = pst_length_of(obj1);
+    len2 = pst_length_of(obj2);
+    v1   = pst_data_ptr(obj1);
+    v2   = pst_data_ptr(obj2);
+    c    = memcmp(v2, v1, len2 < len1 ? len2 : len1);
+    c    = (c == 0) ? len2 - len1 : c;
+    if (!strcmp(op, "ge")) {
+      r = (c >= 0) ? 1 : 0;
+    } else if (!strcmp(op, "gt")) {
+      r = (c >  0) ? 1: 0;
+    } else if (!strcmp(op, "le")) {
+      r = (c <= 0) ? 1 : 0;
+    } else if (!strcmp(op, "lt")) {
+      r = (c <  0) ? 1: 0;
+    }
+  }
+  pst_release_obj(obj1);
+  pst_release_obj(obj2);
+
+  return r;
 }
 
 static int mps_op__ge (mpsi *p)
 {
   int        error = 0;
   dpx_stack *stk = &p->stack.operand;
-  pst_obj   *obj1, *obj2;
   int        r = 0;
 
   if (dpx_stack_depth(stk) < 2)
-    return -1;
-  obj1 = dpx_stack_at(stk, 0);
-  obj2 = dpx_stack_at(stk, 1);
-  if (PST_NUMBERTYPE(obj1) && PST_NUMBERTYPE(obj2)) {
-    double v[2];
+    return -1; /* stackunderflow */
+  error = typecheck_compare_obj(p);
+  if (error)
+    return error;
 
-    mps_pop_get_numbers(p, v, 2);
-    r = v[0] >= v[1] ? 1 : 0;
-    dpx_stack_push(stk, pst_new_boolean(r));
-  } else if (PST_STRINGTYPE(obj1) && PST_STRINGTYPE(obj2)) {
-    unsigned char *v1, *v2;
-    int            c;
-    size_t         len1, len2;
-
-    obj1 = dpx_stack_pop(stk);
-    obj2 = dpx_stack_pop(stk);
-    len1 = pst_length_of(obj1);
-    len2 = pst_length_of(obj2);
-    v1   = pst_data_ptr(obj1);
-    v2   = pst_data_ptr(obj2);
-    c    = memcmp(v2, v1, len2 < len1 ? len2 : len1);
-    if (c == 0)
-      c = len2 - len1;
-    r = (c >= 0) ? 1 : 0;
-    pst_release_obj(obj1);
-    pst_release_obj(obj2);
-    dpx_stack_push(stk, pst_new_boolean(r));
-  } else {
-    error = -1; /* typecheck */
-  }
+  r = compare_obj(p, "ge");
+  dpx_stack_push(stk, pst_new_boolean(r));
 
   return error;
 }
@@ -1224,40 +1302,16 @@ static int mps_op__gt (mpsi *p)
 {
   int        error = 0;
   dpx_stack *stk = &p->stack.operand;
-  pst_obj   *obj1, *obj2;
   int        r = 0;
 
   if (dpx_stack_depth(stk) < 2)
-    return -1;
-  obj1 = dpx_stack_at(stk, 0);
-  obj2 = dpx_stack_at(stk, 1);
-  if (PST_NUMBERTYPE(obj1) && PST_NUMBERTYPE(obj2)) {
-    double v[2];
+    return -1; /* stackunderflow */
+  error = typecheck_compare_obj(p);
+  if (error)
+    return error;
 
-    mps_pop_get_numbers(p, v, 2);
-    r = v[0] > v[1] ? 1 : 0;
-    dpx_stack_push(stk, pst_new_boolean(r));
-  } else if (PST_STRINGTYPE(obj1) && PST_STRINGTYPE(obj2)) {
-    unsigned char *v1, *v2;
-    int            c;
-    size_t         len1, len2;
-
-    obj1 = dpx_stack_pop(stk);
-    obj2 = dpx_stack_pop(stk);
-    len1 = pst_length_of(obj1);
-    len2 = pst_length_of(obj2);
-    v1   = pst_data_ptr(obj1);
-    v2   = pst_data_ptr(obj2);
-    c    = memcmp(v2, v1, len2 < len1 ? len2 : len1);
-    if (c == 0)
-      c = len2 - len1;
-    r = (c >  0) ? 1 : 0;
-    pst_release_obj(obj1);
-    pst_release_obj(obj2);
-    dpx_stack_push(stk, pst_new_boolean(r));
-  } else {
-    error = -1; /* typecheck */
-  }
+  r = compare_obj(p, "gt");
+  dpx_stack_push(stk, pst_new_boolean(r));
 
   return error;
 }
@@ -1266,40 +1320,16 @@ static int mps_op__le (mpsi *p)
 {
   int        error = 0;
   dpx_stack *stk = &p->stack.operand;
-  pst_obj   *obj1, *obj2;
   int        r = 0;
 
   if (dpx_stack_depth(stk) < 2)
-    return -1;
-  obj1 = dpx_stack_at(stk, 0);
-  obj2 = dpx_stack_at(stk, 1);
-  if (PST_NUMBERTYPE(obj1) && PST_NUMBERTYPE(obj2)) {
-    double v[2];
+    return -1; /* stackunderflow */
+  error = typecheck_compare_obj(p);
+  if (error)
+    return error;
 
-    mps_pop_get_numbers(p, v, 2);
-    r = v[0] <= v[1] ? 1 : 0;
-    dpx_stack_push(stk, pst_new_boolean(r));
-  } else if (PST_STRINGTYPE(obj1) && PST_STRINGTYPE(obj2)) {
-    unsigned char *v1, *v2;
-    int            c;
-    size_t         len1, len2;
-
-    obj1 = dpx_stack_pop(stk);
-    obj2 = dpx_stack_pop(stk);
-    len1 = pst_length_of(obj1);
-    len2 = pst_length_of(obj2);
-    v1   = pst_data_ptr(obj1);
-    v2   = pst_data_ptr(obj2);
-    c    = memcmp(v2, v1, len2 < len1 ? len2 : len1);
-    if (c == 0)
-      c = len2 - len1;
-    r = (c <= 0) ? 1 : 0;
-    pst_release_obj(obj1);
-    pst_release_obj(obj2);
-    dpx_stack_push(stk, pst_new_boolean(r));
-  } else {
-    error = -1; /* typecheck */
-  }
+  r = compare_obj(p, "le");
+  dpx_stack_push(stk, pst_new_boolean(r));
 
   return error;
 }
@@ -1308,40 +1338,16 @@ static int mps_op__lt (mpsi *p)
 {
   int        error = 0;
   dpx_stack *stk = &p->stack.operand;
-  pst_obj   *obj1, *obj2;
   int        r = 0;
 
   if (dpx_stack_depth(stk) < 2)
-    return -1;
-  obj1 = dpx_stack_at(stk, 0);
-  obj2 = dpx_stack_at(stk, 1);
-  if (PST_NUMBERTYPE(obj1) && PST_NUMBERTYPE(obj2)) {
-    double v[2];
+    return -1; /* stackunderflow */
+  error = typecheck_compare_obj(p);
+  if (error)
+    return error;
 
-    mps_pop_get_numbers(p, v, 2);
-    r = v[0] < v[1] ? 1 : 0;
-    dpx_stack_push(stk, pst_new_boolean(r));
-  } else if (PST_STRINGTYPE(obj1) && PST_STRINGTYPE(obj2)) {
-    unsigned char *v1, *v2;
-    int            c;
-    size_t         len1, len2;
-
-    obj1 = dpx_stack_pop(stk);
-    obj2 = dpx_stack_pop(stk);
-    len1 = pst_length_of(obj1);
-    len2 = pst_length_of(obj2);
-    v1   = pst_data_ptr(obj1);
-    v2   = pst_data_ptr(obj2);
-    c    = memcmp(v2, v1, len2 < len1 ? len2 : len1);
-    if (c == 0)
-      c = len2 - len1;
-    r = (c < 0) ? 1 : 0;
-    pst_release_obj(obj1);
-    pst_release_obj(obj2);
-    dpx_stack_push(stk, pst_new_boolean(r));
-  } else {
-    error = -1; /* typecheck */
-  }
+  r = compare_obj(p, "lt");
+  dpx_stack_push(stk, pst_new_boolean(r));
 
   return error;
 }
@@ -1723,6 +1729,44 @@ static int mps_op__exit (mpsi *p)
     }
     pst_release_obj(obj);
   }
+
+  return 0;
+}
+
+static int mps_op__stop (mpsi *p)
+{
+  int      error = 0;
+  pst_obj *obj   = NULL;
+
+  while ((obj = dpx_stack_pop(&p->stack.exec)) != NULL) {
+    if (PST_BOOLEANTYPE(obj) && pst_getIV(obj) == 0) {
+      break;
+    }
+    pst_release_obj(obj);
+  }
+  if (obj) {
+    /* boolean false found */
+    pst_release_obj(obj);
+    dpx_stack_push(&p->stack.operand, pst_new_boolean(1));
+  } else {
+    error = -1;
+  }
+
+  return error;
+}
+
+static int mps_op__stopped (mpsi *p)
+{
+  dpx_stack *stk = &p->stack.operand;
+  pst_obj   *obj;
+
+  if (dpx_stack_depth(stk) < 1)
+    return -1; /* stackunderflow */
+
+  /* if not "stop" then boolean "false" is evaluated */
+  dpx_stack_push(&p->stack.exec, pst_new_boolean(0));
+  obj = dpx_stack_pop(&p->stack.operand);
+  dpx_stack_push(&p->stack.exec, obj);
 
   return 0;
 }
@@ -2225,6 +2269,8 @@ static pst_operator operators[] = {
   {"repeat",       mps_op__repeat},
   {"loop",         mps_op__loop},
   {"exit",         mps_op__exit},
+  {"stop",         mps_op__stop},
+  {"stopped",      mps_op__stopped},
 
   {"dict",         mps_op__dict},
   {"<<",           mps_op__mark},
@@ -2378,7 +2424,7 @@ mps_parse_body (mpsi *p, const char **strptr, const char *endptr)
       break;
     }
     if (PST_NAMETYPE(obj) && obj->attr.is_exec) {
-      WARN(pst_getSV(obj));
+      WARN(pst_getSV(obj)); /* DEBUG */
       dpx_stack_push(&p->stack.exec, obj);
     } else {
       dpx_stack_push(&p->stack.operand, obj);
