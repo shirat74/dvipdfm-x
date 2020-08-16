@@ -1650,6 +1650,58 @@ static int mps_op__dict (mpsi *p)
   return error;
 }
 
+static int mps_op__dict_to_mark (mpsi *p)
+{
+  int        error = 0;
+  dpx_stack *stk   = &p->stack.operand;
+  int        count;
+  pst_obj   *obj, *mark;
+  pst_array *dict;
+
+  count = mps_count_to_mark(p);
+  if (count < 0)
+    return -1; /* stackunderflow */
+  if ((count % 2) != 0)
+    return -1; /* rangecheck */
+
+  count /= 2;
+  obj  = pst_new_dict(count);
+  dict = obj->data;
+  while (count-- > 0) {
+    pst_obj *key, *value;
+
+    value = dpx_stack_pop(stk);
+    key   = dpx_stack_pop(stk);
+    switch (key->type) {
+    case PST_TYPE_NAME: PST_TYPE_STRING:
+    case PST_TYPE_REAL: PST_TYPE_INTEGER:
+      {
+        char *str = (char *) pst_getSV(key);
+
+        ht_insert_table(dict->values, str, strlen(str), value);
+        RELEASE(str);
+      }
+      break;
+    case PST_TYPE_NULL:
+      pst_release_obj(value);
+      error = -1; /* typecheck */
+      break;
+    default: /* NYI */
+      pst_release_obj(value);
+      error = -1;
+    }
+    pst_release_obj(key);
+  }
+  mark = dpx_stack_pop(stk); /* mark */
+  pst_release_obj(mark);
+
+  obj = pst_new_obj(PST_TYPE_ARRAY, array);
+  dpx_stack_push(stk, obj);
+
+  return error;
+}
+
+
 /* NYI: length maxlength */
 
 static int mps_op__begin (mpsi *p)
@@ -1874,7 +1926,7 @@ static int mps_op__cvx (mpsi *p)
   return error;
 }
 
-static int mps_op__bracket_close_sq (mpsi *p)
+static int mps_op__array_to_mark (mpsi *p)
 {
   int        error = 0;
   dpx_stack *stk   = &p->stack.operand;
@@ -2069,6 +2121,8 @@ static pst_operator operators[] = {
   {"exit",         mps_op__exit},
 
   {"dict",         mps_op__dict},
+  {"<<",           mps_op__mark},
+  {">>",           mps_op__dict_to_mark},
   {"begin",        mps_op__begin},
   {"end",          mps_op__end},
   {"def",          mps_op__def},
@@ -2083,9 +2137,7 @@ static pst_operator operators[] = {
   {"null",         mps_op__null},
   {"bind",         mps_op__bind},
   {"[",            mps_op__mark},
-  {"]",            mps_op__bracket_close_sq},
-  {"<<",           mps_op__mark},
-  {">>",           mps_op__noop}, /* NYI */
+  {"]",            mps_op__array_to_mark},
   {"=",            mps_op__equal},
   {"save",         mps_op__dummy}, /* Not Implemented */
   {"restore",      mps_op__noop} 
@@ -2109,7 +2161,7 @@ pst_new_dict (size_t size)
 }
 
 #if 1
-#include "mp_op_graphic.h"
+#include "mps_op_graph.h"
 #endif
 
 static int

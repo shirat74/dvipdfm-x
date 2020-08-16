@@ -51,7 +51,7 @@
 #include "pdfximage.h"
 
 #include "mpost.h"
-#include "mp_op_graphic.h"
+#include "mps_op_graph.h"
 #include "dvipdfmx.h"
 
 static struct mp_font
