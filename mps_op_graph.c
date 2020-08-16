@@ -54,6 +54,81 @@
 #include "mps_op_graph.h"
 #include "dvipdfmx.h"
 
+#if 1
+static int
+mps_add_systemdict (mpsi *p, pst_obj *obj)
+{
+  pst_dict *systemdict = p->systemdict->data;
+  pst_operator *op = obj->data;
+
+  ht_insert_table(systemdict->values, op->name, strlen(op->name), obj);
+
+  return 0;
+}
+
+static int
+pop_get_numbers (mpsi *p, double *values, int n)
+{
+  if (dpx_stack_depth(&p->stack.operand) < n)
+    return -1;
+  while (n-- > 0) {
+    pst_obj *obj = dpx_stack_pop(&p->stack.operand);
+    if (!PST_NUMBERTYPE(obj)) {
+      pst_release_obj(obj);
+      return -1;
+    }
+    values[n] = pst_getRV(obj);
+    pst_release_obj(obj);
+  }
+
+  return 0;
+}
+
+static int
+mps_cvr_array (mpsi *p, double *values, int n)
+{
+  pst_obj   *obj;
+  pst_array *array;
+
+  if (dpx_stack_depth(&p->stack.operand) < n)
+    return -1;
+  obj = dpx_stack_pop(&p->stack.operand);
+  if (!PST_ARRAYTYPE(obj)) {
+    pst_release_obj(obj);
+    return -1;
+  }
+  if (obj->comp.size != n) {
+    pst_release_obj(obj);
+    return -1;
+  }
+  array = obj->data;
+  while (n-- > 0) {
+    pst_obj *elem = array->values[obj->comp.off+n];
+    if (!PST_NUMBERTYPE(elem)) {
+      return -1;
+    }
+    values[n] = pst_getRV(elem);
+  }
+  pst_release_obj(obj);
+
+  return 0;
+}
+
+static const char *
+mps_current_operator (mpsi *p)
+{
+  return p->cur_op;
+}
+
+static int
+mps_push_stack (mpsi *p, pst_obj *obj)
+{
+  dpx_stack_push(&p->stack.operand, obj);
+
+  return 0;
+}
+#endif
+
 static struct mp_font
 {
   char   *font_name;
@@ -812,7 +887,7 @@ static int mps_op__graphic (mpsi *p)
   return do_operator(p, mps_current_operator(p), 0, 0);
 }
 
-int mps_op_graphic_load (mpsi *p)
+int mps_op_graph_load (mpsi *p)
 {
   int   i;
 
@@ -836,4 +911,5 @@ int mps_op_graphic_load (mpsi *p)
   }
 #endif
 
+  return 0;
 }

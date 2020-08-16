@@ -25,6 +25,6 @@
 
 #include  "pst.h"
 
-extern int mps_op_graphic_load (mpsi *p);
+extern int mps_op_graph_load (mpsi *p);
 
 #endif /* _MP_OP_GRAPHIC_H_ */

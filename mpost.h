@@ -24,9 +24,22 @@
 #define _MPOST_H_
 
 #include  "mfileio.h"
-#include  "pdfximage.h"
-#include  "pdfdev.h"
+#include  "dpxutil.h"
 #include  "pst.h"
+
+
+struct mpsi {
+  const char *cur_op;
+  struct {
+    dpx_stack operand;
+    dpx_stack dict;
+    dpx_stack exec;
+  } stack;
+  pst_obj *systemdict;
+  pst_obj *globaldict;
+  pst_obj *userdict;
+};
+
 
 typedef struct mpsi mpsi;
 typedef int (*mps_op_fn_ptr) (mpsi *);
@@ -34,14 +47,6 @@ typedef struct {
   const char    *name;
   mps_op_fn_ptr  action;
 } pst_operator;
-
-#if 1
-extern int   pop_get_numbers (mpsi *p, double *values, int n);
-extern const char *mps_current_operator (mpsi *p);
-extern int   mps_push_stack (mpsi *p, pst_obj *obj);
-extern int   mps_cvr_array (mpsi *p, double *values, int n);
-extern int   mps_add_systemdict (mpsi *p, pst_obj *obj);
-#endif
 
 extern void mps_set_translate_origin (int boolean_value);
 
