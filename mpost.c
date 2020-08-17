@@ -1721,7 +1721,10 @@ static int mps_op__exit (mpsi *p)
   while ((obj = dpx_stack_pop(&p->stack.exec)) != NULL) {
     if (PST_OPERATORTYPE(obj)) {
       pst_operator *op = obj->data;
-      if (!strcmp(op->name, "for") || !strcmp(op->name, "repeat") ||
+      if (!strcmp(op->name, "cshow") || !strcmp(op->name, "kshow") ||
+          !strcmp(op->name, "pathforall") || !strcmp(op->name, "filenameforall") ||
+          !strcmp(op->name, "resourceforall") || 
+          !strcmp(op->name, "for") || !strcmp(op->name, "repeat") ||
           !strcmp(op->name, "loop") || !strcmp(op->name, "forall")) {
         pst_release_obj(obj);
         break;
@@ -2044,6 +2047,171 @@ static int mps_op__get (mpsi *p)
   return error;
 }
 
+static int mps_op__forall_dict (mpsi *p)
+{
+  int        error = 0;
+  dpx_stack *stk   = &p->stack.operand;
+  pst_obj   *proc, *obj, *copy;
+
+  proc  = dpx_stack_pop(stk);
+  obj   = dpx_stack_pop(stk);
+  if (pst_length_of(obj) == 0 || (obj->comp.iter && ht_iter_getval(obj->comp.iter) == NULL)) {
+    pst_release_obj(proc);
+    pst_release_obj(obj);
+    return 0;
+  }
+
+  {
+    pst_obj *cvx, *this;
+
+    this = mps_search_systemdict(p, "forall");
+    dpx_stack_push(&p->stack.exec, pst_copy_obj(this));
+    cvx  = mps_search_systemdict(p, "cvx");
+    dpx_stack_push(&p->stack.exec, pst_copy_obj(cvx));
+  }
+  copy = pst_copy_obj(proc);
+  copy->attr.is_exec = 0; /* cvlit */
+  dpx_stack_push(&p->stack.exec, copy);
+  dpx_stack_push(&p->stack.exec, obj);
+
+  dpx_stack_push(&p->stack.exec, proc);
+  {
+    struct ht_iter *iter = obj->comp.iter;
+    pst_dict       *dict = obj->data;
+    int             keylen = 0;
+    char           *key;
+    pst_obj        *value;
+
+    if (!iter) {
+      iter = NEW(1, struct ht_iter);
+      ht_clear_iter(iter);
+      ht_set_iter(dict->values, iter);
+      obj->comp.iter = iter;
+    }
+    key   = ht_iter_getkey(iter, &keylen);
+    value = ht_iter_getval(iter);
+    dpx_stack_push(&p->stack.operand, pst_new_name(key, 0));
+    dpx_stack_push(&p->stack.operand, pst_copy_obj(value));
+
+    ht_iter_next(iter);
+  }
+
+  return error;
+}
+
+static int mps_op__forall_array (mpsi *p)
+{
+  int        error = 0;
+  dpx_stack *stk   = &p->stack.operand;
+  pst_obj   *proc, *obj, *copy;
+
+  proc  = dpx_stack_pop(stk);
+  obj   = dpx_stack_pop(stk);
+  if (pst_length_of(obj) == 0) {
+    pst_release_obj(proc);
+    pst_release_obj(obj);
+    return 0;
+  }
+  
+  {
+    pst_obj *cvx, *this;
+
+    this = mps_search_systemdict(p, "forall");
+    dpx_stack_push(&p->stack.exec, pst_copy_obj(this));
+    cvx  = mps_search_systemdict(p, "cvx");
+    dpx_stack_push(&p->stack.exec, pst_copy_obj(cvx));
+  }
+  copy = pst_copy_obj(proc);
+  copy->attr.is_exec = 0; /* cvlit */
+  dpx_stack_push(&p->stack.exec, copy);
+  dpx_stack_push(&p->stack.exec, obj);
+
+  dpx_stack_push(&p->stack.exec, proc);
+  {
+    pst_array *array = obj->data;
+    pst_obj   *value;
+
+    value = array->values[obj->comp.off];
+    obj->comp.off++;
+    obj->comp.size--;
+
+    dpx_stack_push(&p->stack.operand, pst_copy_obj(value));
+  }
+
+  return error;
+}
+
+static int mps_op__forall_string (mpsi *p)
+{
+  int        error = 0;
+  dpx_stack *stk   = &p->stack.operand;
+  pst_obj   *proc, *obj, *copy;
+
+  proc  = dpx_stack_pop(stk);
+  obj   = dpx_stack_pop(stk);
+  if (pst_length_of(obj) == 0) {
+    pst_release_obj(proc);
+    pst_release_obj(obj);
+    return 0;
+  }
+  
+  {
+    pst_obj *cvx, *this;
+
+    this = mps_search_systemdict(p, "forall");
+    dpx_stack_push(&p->stack.exec, pst_copy_obj(this));
+    cvx  = mps_search_systemdict(p, "cvx");
+    dpx_stack_push(&p->stack.exec, pst_copy_obj(cvx));
+  }
+  copy = pst_copy_obj(proc);
+  copy->attr.is_exec = 0; /* cvlit */
+  dpx_stack_push(&p->stack.exec, copy);
+  dpx_stack_push(&p->stack.exec, obj);
+
+  dpx_stack_push(&p->stack.exec, proc);
+  {
+    pst_string *str = obj->data;
+    int         value;
+
+    value = (int) str->value[obj->comp.off];
+    obj->comp.off++;
+    obj->comp.size--;
+
+    dpx_stack_push(&p->stack.operand, pst_new_integer(value));
+  }
+
+  return error;
+}
+
+static int mps_op__forall (mpsi *p)
+{
+  int        error = 0;
+  dpx_stack *stk = &p->stack.operand;
+  pst_obj   *proc, *obj;
+
+  if (dpx_stack_depth(stk) < 2)
+    return -1;
+  proc = dpx_stack_at(stk, 0);
+  if (!PST_ARRAYTYPE(proc) || !proc->attr.is_exec)
+    return -1;
+  obj  = dpx_stack_at(stk, 1);
+  switch (obj->type) {
+  case PST_TYPE_DICT:
+    error = mps_op__forall_dict(p);
+    break;
+  case PST_TYPE_ARRAY:
+    error = mps_op__forall_array(p);
+    break;
+  case PST_TYPE_STRING:
+    error = mps_op__forall_string(p);
+    break;
+  default:
+    error = -1; /* typecheck */
+  }
+
+  return error;
+}
+
 static int mps_op__cvlit (mpsi *p)
 {
   int        error = 0;
@@ -2283,6 +2451,8 @@ static pst_operator operators[] = {
   {"where",        mps_op__where},
   {"get",          mps_op__get},
 
+  {"forall",       mps_op__forall},
+
   {"cvlit",        mps_op__cvlit},
   {"cvx",          mps_op__cvx},
 
@@ -2292,7 +2462,7 @@ static pst_operator operators[] = {
   {"]",            mps_op__array_to_mark},
   {"=",            mps_op__equal},
   {"save",         mps_op__dummy}, /* Not Implemented */
-  {"restore",      mps_op__noop} 
+  {"restore",      mps_op__pop} 
 };
 
 static pst_obj *

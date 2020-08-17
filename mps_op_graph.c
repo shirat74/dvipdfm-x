@@ -267,6 +267,7 @@ is_fontname (const char *token)
 #undef SETLINECAP
 #undef SETLINEJOIN
 #undef SETMITERLIMIT
+#undef TRANSFORM
 
 #define NEWPATH		31
 #define CLOSEPATH    	32
@@ -476,9 +477,6 @@ do_operator (mpsi *p, const char *token, double x_user, double y_user)
   int         error  = 0;
   int         opcode = 0;
   double      values[12];
-#if 1
-  pdf_obj    *tmp = NULL;
-#endif
   pdf_tmatrix matrix;
   pdf_coord   cp;
   pdf_color   color;
@@ -581,7 +579,6 @@ do_operator (mpsi *p, const char *token, double x_user, double y_user)
 
   case CONCAT:
     error = mps_cvr_array(p, values, 6); /* This does pdf_release_obj() */
-    tmp   = NULL;
     if (error)
       WARN("Missing array before \"concat\".");
     else {

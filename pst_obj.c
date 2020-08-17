@@ -115,6 +115,7 @@ pst_new_obj (pst_type type, void *data)
   default:
     obj->comp.off  = 0;
     obj->comp.size = 0;
+    obj->comp.iter = NULL;
   }
 
   return obj;
@@ -291,6 +292,8 @@ pst_release_obj (pst_obj *obj)
         RELEASE(tab);
         RELEASE(data);
       }
+      if (obj->comp.iter)
+        RELEASE(obj->comp.iter);
     }
     break;
   case PST_TYPE_OPERATOR:

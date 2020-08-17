@@ -39,6 +39,8 @@
 
 typedef int pst_type;
 
+#include "dpxutil.h"
+
 struct pst_obj {
   pst_type type;
   struct {
@@ -48,6 +50,7 @@ struct pst_obj {
   struct {
     size_t off;
     size_t size;
+    struct ht_iter *iter; /* for forall */
   } comp;
   void    *data;
 };
