@@ -953,40 +953,38 @@ static int mps_op__execstack (mpsi *p)
 {
   int        error = 0;
   dpx_stack *stk   = &p->stack.operand;
-  pst_obj   *obj1, *obj2;
+  pst_obj   *obj;
   int        n;
 
   if (dpx_stack_depth(stk) < 1)
     return -1;
-  obj1 = dpx_stack_top(stk);
-  if (!PST_ARRAYTYPE(obj1))
+  obj = dpx_stack_top(stk);
+  if (!PST_ARRAYTYPE(obj))
     return -1;
-  if (pst_length_of(obj1) < dpx_stack_depth(&p->stack.exec))
+  if (pst_length_of(obj) < dpx_stack_depth(&p->stack.exec))
     return -1; /* rangecheck */
 
-  obj1 = dpx_stack_pop(stk);
-  n    = dpx_stack_depth(&p->stack.exec);
-  obj2 = pst_copy_obj(obj1);
-  pst_release_obj(obj1);
+  obj = dpx_stack_pop(stk);
+  n   = dpx_stack_depth(&p->stack.exec);
 
-  obj2->comp.size = n;
+  obj->comp.size = n;
   
   /* FIXME */
   {
-    pst_array *data = obj1->data;
+    pst_array *data = obj->data;
     
     while (n-- > 0) {
       int      m;
       pst_obj *elem;
 
-      m    = obj2->comp.off + n;
+      m    = obj->comp.off + n;
       elem = dpx_stack_at(&p->stack.exec, m);
       if (data->values[m])
         pst_release_obj(data->values[m]);
       data->values[m] = pst_copy_obj(elem);
     }
   }
-  dpx_stack_push(stk, obj2);
+  dpx_stack_push(stk, obj);
 
   return error;
 }
