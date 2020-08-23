@@ -437,29 +437,20 @@ pst_getSV (pst_obj *obj)
       sv[obj->comp.size] = '\0';
     }
     break;
-  case PST_TYPE_ARRAY:
-  case PST_TYPE_DICT:
-    break;
-  case PST_TYPE_NULL:
-  case PST_TYPE_MARK:
-    TYPE_ERROR(); 
-    break;
-  case PST_TYPE_UNKNOWN:
+  case PST_TYPE_OPERATOR:
     {
-      int len;
+      pst_operator *data = obj->data;
 
-      len = strlen((char *) obj->data);
-      if (len > 0) {
-        sv = NEW(len+1, unsigned char);
-        memcpy(sv, obj->data, len);
-        sv[len] = '\0';
-      } else {
-        sv = NULL;
-      }
+      sv = NEW(strlen(data->name) + 1, unsigned char);
+      strcpy(sv, data->name);
+    }
+    break;
+  default:
+    {
+      sv = NEW(17, unsigned char);
+      strcpy(sv, "--nonstringval--");
       break;
     }
-  default:
-    ERROR("Unrecognized object type: %d", obj->type);
   }
 
   return sv;
