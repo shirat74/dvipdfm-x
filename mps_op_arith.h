@@ -20,11 +20,11 @@
     Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA.
 */
 
-#ifndef _MP_OP_GRAPH_H_
-#define _MP_OP_GRAPH_H_
+#ifndef _MP_OP_ARITH_H_
+#define _MP_OP_ARITH_H_
 
 #include  "pst.h"
 
-extern int mps_op_graph_load (mpsi *p);
+extern int mps_op_arith_load (mpsi *p);
 
-#endif /* _MP_OP_GRAPH_H_ */
+#endif /* _MP_OP_ARITH_H_ */

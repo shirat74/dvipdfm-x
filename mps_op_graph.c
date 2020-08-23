@@ -56,17 +56,6 @@
 
 #if 1
 static int
-mps_add_systemdict (mpsi *p, pst_obj *obj)
-{
-  pst_dict *systemdict = p->systemdict->data;
-  pst_operator *op = obj->data;
-
-  ht_insert_table(systemdict->values, op->name, strlen(op->name), obj);
-
-  return 0;
-}
-
-static int
 pop_get_numbers (mpsi *p, double *values, int n)
 {
   if (dpx_stack_depth(&p->stack.operand) < n)

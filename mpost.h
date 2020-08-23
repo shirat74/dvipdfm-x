@@ -38,6 +38,8 @@ struct mpsi {
   pst_obj *systemdict;
   pst_obj *globaldict;
   pst_obj *userdict;
+
+  int      rand_seed;
 };
 
 
@@ -48,8 +50,12 @@ typedef struct {
   mps_op_fn_ptr  action;
 } pst_operator;
 
+extern int  mps_add_systemdict (mpsi *p, pst_obj *obj);
+extern pst_obj *pst_new_dict (size_t size);
+
 extern void mps_set_translate_origin (int boolean_value);
 
+#include "pdfdev.h"
 extern int  mps_scan_bbox    (const char **pp, const char *endptr, pdf_rect *bbox);
 
 /* returns xobj_id */

@@ -144,22 +144,24 @@ am_xdvipdfmx_OBJECTS = agl.$(OBJEXT) bmpimage.$(OBJEXT) cff.$(OBJEXT) \
 	dvi.$(OBJEXT) dvipdfmx.$(OBJEXT) epdf.$(OBJEXT) \
 	error.$(OBJEXT) fontmap.$(OBJEXT) jp2image.$(OBJEXT) \
 	jpegimage.$(OBJEXT) mem.$(OBJEXT) mfileio.$(OBJEXT) \
-	mpost.$(OBJEXT) mps_op_graph.$(OBJEXT) mt19937ar.$(OBJEXT) \
-	numbers.$(OBJEXT) otl_opt.$(OBJEXT) pdfcolor.$(OBJEXT) \
-	pdfdev.$(OBJEXT) pdfdoc.$(OBJEXT) pdfdraw.$(OBJEXT) \
-	pdfencrypt.$(OBJEXT) pdfencoding.$(OBJEXT) pdffont.$(OBJEXT) \
-	pdfnames.$(OBJEXT) pdfobj.$(OBJEXT) pdfparse.$(OBJEXT) \
-	pdfresource.$(OBJEXT) pdfximage.$(OBJEXT) pkfont.$(OBJEXT) \
-	pngimage.$(OBJEXT) pst.$(OBJEXT) pst_obj.$(OBJEXT) \
-	sfnt.$(OBJEXT) spc_color.$(OBJEXT) spc_dvipdfmx.$(OBJEXT) \
-	spc_dvips.$(OBJEXT) spc_html.$(OBJEXT) spc_misc.$(OBJEXT) \
-	spc_pdfm.$(OBJEXT) spc_tpic.$(OBJEXT) spc_util.$(OBJEXT) \
-	spc_xtx.$(OBJEXT) specials.$(OBJEXT) subfont.$(OBJEXT) \
-	t1_char.$(OBJEXT) t1_load.$(OBJEXT) tfm.$(OBJEXT) \
-	truetype.$(OBJEXT) tt_aux.$(OBJEXT) tt_cmap.$(OBJEXT) \
-	tt_glyf.$(OBJEXT) tt_gsub.$(OBJEXT) tt_post.$(OBJEXT) \
-	tt_table.$(OBJEXT) type0.$(OBJEXT) type1.$(OBJEXT) \
-	type1c.$(OBJEXT) unicode.$(OBJEXT) vf.$(OBJEXT) xbb.$(OBJEXT)
+	mpost.$(OBJEXT) mps_op_arith.$(OBJEXT) mps_op_basic.$(OBJEXT) \
+	mps_op_graph.$(OBJEXT) mps_op_objm.$(OBJEXT) \
+	mt19937ar.$(OBJEXT) numbers.$(OBJEXT) otl_opt.$(OBJEXT) \
+	pdfcolor.$(OBJEXT) pdfdev.$(OBJEXT) pdfdoc.$(OBJEXT) \
+	pdfdraw.$(OBJEXT) pdfencrypt.$(OBJEXT) pdfencoding.$(OBJEXT) \
+	pdffont.$(OBJEXT) pdfnames.$(OBJEXT) pdfobj.$(OBJEXT) \
+	pdfparse.$(OBJEXT) pdfresource.$(OBJEXT) pdfximage.$(OBJEXT) \
+	pkfont.$(OBJEXT) pngimage.$(OBJEXT) pst.$(OBJEXT) \
+	pst_obj.$(OBJEXT) sfnt.$(OBJEXT) spc_color.$(OBJEXT) \
+	spc_dvipdfmx.$(OBJEXT) spc_dvips.$(OBJEXT) spc_html.$(OBJEXT) \
+	spc_misc.$(OBJEXT) spc_pdfm.$(OBJEXT) spc_tpic.$(OBJEXT) \
+	spc_util.$(OBJEXT) spc_xtx.$(OBJEXT) specials.$(OBJEXT) \
+	subfont.$(OBJEXT) t1_char.$(OBJEXT) t1_load.$(OBJEXT) \
+	tfm.$(OBJEXT) truetype.$(OBJEXT) tt_aux.$(OBJEXT) \
+	tt_cmap.$(OBJEXT) tt_glyf.$(OBJEXT) tt_gsub.$(OBJEXT) \
+	tt_post.$(OBJEXT) tt_table.$(OBJEXT) type0.$(OBJEXT) \
+	type1.$(OBJEXT) type1c.$(OBJEXT) unicode.$(OBJEXT) \
+	vf.$(OBJEXT) xbb.$(OBJEXT)
 xdvipdfmx_OBJECTS = $(am_xdvipdfmx_OBJECTS)
 xdvipdfmx_LDADD = $(LDADD)
 xdvipdfmx_DEPENDENCIES = $(am__DEPENDENCIES_1) $(am__DEPENDENCIES_1) \
@@ -220,16 +222,18 @@ am__depfiles_remade = ./$(DEPDIR)/agl.Po ./$(DEPDIR)/bmpimage.Po \
 	./$(DEPDIR)/error.Po ./$(DEPDIR)/fontmap.Po \
 	./$(DEPDIR)/jp2image.Po ./$(DEPDIR)/jpegimage.Po \
 	./$(DEPDIR)/mem.Po ./$(DEPDIR)/mfileio.Po ./$(DEPDIR)/mpost.Po \
-	./$(DEPDIR)/mps_op_graph.Po ./$(DEPDIR)/mt19937ar.Po \
-	./$(DEPDIR)/numbers.Po ./$(DEPDIR)/otl_opt.Po \
-	./$(DEPDIR)/pdfcolor.Po ./$(DEPDIR)/pdfdev.Po \
-	./$(DEPDIR)/pdfdoc.Po ./$(DEPDIR)/pdfdraw.Po \
-	./$(DEPDIR)/pdfencoding.Po ./$(DEPDIR)/pdfencrypt.Po \
-	./$(DEPDIR)/pdffont.Po ./$(DEPDIR)/pdfnames.Po \
-	./$(DEPDIR)/pdfobj.Po ./$(DEPDIR)/pdfparse.Po \
-	./$(DEPDIR)/pdfresource.Po ./$(DEPDIR)/pdfximage.Po \
-	./$(DEPDIR)/pkfont.Po ./$(DEPDIR)/pngimage.Po \
-	./$(DEPDIR)/pst.Po ./$(DEPDIR)/pst_obj.Po ./$(DEPDIR)/sfnt.Po \
+	./$(DEPDIR)/mps_op_arith.Po ./$(DEPDIR)/mps_op_basic.Po \
+	./$(DEPDIR)/mps_op_graph.Po ./$(DEPDIR)/mps_op_objm.Po \
+	./$(DEPDIR)/mt19937ar.Po ./$(DEPDIR)/numbers.Po \
+	./$(DEPDIR)/otl_opt.Po ./$(DEPDIR)/pdfcolor.Po \
+	./$(DEPDIR)/pdfdev.Po ./$(DEPDIR)/pdfdoc.Po \
+	./$(DEPDIR)/pdfdraw.Po ./$(DEPDIR)/pdfencoding.Po \
+	./$(DEPDIR)/pdfencrypt.Po ./$(DEPDIR)/pdffont.Po \
+	./$(DEPDIR)/pdfnames.Po ./$(DEPDIR)/pdfobj.Po \
+	./$(DEPDIR)/pdfparse.Po ./$(DEPDIR)/pdfresource.Po \
+	./$(DEPDIR)/pdfximage.Po ./$(DEPDIR)/pkfont.Po \
+	./$(DEPDIR)/pngimage.Po ./$(DEPDIR)/pst.Po \
+	./$(DEPDIR)/pst_obj.Po ./$(DEPDIR)/sfnt.Po \
 	./$(DEPDIR)/spc_color.Po ./$(DEPDIR)/spc_dvipdfmx.Po \
 	./$(DEPDIR)/spc_dvips.Po ./$(DEPDIR)/spc_html.Po \
 	./$(DEPDIR)/spc_misc.Po ./$(DEPDIR)/spc_pdfm.Po \
@@ -697,8 +701,14 @@ xdvipdfmx_SOURCES = \
 	mfileio.h \
 	mpost.c \
 	mpost.h \
+	mps_op_arith.c \
+	mps_op_arith.h \
+	mps_op_basic.c \
+	mps_op_basic.h \
 	mps_op_graph.c \
 	mps_op_graph.h \
+	mps_op_objm.c \
+	mps_op_objm.h \
 	mt19937ar.c \
 	numbers.c \
 	numbers.h \
@@ -1032,7 +1042,10 @@ distclean-compile:
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/mem.Po@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/mfileio.Po@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/mpost.Po@am__quote@ # am--include-marker
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/mps_op_arith.Po@am__quote@ # am--include-marker
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/mps_op_basic.Po@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/mps_op_graph.Po@am__quote@ # am--include-marker
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/mps_op_objm.Po@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/mt19937ar.Po@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/numbers.Po@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/otl_opt.Po@am__quote@ # am--include-marker
@@ -1716,7 +1729,10 @@ distclean: distclean-am
 	-rm -f ./$(DEPDIR)/mem.Po
 	-rm -f ./$(DEPDIR)/mfileio.Po
 	-rm -f ./$(DEPDIR)/mpost.Po
+	-rm -f ./$(DEPDIR)/mps_op_arith.Po
+	-rm -f ./$(DEPDIR)/mps_op_basic.Po
 	-rm -f ./$(DEPDIR)/mps_op_graph.Po
+	-rm -f ./$(DEPDIR)/mps_op_objm.Po
 	-rm -f ./$(DEPDIR)/mt19937ar.Po
 	-rm -f ./$(DEPDIR)/numbers.Po
 	-rm -f ./$(DEPDIR)/otl_opt.Po
@@ -1841,7 +1857,10 @@ maintainer-clean: maintainer-clean-am
 	-rm -f ./$(DEPDIR)/mem.Po
 	-rm -f ./$(DEPDIR)/mfileio.Po
 	-rm -f ./$(DEPDIR)/mpost.Po
+	-rm -f ./$(DEPDIR)/mps_op_arith.Po
+	-rm -f ./$(DEPDIR)/mps_op_basic.Po
 	-rm -f ./$(DEPDIR)/mps_op_graph.Po
+	-rm -f ./$(DEPDIR)/mps_op_objm.Po
 	-rm -f ./$(DEPDIR)/mt19937ar.Po
 	-rm -f ./$(DEPDIR)/numbers.Po
 	-rm -f ./$(DEPDIR)/otl_opt.Po

@@ -69,8 +69,14 @@ xdvipdfmx_SOURCES = \
 	mfileio.h \
 	mpost.c \
 	mpost.h \
+	mps_op_arith.c \
+	mps_op_arith.h \
+	mps_op_basic.c \
+	mps_op_basic.h \
 	mps_op_graph.c \
 	mps_op_graph.h \
+	mps_op_objm.c \
+	mps_op_objm.h \
 	mt19937ar.c \
 	numbers.c \
 	numbers.h \
