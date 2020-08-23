@@ -989,30 +989,7 @@ static int mps_op__execstack (mpsi *p)
   return error;
 }
 
-static int mps_op__type (mpsi *p)
-{
-  int        error = 0;
-  dpx_stack *stk   = &p->stack.operand;
-  pst_obj   *obj, *name;
-
-  if (dpx_stack_depth(stk) < 1)
-    return -1;
-
-  obj = dpx_stack_pop(stk);
-  switch(obj->type) {
-  case PST_TYPE_BOOLEAN:
-    name = pst_new_name(“booleantype”, 0);
-    break;
-  case PST_TYPE_MARK;
-
-    break;
-  case PST_TYPE_NULL;
-    break;
-  }
-
-  return error
-}
-
+/* NYI */
 static int mps_op__quit (mpsi *p)
 {
   WARN("mps: \"quit\" called.");
@@ -1023,6 +1000,61 @@ static int mps_op__quit (mpsi *p)
 static int mps_op__start (mpsi *p)
 {
   return 0;
+}
+
+static int mps_op__type (mpsi *p)
+{
+  int        error = 0;
+  dpx_stack *stk   = &p->stack.operand;
+  pst_obj   *obj, *name = NULL;
+
+  if (dpx_stack_depth(stk) < 1)
+    return -1;
+
+  obj = dpx_stack_top(stk);
+  switch(obj->type) {
+  case PST_TYPE_ARRAY:
+    name = pst_new_name("arraytype", 0);
+    break;
+  case PST_TYPE_BOOLEAN:
+    name = pst_new_name("booleantype", 0);
+    break;
+  case PST_TYPE_DICT:
+    name = pst_new_name("dicttype", 0);
+    break;
+  case PST_TYPE_INTEGER:
+    name = pst_new_name("integertype", 0);
+    break;
+  case PST_TYPE_MARK:
+    name = pst_new_name("marktype", 0);
+    break;
+  case PST_TYPE_NAME:
+    name = pst_new_name("nametype", 0);
+    break;
+  case PST_TYPE_NULL:
+    name = pst_new_name("nulltype", 0);
+    break;
+  case PST_TYPE_OPERATOR:
+    name = pst_new_name("operatortype", 0);
+    break;
+  case PST_TYPE_REAL:
+    name = pst_new_name("realtype", 0);
+    break;
+  case PST_TYPE_STRING:
+    name = pst_new_name("stringtype", 0);
+    break;
+  default:
+    error = -1;
+  }
+
+  if (!error) {
+    obj = dpx_stack_pop(stk);
+    pst_release_obj(obj);
+  }
+  if (name)
+    dpx_stack_push(stk, name);
+
+  return error;
 }
 
 static int mps_op__cvlit (mpsi *p)
@@ -1057,51 +1089,286 @@ static int mps_op__cvx (mpsi *p)
   return error;
 }
 
+static int mps_op__xcheck (mpsi *p)
+{
+  int        error = 0;
+  dpx_stack *stk   = &p->stack.operand;
+  pst_obj   *obj;
+
+  if (dpx_stack_depth(stk) < 1)
+    return -1;
+
+  obj = dpx_stack_pop(stk);
+  dpx_stack_push(stk, pst_new_boolean(obj->attr.is_exec));
+  pst_release_obj(obj);
+
+  return error;
+}
+
+static int mps_op__executeonly (mpsi *p)
+{
+  int        error = 0;
+  dpx_stack *stk   = &p->stack.operand;
+  pst_obj   *obj;
+
+  if (dpx_stack_depth(stk) < 1)
+    return -1;
+
+  obj = dpx_stack_pop(stk);
+  if (PST_DICTTYPE(obj)) {
+    pst_dict *data = obj->data;
+    data->access = acc_executeonly;
+  } else {
+    obj->attr.access = acc_executeonly;
+  }
+  dpx_stack_push(stk, obj);
+
+  return error;
+}
+
+static int mps_op__noaccess (mpsi *p)
+{
+  int        error = 0;
+  dpx_stack *stk   = &p->stack.operand;
+  pst_obj   *obj;
+
+  if (dpx_stack_depth(stk) < 1)
+    return -1;
+
+  obj = dpx_stack_pop(stk);
+  if (PST_DICTTYPE(obj)) {
+    pst_dict *data = obj->data;
+    data->access = acc_none;
+  } else {
+    obj->attr.access = acc_none;
+  }
+  dpx_stack_push(stk, obj);
+
+  return error;
+}
+
+static int mps_op__readonly (mpsi *p)
+{
+  int        error = 0;
+  dpx_stack *stk   = &p->stack.operand;
+  pst_obj   *obj;
+
+  if (dpx_stack_depth(stk) < 1)
+    return -1;
+
+  obj = dpx_stack_pop(stk);
+  if (PST_DICTTYPE(obj)) {
+    pst_dict *data = obj->data;
+    data->access = acc_readonly;
+  } else {
+    obj->attr.access = acc_readonly;
+  }
+  dpx_stack_push(stk, obj);
+
+  return error;
+}
+
+static int mps_op__rcheck (mpsi *p)
+{
+  int        error = 0;
+  dpx_stack *stk   = &p->stack.operand;
+  pst_obj   *obj;
+  int        r = 1;
+
+  if (dpx_stack_depth(stk) < 1)
+    return -1;
+
+  obj = dpx_stack_pop(stk);
+  if (PST_DICTTYPE(obj)) {
+    pst_dict *data = obj->data;
+    r = data->access <= acc_readonly ? 1 : 0;
+  } else {
+    r = obj->attr.access <= acc_readonly ? 1 : 0;
+  }
+  dpx_stack_push(stk, pst_new_boolean(r));
+  pst_release_obj(obj);
+
+  return error;
+}
+
+static int mps_op__wcheck (mpsi *p)
+{
+  int        error = 0;
+  dpx_stack *stk   = &p->stack.operand;
+  pst_obj   *obj;
+  int        r = 1;
+
+  if (dpx_stack_depth(stk) < 1)
+    return -1;
+
+  obj = dpx_stack_pop(stk);
+  if (PST_DICTTYPE(obj)) {
+    pst_dict *data = obj->data;
+    r = data->access == acc_unlimited ? 1 : 0;
+  } else {
+    r = obj->attr.access == acc_unlimited ? 1 : 0;
+  }
+  dpx_stack_push(stk, pst_new_boolean(r));
+  pst_release_obj(obj);
+
+  return error;
+}
+
+static int mps_op__cvi (mpsi *p)
+{
+  int        error = 0;
+  dpx_stack *stk   = &p->stack.operand;
+  pst_obj   *obj;
+  int        val;
+
+  if (dpx_stack_depth(stk) < 1)
+    return -1;
+  obj = dpx_stack_top(stk);
+  if (!PST_NUMBERTYPE(obj) && !PST_STRINGTYPE(obj))
+    return -1; /* typecheck */
+
+  obj = dpx_stack_pop(stk);
+  val = pst_getIV(obj);
+  pst_release_obj(obj);
+
+  dpx_stack_push(stk, pst_new_integer(val));
+
+  return error;
+}
+
+static int mps_op__cvn (mpsi *p)
+{
+  int        error = 0;
+  dpx_stack *stk   = &p->stack.operand;
+  pst_obj   *obj;
+  char      *val;
+  int        exe;
+
+  if (dpx_stack_depth(stk) < 1)
+    return -1;
+  obj = dpx_stack_top(stk);
+  if (!PST_STRINGTYPE(obj))
+    return -1; /* typecheck */
+
+  obj = dpx_stack_pop(stk);
+  val = (char *) pst_getSV(obj); /* Need to check */
+  exe = obj->attr.is_exec;
+  pst_release_obj(obj);
+
+  dpx_stack_push(stk, pst_new_name(val, exe));
+
+  return error;
+}
+
+static int mps_op__cvr (mpsi *p)
+{
+  int        error = 0;
+  dpx_stack *stk   = &p->stack.operand;
+  pst_obj   *obj;
+  double     val;
+
+  if (dpx_stack_depth(stk) < 1)
+    return -1;
+  obj = dpx_stack_top(stk);
+  if (!PST_NUMBERTYPE(obj) && !PST_STRINGTYPE(obj))
+    return -1; /* typecheck */
+
+  val = pst_getRV(obj);
+  pst_release_obj(obj);
+
+  dpx_stack_push(stk, pst_new_real(val));
+
+  return error;
+}
+
+#if 0
+/* NYI */
+static int mps_op__cvr (mpsi *p)
+{
+  int        error = 0;
+  dpx_stack *stk   = &p->stack.operand;
+  pst_obj   *num, *rdx, *str;
+
+  if (dpx_stack_depth(stk) < 3)
+    return -1;
+  str = dpx_stack_at(stk, 0);
+  rdx = dpx_stack_at(stk, 1);
+  num = dpx_stack_at(stk, 2);
+  if (!PST_NUMBERTYPE(num) || !PST_INTEGERTYPE(rdx) || !PST_STRINGTYPE(str))
+    return -1; /* typecheck */
+
+
+  return error;
+}
+
+static int mps_op__cvs (mpsi *p)
+{
+  int        error = 0;
+  dpx_stack *stk   = &p->stack.operand;
+
+  return error;
+}
+#endif
+
 #define NUM_PS_OPERATORS  (sizeof(operators)/sizeof(operators[0]))
 
 static pst_operator operators[] = {
-  {"pop",          mps_op__pop},
-  {"exch",         mps_op__exch},
-  {"dup",          mps_op__dup},
-  {"copy",         mps_op__copy},
-  {"index",        mps_op__index},
-  {"roll",         mps_op__roll},
-  {"clear",        mps_op__clear},
-  {"count",        mps_op__count},
-  {"mark",         mps_op__mark},
-  {"cleartomark",  mps_op__cleartomark},
-  {"counttomark",  mps_op__counttomark},
+  {"pop",            mps_op__pop},
+  {"exch",           mps_op__exch},
+  {"dup",            mps_op__dup},
+  {"copy",           mps_op__copy},
+  {"index",          mps_op__index},
+  {"roll",           mps_op__roll},
+  {"clear",          mps_op__clear},
+  {"count",          mps_op__count},
+  {"mark",           mps_op__mark},
+  {"cleartomark",    mps_op__cleartomark},
+  {"counttomark",    mps_op__counttomark},
 
-  {"eq",           mps_op__eq},
-  {"ne",           mps_op__ne},
-  {"ge",           mps_op__ge},
-  {"gt",           mps_op__gt},
-  {"le",           mps_op__le},
-  {"lt",           mps_op__lt},
-  {"and",          mps_op__and},
-  {"not",          mps_op__not},
-  {"or",           mps_op__or},
-  {"xor",          mps_op__xor},
-  {"true",         mps_op__true},
-  {"false",        mps_op__false},
-  {"bitshift",     mps_op__bitshift},
+  {"eq",             mps_op__eq},
+  {"ne",             mps_op__ne},
+  {"ge",             mps_op__ge},
+  {"gt",             mps_op__gt},
+  {"le",             mps_op__le},
+  {"lt",             mps_op__lt},
+  {"and",            mps_op__and},
+  {"not",            mps_op__not},
+  {"or",             mps_op__or},
+  {"xor",            mps_op__xor},
+  {"true",           mps_op__true},
+  {"false",          mps_op__false},
+  {"bitshift",       mps_op__bitshift},
 
-  {"exec",         mps_op__exec},
-  {"if",           mps_op__if},
-  {"ifelse",       mps_op__ifelse},
-  {"for",          mps_op__for},
-  {"repeat",       mps_op__repeat},
-  {"loop",         mps_op__loop},
-  {"exit",         mps_op__exit},
-  {"stop",         mps_op__stop},
-  {"stopped",      mps_op__stopped},
+  {"exec",           mps_op__exec},
+  {"if",             mps_op__if},
+  {"ifelse",         mps_op__ifelse},
+  {"for",            mps_op__for},
+  {"repeat",         mps_op__repeat},
+  {"loop",           mps_op__loop},
+  {"exit",           mps_op__exit},
+  {"stop",           mps_op__stop},
+  {"stopped",        mps_op__stopped},
   {"countexecstack", mps_op__countexecstack},
   {"execstack",      mps_op__execstack},
   {"quit",           mps_op__quit},  /* NYI */
   {"start",          mps_op__start}, /* NYI */
 
-  {"cvlit",        mps_op__cvlit},
-  {"cvx",          mps_op__cvx},
+  {"type",           mps_op__type},
+  {"cvlit",          mps_op__cvlit},
+  {"cvx",            mps_op__cvx},
+  {"xcheck",         mps_op__xcheck},
+  {"executeonly",    mps_op__executeonly},
+  {"noaccess",       mps_op__noaccess},
+  {"readonly",       mps_op__readonly},
+  {"rcheck",         mps_op__rcheck},
+  {"wcheck",         mps_op__wcheck},
+  {"cvi",            mps_op__cvi},
+  {"cvn",            mps_op__cvn},
+  {"cvr",            mps_op__cvr},
+#if 0
+  {"cvrs",           mps_op__cvrs},
+  {"cvs",            mps_op__cvs}
+#endif
 };
 
 

@@ -41,11 +41,18 @@ typedef int pst_type;
 
 #include "dpxutil.h"
 
+typedef enum {
+  acc_unlimited   = 0,
+  acc_readonly    = 1,
+  acc_executeonly = 2,
+  acc_none        = 3
+} pst_attr_acc;
+
 struct pst_obj {
   pst_type type;
   struct {
-    int is_exec;
-    int access;
+    int          is_exec;
+    pst_attr_acc access;
   } attr;
   struct {
     size_t off;
@@ -76,9 +83,10 @@ typedef struct {
 } pst_array;
 
 typedef struct {
-  int       link;
-  int       size;
-  void     *values;
+  int           link;
+  int           size;
+  pst_attr_acc  access;
+  void         *values;
 } pst_dict;
 
 extern pst_obj *pst_get_token (unsigned char **inbuf, unsigned char *inbufend);

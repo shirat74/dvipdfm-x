@@ -490,14 +490,15 @@ static int mps_op__get (mpsi *p)
       pst_dict *data = obj2->data;
       char     *key;
 
-      key  = (char *) pst_getSV(obj1);
-      
+      key = (char *) pst_getSV(obj1);
       obj = ht_lookup_table(data->values, key, strlen(key));
-
       RELEASE(key);
     }
-    if (!obj)
+    if (!obj) {
       error = -1; /* undefiend */
+    } else {
+      obj = pst_copy_obj(obj);
+    }
     break;
   case PST_TYPE_ARRAY:
     {
@@ -509,7 +510,7 @@ static int mps_op__get (mpsi *p)
         error = -1; /* rangecheck */
       } else {
         idx += obj2->comp.off;
-        obj  = data->values[idx];
+        obj  = pst_copy_obj(data->values[idx]);
       }
     }
     break;
@@ -530,7 +531,7 @@ static int mps_op__get (mpsi *p)
   }
 
   if (obj)
-    dpx_stack_push(stk, pst_copy_obj(obj));
+    dpx_stack_push(stk, obj);
   pst_release_obj(obj1);
   pst_release_obj(obj2);
 

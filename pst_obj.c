@@ -96,7 +96,7 @@ pst_new_obj (pst_type type, void *data)
   obj->type = type;
   obj->data = data;
   obj->attr.is_exec = 0;
-  obj->attr.access  = 0;
+  obj->attr.access  = acc_unlimited;
   switch (type) {
   case PST_TYPE_STRING:
     {

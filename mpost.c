@@ -452,8 +452,8 @@ static int mps_op__dummy (mpsi *p)
 }
 
 static pst_operator operators[] = {
-  {"null",         mps_op__null},
   {"bind",         mps_op__bind},
+  {"null",         mps_op__null},
   {"=",            mps_op__equal},
   {"save",         mps_op__dummy}, /* Not Implemented */
   {"restore",      mps_op__pop} 
@@ -466,8 +466,9 @@ pst_new_dict (size_t size)
   pst_dict *dict;
 
   dict = NEW(1, pst_dict);
-  dict->link = 0;
-  dict->size = size;
+  dict->link   = 0;
+  dict->access = acc_unlimited;
+  dict->size   = size;
   dict->values = NEW(1, struct ht_table);
   ht_init_table(dict->values, release_obj);
 
