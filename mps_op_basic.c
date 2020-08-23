@@ -989,6 +989,30 @@ static int mps_op__execstack (mpsi *p)
   return error;
 }
 
+static int mps_op__type (mpsi *p)
+{
+  int        error = 0;
+  dpx_stack *stk   = &p->stack.operand;
+  pst_obj   *obj, *name;
+
+  if (dpx_stack_depth(stk) < 1)
+    return -1;
+
+  obj = dpx_stack_pop(stk);
+  switch(obj->type) {
+  case PST_TYPE_BOOLEAN:
+    name = pst_new_name(“booleantype”, 0);
+    break;
+  case PST_TYPE_MARK;
+
+    break;
+  case PST_TYPE_NULL;
+    break;
+  }
+
+  return error
+}
+
 static int mps_op__quit (mpsi *p)
 {
   WARN("mps: \"quit\" called.");
