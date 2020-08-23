@@ -967,6 +967,8 @@ static int mps_op__execstack (mpsi *p)
   obj1 = dpx_stack_pop(stk);
   n    = dpx_stack_depth(&p->stack.exec);
   obj2 = pst_copy_obj(obj1);
+  pst_release_obj(obj1);
+
   obj2->comp.size = n;
   
   /* FIXME */
