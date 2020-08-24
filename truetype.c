@@ -71,7 +71,7 @@ pdf_font_open_truetype (pdf_font *font)
 
   ASSERT( font );
 
-  ident = pdf_font_get_ident(font);
+  ident = pdf_font_get_filename(font);
   index = pdf_font_get_index(font);
 
   ASSERT( ident );
@@ -327,7 +327,7 @@ do_builtin_encoding (pdf_font *font, const char *usedchars, sfnt *sfont)
     gid = tt_cmap_lookup(ttcm, code);
     if (gid == 0) {
       WARN("Glyph for character code=0x%02x missing in font font-file=\"%s\".",
-           code, pdf_font_get_ident(font));
+           code, pdf_font_get_filename(font));
       idx = 0;
     } else {
       idx = tt_find_glyph(glyphs, gid);
@@ -786,7 +786,7 @@ do_custom_encoding (pdf_font *font,
   error = setup_glyph_mapper(&gm, sfont);
   if (error) {
     WARN("No post table nor Unicode cmap found in font: %s",
-         pdf_font_get_ident(font));
+         pdf_font_get_filename(font));
     WARN(">> I can't find glyphs without this!");
     return  -1;
   }
@@ -811,7 +811,7 @@ do_custom_encoding (pdf_font *font,
 
     if (!encoding[code] || !strcmp(encoding[code], ".notdef")) {
       WARN("Character code=\"0x%02X\" mapped to \".notdef\" glyph used in font font-file=\"%s\"",
-           code, pdf_font_get_ident(font));
+           code, pdf_font_get_filename(font));
       WARN(">> Maybe incorrect encoding specified?");
       idx = 0;
     } else {
@@ -826,7 +826,7 @@ do_custom_encoding (pdf_font *font,
        */
       if (error) {
         WARN("Glyph \"%s\" not available in font \"%s\".",
-             encoding[code], pdf_font_get_ident(font));
+             encoding[code], pdf_font_get_filename(font));
       } else {
         if (dpx_conf.verbose_level > 1)
           MESG("truetype>> Glyph glyph-name=\"%s\" found at glyph-id=\"%u\".\n", encoding[code], gid);
@@ -872,7 +872,7 @@ int
 pdf_font_load_truetype (pdf_font *font)
 {
   pdf_obj   *descriptor  = pdf_font_get_descriptor(font);
-  char      *ident       = pdf_font_get_ident(font);
+  char      *ident       = pdf_font_get_filename(font);
   int        encoding_id = pdf_font_get_encoding(font);
   char      *usedchars   = pdf_font_get_usedchars(font);
 #ifdef  ENABLE_NOEMBED

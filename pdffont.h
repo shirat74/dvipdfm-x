@@ -49,28 +49,25 @@ typedef struct pdf_font pdf_font;
 extern void     pdf_init_fonts  (void);
 extern void     pdf_close_fonts (void);
 
-/* font_name is used when mrec is NULL.
+/* tex_name is used when mrec is NULL.
  * font_scale (point size) used by PK font.
  * It might be necessary if dvipdfmx supports font format with
  * various optical sizes supported in the future.
  */
-extern int      pdf_font_findresource  (const char *font_name,
-                                        double font_scale, fontmap_rec *mrec);
+extern int      pdf_font_findresource  (const char *tex_name, double font_scale);
+extern int      pdf_font_load_font     (const char *tex_name, double font_scale, fontmap_rec *mrec);
 
 extern int      pdf_get_font_subtype   (int font_id);
 extern pdf_obj *pdf_get_font_reference (int font_id);
 extern char    *pdf_get_font_usedchars (int font_id);
 
-#if 0
-extern char    *pdf_get_font_fontname  (int font_id); /* without unique tag */
-#endif /* 0 */
 extern int      pdf_get_font_encoding  (int font_id);
 extern int      pdf_get_font_wmode     (int font_id);
 
 /* Each font drivers use the followings. */
 extern int      pdf_font_is_in_use      (pdf_font *font);
 
-extern char    *pdf_font_get_ident      (pdf_font *font);
+extern char    *pdf_font_get_filename   (pdf_font *font);
 extern char    *pdf_font_get_mapname    (pdf_font *font);
 extern char    *pdf_font_get_fontname   (pdf_font *font); /* without unique tag */
 extern char    *pdf_font_get_uniqueTag  (pdf_font *font);
@@ -82,9 +79,6 @@ extern char    *pdf_font_get_usedchars  (pdf_font *font);
 extern int      pdf_font_get_encoding   (pdf_font *font);
 
 extern int      pdf_font_get_flag       (pdf_font *font, int mask);
-#if 0
-extern int      pdf_font_get_flags      (pdf_font *font);
-#endif /* 0 */
 extern double   pdf_font_get_param      (pdf_font *font, int type);
 
 extern uint32_t pdf_font_get_index      (pdf_font *font);

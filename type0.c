@@ -531,7 +531,20 @@ Type0Font_cache_find (const char *map_name, int cmap_id, fontmap_opt *fmap_opt)
      */
     pdf_add_dict(font->fontdict,
                  pdf_new_name("BaseFont"), pdf_new_name(fontname));
-    font->used_chars = new_used_chars2();
+    /* Adobe-Identity here means use GID as CID directly. No need to use GSUB for finding
+     * vertical glyphs hence separate used_chars for H and V instances are not needed.
+     */
+    if (!csi || (!strcmp(csi->registry, "Adobe") && !strcmp(csi->ordering, "Identity"))) {
+      if ((parent_id = CIDFont_get_parent_id(cidfont, wmode ? 0 : 1)) < 0) {
+        font->used_chars = new_used_chars2();
+      } else {
+        /* Don't allocate new one. */
+        font->used_chars = Type0Font_get_usedchars(Type0Font_cache_get(parent_id));
+        font->flags     |= FLAG_USED_CHARS_SHARED;
+      }
+    } else {
+      font->used_chars = new_used_chars2();
+    }
     break;
   default:
     ERROR("Unrecognized CIDFont Type");

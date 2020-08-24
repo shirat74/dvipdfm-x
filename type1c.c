@@ -78,7 +78,7 @@ pdf_font_open_type1c (pdf_font *font)
 
   ASSERT(font);
 
-  ident       = pdf_font_get_ident   (font);
+  ident       = pdf_font_get_filename(font);
   encoding_id = pdf_font_get_encoding(font);
 
   fp = DPXFOPEN(ident, DPX_RES_TYPE_OTFONT);
@@ -271,7 +271,7 @@ pdf_font_load_type1c (pdf_font *font)
 
   usedchars = pdf_font_get_usedchars (font);
   fontname  = pdf_font_get_fontname  (font);
-  ident     = pdf_font_get_ident     (font);
+  ident     = pdf_font_get_filename  (font);
   uniqueTag = pdf_font_get_uniqueTag (font);
   if (!usedchars ||
       !fontname  || !ident) {

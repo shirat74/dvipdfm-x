@@ -1,6 +1,6 @@
 /* This is dvipdfmx, an eXtended version of dvipdfm by Mark A. Wicks.
 
-    Copyright (C) 2002-2020 by Jin-Hwan Cho and Shunsaku Hirata,
+    Copyright (C) 2007-2016 by Jin-Hwan Cho and Shunsaku Hirata,
     the dvipdfmx project team.
     
     Copyright (C) 1998, 1999 by Mark A. Wicks <mwicks@kettering.edu>
@@ -106,7 +106,7 @@ pdf_font_open_pkfont (pdf_font *font)
   unsigned  dpi;
   FILE     *fp;
 
-  ident       = pdf_font_get_ident(font);
+  ident       = pdf_font_get_filename(font);
   point_size  = pdf_font_get_param(font, PDF_FONT_PARAM_POINT_SIZE);
   encoding_id = pdf_font_get_encoding(font);
 
@@ -506,7 +506,7 @@ pdf_font_load_pkfont (pdf_font *font)
     return 0;
   }
 
-  ident       = pdf_font_get_ident(font);
+  ident       = pdf_font_get_filename(font);
   point_size  = pdf_font_get_param(font, PDF_FONT_PARAM_POINT_SIZE);
   usedchars   = pdf_font_get_usedchars(font);
 #if  ENABLE_GLYPHENC
