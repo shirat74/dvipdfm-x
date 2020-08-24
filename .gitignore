@@ -45,3 +45,6 @@ Temporary Items
 ac/dvipdfm-x.ac
 .vscode
 *.orig
+autom4te.cache/output.0t
+autom4te.cache/requests
+autom4te.cache/traces.0t
