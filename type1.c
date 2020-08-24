@@ -97,7 +97,7 @@ pdf_font_open_type1 (pdf_font *font)
 
   ASSERT(font);
 
-  ident = pdf_font_get_ident(font);
+  ident = pdf_font_get_filename(font);
 
   if (is_basefont(ident)) {
     pdf_font_set_fontname(font, ident);
@@ -537,7 +537,7 @@ pdf_font_load_type1 (pdf_font *font)
 
                 pdf_font_get_descriptor(font);
   usedchars   = pdf_font_get_usedchars (font);
-  ident       = pdf_font_get_ident     (font);
+  ident       = pdf_font_get_filename  (font);
   fontname    = pdf_font_get_fontname  (font);
   uniqueTag   = pdf_font_get_uniqueTag (font);
   if (!usedchars || !ident || !fontname) {
