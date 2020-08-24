@@ -590,7 +590,7 @@ pdf_font_findresource (const char *ident, double scale)
     if (found) {
 	    if (dpx_conf.verbose_level > 0) {
 	      MESG("\npdf_font>> Font \"%s\" (enc_id=%d) found at id=%d.\n",
-	           font->fontname, font->encoding_id, id);
+	           font->ident, font->encoding_id, id);
 	    }
 	    break;
     }
