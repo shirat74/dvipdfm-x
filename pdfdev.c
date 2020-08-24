@@ -196,6 +196,9 @@ struct dev_font {
   int      font_id;
   int      enc_id;
 
+  /* if >= 0, index of a dev_font that really has the resource and used_chars */
+  int      real_font_index;
+
   pdf_obj *resource;
   char    *used_chars;
 
@@ -252,6 +255,7 @@ struct pdf_dev {
   struct dev_font  *fonts;
   int               num_dev_fonts;
   int               max_dev_fonts;
+  int               num_phys_fonts;
   char              format_buffer[FORMAT_BUF_SIZE+1];
 };
 
@@ -852,6 +856,7 @@ static int
 pdf_dev_set_font (pdf_dev *p, int font_id)
 {
   struct dev_font *font;
+  struct dev_font *real_font;
   int    text_rotate;
   double font_scale;
   int    len;
@@ -864,6 +869,11 @@ pdf_dev_set_font (pdf_dev *p, int font_id)
 
   font = GET_FONT(p, font_id);
   ASSERT(font); /* Caller should check font_id. */
+
+  if (font->real_font_index >= 0)
+    real_font = GET_FONT(p, font->real_font_index);
+  else
+    real_font = font;
 
   p->text_state.is_mb = (font->format == PDF_FONTTYPE_COMPOSITE) ? 1 : 0;
 
@@ -884,20 +894,20 @@ pdf_dev_set_font (pdf_dev *p, int font_id)
   p->text_state.matrix.extend = font->extend;
   p->text_state.matrix.rotate = text_rotate;
 
-  if (!font->resource) {
-    font->resource   = pdf_get_font_reference(font->font_id);
-    font->used_chars = pdf_get_font_usedchars(font->font_id);
+  if (!real_font->resource) {
+    real_font->resource   = pdf_get_font_reference(real_font->font_id);
+    real_font->used_chars = pdf_get_font_usedchars(real_font->font_id);
   }
 
-  if (!font->used_on_this_page) {
+  if (!real_font->used_on_this_page) { 
     pdf_doc_add_page_resource("Font",
-                              font->short_name,
-                              pdf_link_obj(font->resource));
-    font->used_on_this_page = 1;
+                              real_font->short_name,
+                              pdf_link_obj(real_font->resource));
+    real_font->used_on_this_page = 1;
   }
 
   font_scale = (double) font->sptsize * p->unit.dvi2pts;
-  len  = sprintf(p->format_buffer, " /%s", font->short_name); /* space not necessary. */
+  len  = sprintf(p->format_buffer, " /%s", real_font->short_name); /* space not necessary. */
   p->format_buffer[len++] = ' ';
   len += p_dtoa(font_scale, MIN(p->unit.precision+1, DEV_PRECISION_MAX),
                 p->format_buffer+len);
@@ -1047,6 +1057,7 @@ pdf_dev_set_string (spt_t xpos, spt_t ypos,
 {
   pdf_dev             *p = current_device();
   struct dev_font     *font;
+  struct dev_font     *real_font;
   const unsigned char *str_ptr; /* Pointer to the reencoded string. */
   int                  length, i, len = 0;
   spt_t                kern, delh, delv;
@@ -1067,6 +1078,11 @@ pdf_dev_set_string (spt_t xpos, spt_t ypos,
     return;
   }
 
+  if (font->real_font_index >= 0)
+    real_font = GET_FONT(p, font->real_font_index);
+  else
+    real_font = font;
+
   text_xorigin = p->text_state.ref_x;
   text_yorigin = p->text_state.ref_y;
 
@@ -1078,16 +1094,16 @@ pdf_dev_set_string (spt_t xpos, spt_t ypos,
       ERROR("Error in converting input string...");
       return;
     }
-    if (font->used_chars != NULL) {
+    if (real_font->used_chars != NULL) {
       for (i = 0; i < length; i += 2) {
         unsigned short cid = (str_ptr[i] << 8) | str_ptr[i + 1];
-        add_to_used_chars2(font->used_chars, cid);
+        add_to_used_chars2(real_font->used_chars, cid);
       }
     }
   } else {
-    if (font->used_chars != NULL) {
+    if (real_font->used_chars != NULL) {
       for (i = 0; i < length; i++)
-        font->used_chars[str_ptr[i]] = 1;
+        real_font->used_chars[str_ptr[i]] = 1;
     }
   }
 
@@ -1392,9 +1408,11 @@ pdf_dev_locate_font (const char *font_name, spt_t ptsize)
   }
 
   for (i = 0; i < p->num_dev_fonts; i++) {
-    if (!strcmp(font_name, p->fonts[i].tex_name) &&
-        ptsize == p->fonts[i].sptsize) {
-      return i; /* found a dev_font that matches the request */
+    if (strcmp(font_name, p->fonts[i].tex_name) == 0) {
+      if (ptsize == p->fonts[i].sptsize)
+        return i; /* found a dev_font that matches the request */
+      if (p->fonts[i].format != PDF_FONTTYPE_BITMAP)
+        break; /* new dev_font will share pdf resource with /i/ */
     }
   }
 
@@ -1415,15 +1433,21 @@ pdf_dev_locate_font (const char *font_name, spt_t ptsize)
   if (dpx_conf.verbose_level > 1)
     print_fontmap(font_name, mrec);
 
-  font->font_id = pdf_font_findresource(font_name, ptsize * p->unit.dvi2pts);
-  if (font->font_id < 0) {
-    font->font_id = pdf_font_load_font(font_name, ptsize * p->unit.dvi2pts, mrec);
-    if (font->font_id < 0)
-      return  -1;
-  }
+  font->font_id = pdf_font_findresource(font_name, ptsize * p->unit.dvi2pts, mrec);
+  if (font->font_id < 0)
+    return  -1;
 
-  font->short_name[0] = 'F';
-  p_itoa(font->font_id, &font->short_name[1]); /* NULL terminated here */
+  /* We found device font here. */
+  if (i < p->num_dev_fonts) {
+    font->real_font_index = i;
+    strcpy(font->short_name, p->fonts[i].short_name);
+  }
+  else {
+    font->real_font_index = -1;
+    font->short_name[0] = 'F';
+    p_itoa(p->num_phys_fonts + 1, &font->short_name[1]); /* NULL terminated here */
+    p->num_phys_fonts++;
+  }
 
   font->used_on_this_page = 0;
 
