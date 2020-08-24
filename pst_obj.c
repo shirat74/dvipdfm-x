@@ -438,17 +438,12 @@ pst_getSV (pst_obj *obj)
     }
     break;
   case PST_TYPE_OPERATOR:
-    {
-      pst_operator *data = obj->data;
-
-      sv = NEW(strlen(data->name) + 1, unsigned char);
-      strcpy(sv, data->name);
-    }
-    break;
+    /* NYI */
+    /* operator name should be returned... */
   default:
     {
-      sv = NEW(17, unsigned char);
-      strcpy(sv, "--nonstringval--");
+      sv = NEW(strlen("--nonstringval--") + 1, unsigned char);
+      strcpy((char *)sv, "--nonstringval--");
       break;
     }
   }

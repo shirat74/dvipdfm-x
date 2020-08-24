@@ -618,7 +618,7 @@ mps_parse_body (mpsi *p, const char **strptr, const char *endptr)
 
     while ((obj = dpx_stack_pop(&p->stack.exec)) != NULL) {
       if (!obj->attr.is_exec) {
-        dpx_stack_push(&p->stack.operand, pst_copy_obj(obj));
+        dpx_stack_push(&p->stack.operand, obj);
         continue;
       }
       switch (obj->type) {
@@ -637,8 +637,7 @@ mps_parse_body (mpsi *p, const char **strptr, const char *endptr)
       default:
         dpx_stack_push(&p->stack.operand, pst_copy_obj(obj));
       }
-      /* FIXME */
-      // pst_release_obj(obj);
+      pst_release_obj(obj);
     }
     skip_white(strptr, endptr);
   }
