@@ -419,19 +419,19 @@ pdf_close_fonts (void)
     if (dpx_conf.verbose_level > 0) {
       if (font->subtype != PDF_FONT_FONTTYPE_TYPE0) {
         MESG("(%s", pdf_font_get_filename(font));
-	      if (dpx_conf.verbose_level > 2 &&
-	          !pdf_font_get_flag(font, PDF_FONT_FLAG_NOEMBED)) {
-	        MESG("[%s+%s]", pdf_font_get_uniqueTag(font), pdf_font_get_fontname(font));
-	      } else if (dpx_conf.verbose_level > 1) {
-	        MESG("[%s]", pdf_font_get_fontname(font));
-	      }
-	      if (dpx_conf.verbose_level > 1) {
-	        if (pdf_font_get_encoding(font) >= 0) {
-	            MESG("[%s]", pdf_encoding_get_name(pdf_font_get_encoding(font)));
-	        } else {
-	          MESG("[built-in]");
-	        }
-	      }
+        if (dpx_conf.verbose_level > 2 &&
+            !pdf_font_get_flag(font, PDF_FONT_FLAG_NOEMBED)) {
+          MESG("[%s+%s]", pdf_font_get_uniqueTag(font), pdf_font_get_fontname(font));
+        } else if (dpx_conf.verbose_level > 1) {
+          MESG("[%s]", pdf_font_get_fontname(font));
+        }
+        if (dpx_conf.verbose_level > 1) {
+          if (pdf_font_get_encoding(font) >= 0) {
+            MESG("[%s]", pdf_encoding_get_name(pdf_font_get_encoding(font)));
+          } else {
+            MESG("[built-in]");
+          }
+        }
       }
     }
 
@@ -640,8 +640,8 @@ pdf_font_load_font (const char *ident, double font_scale, fontmap_rec *mrec)
           WARN("Only 16-bit encoding supported for output encoding.");
         }
         /*
-	       * Turn on map option.
-	       */
+         * Turn on map option.
+         */
         if (minbytes == 2 && mrec->opt.mapc < 0) {
           if (dpx_conf.verbose_level > 0) {
             MESG("\n");
@@ -702,7 +702,7 @@ pdf_font_load_font (const char *ident, double font_scale, fontmap_rec *mrec)
     font_cache.count++;
 
     if (dpx_conf.verbose_level > 0) {
-	    MESG("\npdf_font>> Type0 font \"%s\"", fontname);
+      MESG("\npdf_font>> Type0 font \"%s\"", fontname);
       MESG(" cmap_id=<%s,%d>", mrec->enc_name, font->encoding_id);
       MESG(" opened at font_id=<%s,%d>.\n", ident, font_id);
     }
