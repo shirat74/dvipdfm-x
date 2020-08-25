@@ -632,8 +632,8 @@ pdf_font_load_font (const char *ident, double font_scale, fontmap_rec *mrec)
         cmap_type = CMap_get_type(cmap);
         minbytes = CMap_get_profile(cmap, CMAP_PROF_TYPE_INBYTES_MIN);
         /*
-	       * Check for output encoding.
-	       */
+	 * Check for output encoding.
+	 */
         if (cmap_type != CMAP_TYPE_IDENTITY &&
             cmap_type != CMAP_TYPE_CODE_TO_CID &&
             cmap_type != CMAP_TYPE_TO_UNICODE) {
@@ -862,16 +862,6 @@ pdf_font_get_flag (pdf_font *font, int mask)
 
   return ((font->flags & mask) ? 1 : 0);
 }
-
-#if 0
-int
-pdf_font_get_flags (pdf_font *font)
-{
-  ASSERT(font);
-
-  return font->flags;
-}
-#endif /* 0 */
 
 double
 pdf_font_get_param (pdf_font *font, int param_type)
