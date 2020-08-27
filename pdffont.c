@@ -683,9 +683,7 @@ pdf_font_load_font (const char *ident, double font_scale, fontmap_rec *mrec)
       font->filename    = NEW(strlen(fontname) + 1, char);
       strcpy(font->filename, fontname);
       font->index       = (mrec && mrec->opt.index) ? mrec->opt.index : 0;
-      if (pdf_font_open_type0(font, font_id, &mrec->opt) >= 0) {
-        font->subtype = PDF_FONT_FONTTYPE_TYPE0;
-      } else {
+      if (pdf_font_open_type0(font, font_id, &mrec->opt) < 0) {
         pdf_clean_font_struct(font);
         return -1;
       }
