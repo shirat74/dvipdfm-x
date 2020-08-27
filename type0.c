@@ -75,9 +75,6 @@ new_used_chars2(void)
 #define FLAG_USED_CHARS_SHARED (1 << 0)
 
 typedef struct {
-  /*
-   * Type0 only
-   */
   CIDFont *descendant; /* Only single descendant is allowed. */
   int      flags;
   int      wmode;
@@ -120,7 +117,7 @@ Type0Font_try_load_ToUnicode_stream(pdf_font *font, char *cmap_base) {
     tounicode = otf_create_ToUnicode_stream(CIDFont_get_ident(cidfont),
                                             CIDFont_get_opt_index(cidfont),
                                             CIDFont_get_fontname(cidfont),
-                                            Type0Font_get_usedchars(font));   
+                                            font->usedchars);   
   }
 
   return tounicode;
@@ -225,7 +222,7 @@ Type0Font_dofont (pdf_font *font)
   if (!pdf_lookup_dict(font->resource, "ToUnicode")) {
     Type0Font_attach_ToUnicode_stream(font);
   }
-  {
+  if (!pdf_lookup_dict(font->resource, "DescendantFonts")) {
     pdf_obj    *array;
     type0_data *data = font->fdata;
 
@@ -243,14 +240,6 @@ Type0Font_get_wmode (Type0Font *font)
   ASSERT(font);
 
   return data->wmode;
-}
-
-char *
-Type0Font_get_usedchars (Type0Font *font)
-{
-  ASSERT(font);
-
-  return font->usedchars;
 }
 
 int
