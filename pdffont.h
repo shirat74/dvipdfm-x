@@ -43,6 +43,42 @@ extern void pdf_font_set_dpi (int font_dpi);
 #define PDF_FONT_PARAM_DESIGN_SIZE 1
 #define PDF_FONT_PARAM_POINT_SIZE  2
 
+struct pdf_font
+{
+  char    *ident;   /* map name */
+  int      font_id; /* ID of this font */
+  int      subtype;
+  int      alias;
+
+  char    *filename;
+
+  int      encoding_id; /* encoding or CMap */
+
+  /* For simple font */
+  uint32_t index;
+  char    *fontname;
+  char     uniqueID[7];
+
+  /*
+   * PDF font resource objects
+   */
+  pdf_obj *reference;
+  pdf_obj *resource;
+  pdf_obj *descriptor;
+
+  /*
+   * Font format specific data
+   */
+  char    *usedchars;
+  int      flags;
+
+  /* PK font */
+  double   point_size;
+  double   design_size;
+
+  void    *fdata; /* Type0 font */
+};
+
 typedef struct pdf_font pdf_font;
 
 /* pdf_open_document() call them. */
@@ -59,6 +95,7 @@ extern int      pdf_font_load_font     (const char *tex_name, double font_scale,
 
 extern int      pdf_get_font_subtype   (int font_id);
 extern pdf_obj *pdf_get_font_reference (int font_id);
+extern pdf_obj *pdf_get_font_resource  (int font_id);
 extern char    *pdf_get_font_usedchars (int font_id);
 
 extern int      pdf_get_font_encoding  (int font_id);

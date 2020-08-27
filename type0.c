@@ -74,69 +74,23 @@ new_used_chars2(void)
 #define FLAG_NONE              0
 #define FLAG_USED_CHARS_SHARED (1 << 0)
 
-struct Type0Font {
-  char    *fontname;   /* BaseFont */
-  char    *encoding;   /* "Identity-H" or "Identity-V" (not ID) */
-  char    *used_chars; /* Used chars (CIDs) */
-
+typedef struct {
   /*
    * Type0 only
    */
   CIDFont *descendant; /* Only single descendant is allowed. */
   int      flags;
   int      wmode;
-  int      cmap_id;
-
-  /*
-   * PDF Font Resource
-   */
-  pdf_obj *indirect;
-  pdf_obj *fontdict;
-  pdf_obj *descriptor; /* MUST BE NULL */
-};
+} type0_data;
 
 static void
-Type0Font_init_font_struct (Type0Font *font)
+Type0Font_init_font_struct (type0_data *data)
 {
-  ASSERT(font);
-
-  font->fontname   = NULL;
-  font->fontdict   = NULL;
-  font->indirect   = NULL;
-  font->descriptor = NULL;
-  font->encoding   = NULL;
-  font->used_chars = NULL;
-  font->descendant = NULL;
-  font->wmode      = -1;
-  font->cmap_id    = -1;
-  font->flags      = FLAG_NONE;
+  data->descendant = NULL;
+  data->wmode      = -1;
+  data->flags      = FLAG_NONE;
 
   return;
-}
-
-static void
-Type0Font_clean (Type0Font *font)
-{
-  if (font) {
-    if (font->fontdict)
-      ERROR("%s: Object not flushed.", TYPE0FONT_DEBUG_STR);
-    if (font->indirect)
-      ERROR("%s: Object not flushed.", TYPE0FONT_DEBUG_STR);
-    if (font->descriptor)
-      ERROR("%s: FontDescriptor unexpected for Type0 font.", TYPE0FONT_DEBUG_STR);
-    if (!(font->flags & FLAG_USED_CHARS_SHARED) && font->used_chars)
-      RELEASE(font->used_chars);
-    if (font->encoding)
-      RELEASE(font->encoding);
-    if (font->fontname)
-      RELEASE(font->fontname);
-    font->fontdict   = NULL;
-    font->indirect   = NULL;
-    font->descriptor = NULL;
-    font->used_chars = NULL;
-    font->encoding   = NULL;
-    font->fontname   = NULL;
-  }
 }
 
 /* PLEASE FIX THIS */
@@ -147,7 +101,7 @@ Type0Font_clean (Type0Font *font)
  * CHANGED: CMap here is not always Unicode to CID mapping. Don't use reverse lookup.
  */
 static pdf_obj *
-Type0Font_try_load_ToUnicode_stream(Type0Font *font, char *cmap_base) {
+Type0Font_try_load_ToUnicode_stream(pdf_font *font, char *cmap_base) {
   pdf_obj *tounicode;
   char    *cmap_name;
 
@@ -161,7 +115,8 @@ Type0Font_try_load_ToUnicode_stream(Type0Font *font, char *cmap_base) {
   RELEASE(cmap_name);
 
   if (!tounicode) {
-    CIDFont *cidfont = font->descendant;
+    type0_data *data    = font->fdata;
+    CIDFont    *cidfont = data->descendant;
     tounicode = otf_create_ToUnicode_stream(CIDFont_get_ident(cidfont),
                                             CIDFont_get_opt_index(cidfont),
                                             CIDFont_get_fontname(cidfont),
@@ -172,10 +127,11 @@ Type0Font_try_load_ToUnicode_stream(Type0Font *font, char *cmap_base) {
 }
 
 static void
-Type0Font_attach_ToUnicode_stream (Type0Font *font)
+Type0Font_attach_ToUnicode_stream (pdf_font *font)
 {
   pdf_obj    *tounicode;
-  CIDFont    *cidfont;
+  type0_data *data    = font->fdata;
+  CIDFont    *cidfont = data->descendant;
   CIDSysInfo *csi;
   char       *fontname;
 
@@ -187,12 +143,7 @@ Type0Font_attach_ToUnicode_stream (Type0Font *font)
    *  ordering CID-keyed fonts. External resource must be loaded for
    *  others.
    */
-
-  cidfont = font->descendant;
-  if (!cidfont) {
-    ERROR("%s: No descendant CID-keyed font.", TYPE0FONT_DEBUG_STR);
-    return;
-  }
+  ASSERT(cidfont);
 
   if (CIDFont_is_ACCFont(cidfont)) {
     /* No need to embed ToUnicode */
@@ -205,7 +156,7 @@ Type0Font_attach_ToUnicode_stream (Type0Font *font)
     if (!tounicode) { /* This should work */
       tounicode = pdf_new_name("Identity-H");
     }
-    pdf_add_dict(font->fontdict, pdf_new_name("ToUnicode"), tounicode);
+    pdf_add_dict(font->resource, pdf_new_name("ToUnicode"), tounicode);
     return;
   }
 
@@ -224,7 +175,7 @@ Type0Font_attach_ToUnicode_stream (Type0Font *font)
         tounicode = otf_create_ToUnicode_stream(CIDFont_get_ident(cidfont),
                                                 CIDFont_get_opt_index(cidfont),
                                                 CIDFont_get_fontname(cidfont),
-                                                Type0Font_get_usedchars(font));
+                                                font->usedchars);
       }
       break;
     default:
@@ -232,7 +183,7 @@ Type0Font_attach_ToUnicode_stream (Type0Font *font)
         tounicode = otf_create_ToUnicode_stream(CIDFont_get_ident(cidfont),
                                                 CIDFont_get_opt_index(cidfont),
                                                 CIDFont_get_fontname(cidfont),
-                                                Type0Font_get_usedchars(font));
+                                                font->usedchars);
       } else if (CIDFont_get_flag(cidfont, CIDFONT_FLAG_TYPE1)) {
         /* FIXME: handled on very different timing.
          * Font loader will create ToUnicode and set.
@@ -251,8 +202,7 @@ Type0Font_attach_ToUnicode_stream (Type0Font *font)
   }
 
   if (tounicode) {
-    pdf_add_dict(font->fontdict,
-                 pdf_new_name("ToUnicode"), tounicode);
+    pdf_add_dict(font->resource, pdf_new_name("ToUnicode"), tounicode);
   } else {
 #if defined(LIBDPX)
     if (dpx_conf.verbose_level > 0)
@@ -266,135 +216,52 @@ Type0Font_attach_ToUnicode_stream (Type0Font *font)
 }
 
 void
-Type0Font_set_ToUnicode (Type0Font *font, pdf_obj *cmap_ref)
+Type0Font_dofont (pdf_font *font)
 {
-  ASSERT(font);
-
-  pdf_add_dict(font->fontdict,
-               pdf_new_name("ToUnicode"), cmap_ref);
-}
-
-static void
-Type0Font_dofont (Type0Font *font)
-{
-  if (!font || !font->indirect)
+  if (!font || !font->reference)
     return;
 
   /* FIXME: Should move to pdffont.c */
-  if (!pdf_lookup_dict(font->fontdict, "ToUnicode")) {
+  if (!pdf_lookup_dict(font->resource, "ToUnicode")) {
     Type0Font_attach_ToUnicode_stream(font);
   }
-}
+  {
+    pdf_obj    *array;
+    type0_data *data = font->fdata;
 
-static void
-Type0Font_flush (Type0Font *font)
-{
-  if (font) {
-    if (font->fontdict)
-      pdf_release_obj(font->fontdict);
-    font->fontdict = NULL;
-    if (font->indirect)
-      pdf_release_obj(font->indirect);
-    font->indirect = NULL;
-    if (font->descriptor)
-      ERROR("%s: FontDescriptor unexpected for Type0 font.", TYPE0FONT_DEBUG_STR);
-    font->descriptor = NULL;
+    array = pdf_new_array();
+    pdf_add_array(array, CIDFont_get_resource(data->descendant));
+    pdf_add_dict(font->resource, pdf_new_name("DescendantFonts"), array);
   }
 }
 
 int
 Type0Font_get_wmode (Type0Font *font)
 {
+  type0_data *data = font->fdata;
+
   ASSERT(font);
 
-  return font->wmode;
+  return data->wmode;
 }
-
-#if 0
-char *
-Type0Font_get_encoding (Type0Font *font)
-{
-  ASSERT(font);
-
-  return font->encoding;
-}
-#endif
 
 char *
 Type0Font_get_usedchars (Type0Font *font)
 {
   ASSERT(font);
 
-  return font->used_chars;
-}
-
-pdf_obj *
-Type0Font_get_resource (Type0Font *font)
-{
-  ASSERT(font);
-
-  /*
-   * This looks somewhat strange.
-   */
-  if (!font->indirect) {
-    pdf_obj *array;
-
-    array = pdf_new_array();
-    pdf_add_array(array, CIDFont_get_resource(font->descendant));
-    pdf_add_dict(font->fontdict, pdf_new_name("DescendantFonts"), array);
-    font->indirect = pdf_ref_obj(font->fontdict);
-  }
-
-  return pdf_link_obj(font->indirect);
-}
-
-/******************************** CACHE ********************************/
-
-#define CHECK_ID(n) do {\
-  if ((n) < 0 || (n) >= __cache.count)\
-    ERROR("%s: Invalid ID %d", TYPE0FONT_DEBUG_STR, (n));\
-} while (0)
-
-#define CACHE_ALLOC_SIZE 16u
-
-static struct font_cache {
-  int        count;
-  int        capacity;
-  Type0Font *fonts;
-} __cache = {
-  0, 0, NULL
-};
-
-void
-Type0Font_cache_init (void)
-{
-  if (__cache.fonts)
-    ERROR("%s: Already initialized.", TYPE0FONT_DEBUG_STR);
-  __cache.count    = 0;
-  __cache.capacity = 0;
-  __cache.fonts    = NULL;
-}
-
-Type0Font *
-Type0Font_cache_get (int id)
-{
-  CHECK_ID(id);
-
-  return &__cache.fonts[id];
+  return font->usedchars;
 }
 
 int
-Type0Font_cache_find (const char *map_name, int cmap_id, fontmap_opt *fmap_opt)
+pdf_font_check_type0_opened (const char *map_name, int cmap_id, fontmap_opt *fmap_opt)
 {
-  int         font_id = -1;
-  Type0Font  *font;
   CIDFont    *cidfont;
   CMap       *cmap;
   CIDSysInfo *csi;
-  char       *fontname = NULL;
   int         cid_id = -1, parent_id = -1, wmode = 0;
 
-  if (!map_name || cmap_id < 0 || pdf_check_version(1, 2) < 0)
+  if (!map_name || cmap_id < 0)
     return -1;
 
   /*
@@ -413,6 +280,42 @@ Type0Font_cache_find (const char *map_name, int cmap_id, fontmap_opt *fmap_opt)
   if (cid_id < 0) 
     return -1;
 
+  cidfont = CIDFont_cache_get(cid_id);
+  wmode   = CMap_get_wmode(cmap);
+
+  /* Does CID-keyed font already have parent ? */
+  parent_id = CIDFont_get_parent_id(cidfont, wmode);
+
+  return parent_id;
+}
+
+int
+pdf_font_open_type0 (pdf_font *font, int font_id, fontmap_opt *fmap_opt)
+{
+  type0_data *type0 = NULL;
+  CIDFont    *cidfont;
+  CMap       *cmap;
+  CIDSysInfo *csi;
+  char       *fontname = NULL;
+  int         cid_id = -1, parent_id = -1, wmode = 0;
+
+  ASSERT(font->encoding_id >= 0);
+  /*
+   * Encoding is Identity-H or Identity-V according as thier WMode value.
+   * 
+   * We do not use match against the map_name since fonts (TrueType) covers
+   * characters across multiple character collection (eg, Adobe-Japan1 and
+   * Adobe-Japan2) must be splited into multiple CID-keyed fonts.
+   */
+
+  cmap = CMap_cache_get(font->encoding_id);
+  csi  = (CMap_is_Identity(cmap)) ? NULL : CMap_get_CIDSysInfo(cmap) ;
+
+  cid_id = CIDFont_cache_find(font->filename, csi, fmap_opt);
+
+  if (cid_id < 0) 
+    return -1;
+
   /*
    * The descendant CID-keyed font has already been registerd.
    * If CID-keyed font with ID = cid_id is new font, then create new parent
@@ -423,24 +326,19 @@ Type0Font_cache_find (const char *map_name, int cmap_id, fontmap_opt *fmap_opt)
   cidfont = CIDFont_cache_get(cid_id);
   wmode   = CMap_get_wmode(cmap);
 
+#if 0
   /* Does CID-keyed font already have parent ? */
   parent_id = CIDFont_get_parent_id(cidfont, wmode);
   if (parent_id >= 0)
     return parent_id; /* If so, we don't need new one. */
+#endif
 
   /*
    * CIDFont does not have parent or his parent's WMode does not matched with
    * wmode. Create new Type0 font.
    */
-
-  if (__cache.count >= __cache.capacity) {
-    __cache.capacity += CACHE_ALLOC_SIZE;
-    __cache.fonts     = RENEW(__cache.fonts, __cache.capacity, struct Type0Font);
-  }
-  font_id =  __cache.count;
-  font    = &__cache.fonts[font_id];
-
-  Type0Font_init_font_struct(font);
+  type0 = NEW(1, type0_data);
+  Type0Font_init_font_struct(type0);
 
   /*
    * All CJK double-byte characters are mapped so that resulting
@@ -448,22 +346,13 @@ Type0Font_cache_find (const char *map_name, int cmap_id, fontmap_opt *fmap_opt)
    * So, the Encoding is always Identity-H for horizontal fonts or
    * Identity-V for vertical fonts.
    */
-  if (wmode) {
-    font->encoding = NEW(strlen("Identity-V")+1, char);
-    strcpy(font->encoding, "Identity-V");
-  } else {
-    font->encoding = NEW(strlen("Identity-H")+1, char);
-    strcpy(font->encoding, "Identity-H");
-  }
-  font->wmode = wmode;
-  font->cmap_id = cmap_id;
-
+  type0->wmode = wmode;
   /*
    * Now we start font dictionary.
    */
-  font->fontdict = pdf_new_dict();
-  pdf_add_dict(font->fontdict, pdf_new_name ("Type"),    pdf_new_name ("Font"));
-  pdf_add_dict(font->fontdict, pdf_new_name ("Subtype"), pdf_new_name ("Type0"));
+  font->resource = pdf_new_dict();
+  pdf_add_dict(font->resource, pdf_new_name ("Type"),    pdf_new_name ("Font"));
+  pdf_add_dict(font->resource, pdf_new_name ("Subtype"), pdf_new_name ("Type0"));
 
   /*
    * Type0 font does not have FontDescriptor because it is not a simple font.
@@ -473,7 +362,7 @@ Type0Font_cache_find (const char *map_name, int cmap_id, fontmap_opt *fmap_opt)
    * is a CID-keyed font. Future PDF spec. will allow multiple desecendant
    * fonts.
    */
-  font->descendant = cidfont;
+  type0->descendant = cidfont;
   CIDFont_attach_parent(cidfont, font_id, wmode);
 
   /*
@@ -503,24 +392,24 @@ Type0Font_cache_find (const char *map_name, int cmap_id, fontmap_opt *fmap_opt)
    * fonts having CIDFontType 2 font as their descendant.
    */
 
-  font->used_chars = NULL;
-  font->flags      = FLAG_NONE;
+  font->usedchars = NULL;
+  type0->flags    = FLAG_NONE;
 
   switch (CIDFont_get_subtype(cidfont)) {
   case CIDFONT_TYPE0:
-    font->fontname = NEW(strlen(fontname)+strlen(font->encoding)+2, char);
-    sprintf(font->fontname, "%s-%s", fontname, font->encoding);
-    pdf_add_dict(font->fontdict,
+    font->fontname = NEW(strlen(fontname)+strlen("Identity-V")+2, char);
+    sprintf(font->fontname, "%s-%s", fontname, wmode ? "Identity-V" : "Identity-H");
+    pdf_add_dict(font->resource,
                  pdf_new_name("BaseFont"), pdf_new_name(font->fontname));
     /*
      * Need used_chars to write W, W2.
      */
     if ((parent_id = CIDFont_get_parent_id(cidfont, wmode ? 0 : 1)) < 0) {
-      font->used_chars = new_used_chars2();
+      font->usedchars  = new_used_chars2();
     } else {
       /* Don't allocate new one. */
-      font->used_chars = Type0Font_get_usedchars(Type0Font_cache_get(parent_id));
-      font->flags     |= FLAG_USED_CHARS_SHARED;
+      font->usedchars  = pdf_get_font_usedchars(parent_id);
+      type0->flags    |= FLAG_USED_CHARS_SHARED;
     }
     break;
   case CIDFONT_TYPE2:
@@ -529,62 +418,33 @@ Type0Font_cache_find (const char *map_name, int cmap_id, fontmap_opt *fmap_opt)
      *
      *  Use different used_chars for H and V.
      */
-    pdf_add_dict(font->fontdict,
+    font->fontname = NEW(strlen(fontname)+1, char);
+    strcpy(font->fontname, fontname);
+    pdf_add_dict(font->resource,
                  pdf_new_name("BaseFont"), pdf_new_name(fontname));
     /* Adobe-Identity here means use GID as CID directly. No need to use GSUB for finding
      * vertical glyphs hence separate used_chars for H and V instances are not needed.
      */
     if (!csi || (!strcmp(csi->registry, "Adobe") && !strcmp(csi->ordering, "Identity"))) {
       if ((parent_id = CIDFont_get_parent_id(cidfont, wmode ? 0 : 1)) < 0) {
-        font->used_chars = new_used_chars2();
+        font->usedchars  = new_used_chars2();
       } else {
         /* Don't allocate new one. */
-        font->used_chars = Type0Font_get_usedchars(Type0Font_cache_get(parent_id));
-        font->flags     |= FLAG_USED_CHARS_SHARED;
+        font->usedchars  = pdf_get_font_usedchars(parent_id);
+        type0->flags    |= FLAG_USED_CHARS_SHARED;
       }
     } else {
-      font->used_chars = new_used_chars2();
+      font->usedchars    = new_used_chars2();
     }
     break;
-  default:
-    ERROR("Unrecognized CIDFont Type");
-    break;
   }
 
-  pdf_add_dict(font->fontdict,
-               pdf_new_name("Encoding"), pdf_new_name(font->encoding));
+  pdf_add_dict(font->resource,
+               pdf_new_name("Encoding"), pdf_new_name(wmode ? "Identity-V" : "Identity-H"));
 
-  __cache.count++;
+  font->fdata = type0;
 
-  return font_id;
-}
-
-void
-Type0Font_cache_close (void)
-{
-  int   font_id;
-
-  /*
-   * This need to be fixed.
-   *
-   * CIDFont_cache_close() before Type0Font_release because of used_chars.
-   * ToUnicode support want descendant CIDFont's CSI and fontname.
-   */
-  if (__cache.fonts) {
-    for (font_id = 0; font_id < __cache.count; font_id++)
-      Type0Font_dofont(&__cache.fonts[font_id]);
-  }
-  CIDFont_cache_close();
-  if (__cache.fonts) {
-    for (font_id = 0; font_id < __cache.count; font_id++) {
-      Type0Font_flush(&__cache.fonts[font_id]);
-      Type0Font_clean(&__cache.fonts[font_id]);
-    }
-    RELEASE(__cache.fonts);
-  }
-  __cache.fonts    = NULL;
-  __cache.count    = 0;
-  __cache.capacity = 0;
+  return 0;
 }
 
 /******************************** COMPAT ********************************/

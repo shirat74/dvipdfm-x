@@ -476,7 +476,7 @@ CIDFont_type0_get_used_chars(CIDFont *font) {
       (parent_id = CIDFont_get_parent_id(font, 1)) < 0)
     ERROR("No parent Type 0 font !");
 
-  used_chars = Type0Font_get_usedchars(Type0Font_cache_get(parent_id));
+  used_chars = pdf_get_font_usedchars(parent_id);
   if (!used_chars)
     ERROR("Unexpected error: Font not actually used???");
 
@@ -1660,7 +1660,7 @@ add_metrics (CIDFont *font, cff_font *cffont,
       (parent_id = CIDFont_get_parent_id(font, 1)) < 0)
     ERROR("No parent Type 0 font !");
 
-  used_chars = Type0Font_get_usedchars(Type0Font_cache_get(parent_id));
+  used_chars = pdf_get_font_usedchars(parent_id);
   if (!used_chars) {
     ERROR("Unexpected error: Font not actually used???");
   }
@@ -1725,9 +1725,8 @@ CIDFont_type0_t1dofont (CIDFont *font)
     ERROR("Fontname undefined...");
 
   {
-    Type0Font *hparent, *vparent;
-    pdf_obj   *tounicode;
-    int        vparent_id, hparent_id;
+    pdf_obj *tounicode;
+    int      vparent_id, hparent_id;
 
     hparent_id = CIDFont_get_parent_id(font, 0);
     vparent_id = CIDFont_get_parent_id(font, 1);
@@ -1735,27 +1734,25 @@ CIDFont_type0_t1dofont (CIDFont *font)
       ERROR("No parent Type 0 font !");
 
     /* usedchars is same for h and v */
-    if (hparent_id < 0)
-      hparent = NULL;
-    else {
-      hparent    = Type0Font_cache_get(hparent_id);
-      used_chars = Type0Font_get_usedchars(hparent);
+    if (hparent_id >= 0) {
+      used_chars = pdf_get_font_usedchars(hparent_id);
     }
-    if (vparent_id < 0)
-      vparent = NULL;
-    else {
-      vparent    = Type0Font_cache_get(vparent_id);
-      used_chars = Type0Font_get_usedchars(vparent);
+    if (vparent_id >= 0) {
+      used_chars = pdf_get_font_usedchars(vparent_id);
     }
     if (!used_chars)
       ERROR("Unexpected error: Font not actually used???");
 
     tounicode = create_ToUnicode_stream(cffont, font->fontname, used_chars);
 
-    if (hparent)
-      Type0Font_set_ToUnicode(hparent, pdf_ref_obj(tounicode));
-    if (vparent)
-      Type0Font_set_ToUnicode(vparent, pdf_ref_obj(tounicode));
+    if (hparent_id >= 0) {
+      pdf_obj *fontdict = pdf_get_font_resource(hparent_id);
+      pdf_add_dict(fontdict, pdf_new_name("ToUnicode"), pdf_ref_obj(tounicode));
+    }
+    if (vparent_id >= 0) {
+      pdf_obj *fontdict = pdf_get_font_resource(hparent_id);
+      pdf_add_dict(fontdict, pdf_new_name("ToUnicode"), pdf_ref_obj(tounicode));
+    }
     pdf_release_obj(tounicode);
   }
 

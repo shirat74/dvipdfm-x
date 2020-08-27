@@ -623,16 +623,13 @@ CIDFont_type2_dofont (CIDFont *font)
   num_glyphs = 1; /* .notdef */
   used_chars = h_used_chars = v_used_chars = NULL;
   {
-    Type0Font *parent;
-    int        parent_id, c;
+    int parent_id, c;
 
     if ((parent_id = CIDFont_get_parent_id(font, 0)) >= 0) {
-      parent = Type0Font_cache_get(parent_id);
-      h_used_chars = Type0Font_get_usedchars(parent);
+      h_used_chars = pdf_get_font_usedchars(parent_id);
     }
     if ((parent_id = CIDFont_get_parent_id(font, 1)) >= 0) {
-      parent = Type0Font_cache_get(parent_id);
-      v_used_chars = Type0Font_get_usedchars(parent);
+      v_used_chars = pdf_get_font_usedchars(parent_id);
     }
     if (!h_used_chars && !v_used_chars)
       ERROR("Unexpected error.");
