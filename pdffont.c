@@ -455,8 +455,9 @@ pdf_close_fonts (void)
   CIDFont_cache_close(); /* order is important... FIXME */
 
   for (font_id = 0; font_id < font_cache.count; font_id++) {
-    pdf_font *font = GET_FONT(font_id);
+    pdf_font *font;
 
+    font = &font_cache.fonts[font_id];
     if (font->encoding_id >= 0 && font->subtype != PDF_FONT_FONTTYPE_TYPE0) {
       pdf_obj *enc_obj = pdf_get_encoding_obj(font->encoding_id);
       pdf_obj *tounicode;
@@ -972,4 +973,3 @@ pdf_font_set_flags (pdf_font *font, int flags)
 
   return 0;
 }
-
