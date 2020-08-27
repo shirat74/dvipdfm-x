@@ -605,8 +605,8 @@ pdf_font_load_font (const char *ident, double font_scale, fontmap_rec *mrec)
         cmap_type = CMap_get_type(cmap);
         minbytes = CMap_get_profile(cmap, CMAP_PROF_TYPE_INBYTES_MIN);
         /*
-	       * Check for output encoding.
-	       */
+	 * Check for output encoding.
+	 */
         if (cmap_type != CMAP_TYPE_IDENTITY &&
             cmap_type != CMAP_TYPE_CODE_TO_CID &&
             cmap_type != CMAP_TYPE_TO_UNICODE) {
