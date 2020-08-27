@@ -80,16 +80,6 @@ typedef struct {
   int      wmode;
 } type0_data;
 
-static void
-Type0Font_init_font_struct (type0_data *data)
-{
-  data->descendant = NULL;
-  data->wmode      = -1;
-  data->flags      = FLAG_NONE;
-
-  return;
-}
-
 /* PLEASE FIX THIS */
 #include "tt_cmap.h"
 
@@ -327,7 +317,9 @@ pdf_font_open_type0 (pdf_font *font, int font_id, fontmap_opt *fmap_opt)
    * wmode. Create new Type0 font.
    */
   type0 = NEW(1, type0_data);
-  Type0Font_init_font_struct(type0);
+  type0->descendant = NULL;
+  type0->wmode      = -1;
+  type0->flags      = FLAG_NONE;
 
   /*
    * All CJK double-byte characters are mapped so that resulting
