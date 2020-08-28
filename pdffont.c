@@ -79,14 +79,14 @@ pdf_init_font_struct (pdf_font *font)
 {
   ASSERT(font);
 
-  font->ident    = NULL;
-  font->alias    = -1;
-  font->filename = NULL;
-  font->subtype  = -1;
-  font->font_id  = -1; /* Type0 ID */
-  font->fontname = NULL;
+  font->ident       = NULL;
+  font->alias       = -1;
+  font->filename    = NULL;
+  font->subtype     = -1;
+  font->font_id     = -1;
+  font->fontname    = NULL;
   memset(font->uniqueID, 0, 7);
-  font->index    = 0;
+  font->index       = 0;
 
   font->encoding_id = -1;
 
@@ -100,7 +100,8 @@ pdf_init_font_struct (pdf_font *font)
   font->usedchars   = NULL;
   font->flags       = 0;
 
-  font->fdata       = NULL;
+  font->type0.descendant = -1;
+  font->type0.wmode      = 0;
 
   return;
 }
@@ -115,16 +116,18 @@ pdf_flush_font (pdf_font *font)
   }
 
   if (font->resource && font->reference) {
-    if (font->subtype != PDF_FONT_FONTTYPE_TYPE3) {
+    switch (font->subtype) {
+    case PDF_FONT_FONTTYPE_TYPE3:
+    case PDF_FONT_FONTTYPE_TYPE0:
+      break;
+    default:
       if (pdf_font_get_flag(font, PDF_FONT_FLAG_NOEMBED)) {
         pdf_add_dict(font->resource, pdf_new_name("BaseFont"), pdf_new_name(font->fontname));
         if (font->descriptor) {
           pdf_add_dict(font->descriptor, pdf_new_name("FontName"), pdf_new_name(font->fontname));
         }
       } else {
-        if (!font->fontname) {
-          ERROR("Undefined in fontname... (%s)", font->ident);
-        }
+        ASSERT(font->fontname);
         fontname  = NEW(7+strlen(font->fontname)+1, char);
         uniqueTag = pdf_font_get_uniqueTag(font);
         sprintf(fontname, "%6s+%s", uniqueTag, font->fontname);
@@ -157,28 +160,27 @@ pdf_flush_font (pdf_font *font)
 static void
 pdf_clean_font_struct (pdf_font *font)
 {
-  if (font) {
-    if (font->ident)
-      RELEASE(font->ident);
-    if (font->filename)
-      RELEASE(font->filename);
-    if (font->fontname)
-      RELEASE(font->fontname);
-    if (font->usedchars)
-      RELEASE(font->usedchars);
+  if (!font)
+    return;
 
-    if (font->reference)
-      ERROR("pdf_font>> Object not flushed.");
-    if (font->resource)
-      ERROR("pdf_font> Object not flushed.");
-    if (font->descriptor)
-      ERROR("pdf_font>> Object not flushed.");
-
-    font->ident     = NULL;
-    font->filename  = NULL;
-    font->fontname  = NULL;
-    font->usedchars = NULL;
+  if (font->resource)
+    WARN("font \"%s\" not properly released?", font->ident);
+    
+  if (font->ident)
+    RELEASE(font->ident);
+  if (font->filename)
+    RELEASE(font->filename);
+  if (font->fontname)
+    RELEASE(font->fontname);
+  if (font->usedchars) {
+    if (!(font->flags & PDF_FONT_FLAG_USEDCHAR_SHARED))
+    RELEASE(font->usedchars);
   }
+
+  font->ident     = NULL;
+  font->filename  = NULL;
+  font->fontname  = NULL;
+  font->usedchars = NULL;
 
   return;
 }
@@ -438,7 +440,7 @@ pdf_close_fonts (void)
     case PDF_FONT_FONTTYPE_TYPE0:
       if (dpx_conf.verbose_level > 0)
         MESG("[Type0]");
-      Type0Font_dofont(font);
+      pdf_font_load_type0(font);
       break;
     }
 
@@ -551,6 +553,37 @@ pdf_font_findresource (const char *ident, double scale)
   return found ? font_id : -1;
 }
 
+#if 1
+static void
+compat_set_mapchar (int cmap_id, fontmap_rec *mrec)
+{
+  CMap *cmap;
+  int   cmap_type, minbytes;
+
+  cmap      = CMap_cache_get(cmap_id);
+  cmap_type = CMap_get_type(cmap);
+  minbytes  = CMap_get_profile(cmap, CMAP_PROF_TYPE_INBYTES_MIN);
+
+  if (cmap_type != CMAP_TYPE_IDENTITY &&
+      cmap_type != CMAP_TYPE_CODE_TO_CID &&
+      cmap_type != CMAP_TYPE_TO_UNICODE) {
+    WARN("Only 16-bit encoding supported for output encoding.");
+  }
+  /* Turn on map option. */
+  if (minbytes == 2 && mrec->opt.mapc < 0) {
+    if (dpx_conf.verbose_level > 0) {
+      MESG("\n");
+      MESG("pdf_font>> Input encoding \"%s\" requires at least 2 bytes.\n", CMap_get_name(cmap));
+      MESG("pdf_font>> The -m <00> option will be assumed for \"%s\".\n", mrec->font_name);
+    }
+    /* FIXME: The following code modifies mrec. */
+    mrec->opt.mapc = 0;
+  }
+
+  return;
+}
+#endif
+
 int
 pdf_font_load_font (const char *ident, double font_scale, fontmap_rec *mrec)
 {
@@ -595,39 +628,7 @@ pdf_font_load_font (const char *ident, double font_scale, fontmap_rec *mrec)
   }
 
   if (cmap_id < 0 && mrec && mrec->enc_name) {
-#define MAYBE_CMAP(s) (!strstr((s), ".enc") || strstr((s), ".cmap"))
-    if (MAYBE_CMAP(mrec->enc_name)) {
-      cmap_id = CMap_cache_find(mrec->enc_name);
-      if (cmap_id >= 0) {
-        CMap *cmap;
-        int cmap_type, minbytes;
-
-        cmap = CMap_cache_get(cmap_id);
-        cmap_type = CMap_get_type(cmap);
-        minbytes = CMap_get_profile(cmap, CMAP_PROF_TYPE_INBYTES_MIN);
-        /*
-	 * Check for output encoding.
-	 */
-        if (cmap_type != CMAP_TYPE_IDENTITY &&
-            cmap_type != CMAP_TYPE_CODE_TO_CID &&
-            cmap_type != CMAP_TYPE_TO_UNICODE) {
-          WARN("Only 16-bit encoding supported for output encoding.");
-        }
-        /*
-         * Turn on map option.
-         */
-        if (minbytes == 2 && mrec->opt.mapc < 0) {
-          if (dpx_conf.verbose_level > 0) {
-            MESG("\n");
-            MESG("pdf_font>> Input encoding \"%s\" requires at least 2 bytes.\n",
-                 CMap_get_name(cmap));
-            MESG("pdf_font>> The -m <00> option will be assumed for \"%s\".\n", mrec->font_name);
-          }
-          /* FIXME: The following code modifies mrec. */
-          mrec->opt.mapc = 0;
-        }
-      }
-    } else if (!strcmp(mrec->enc_name, "unicode")) {
+    if (!strcmp(mrec->enc_name, "unicode")) {
       cmap_id = otf_load_Unicode_CMap(mrec->font_name,
                                       mrec->opt.index, mrec->opt.otl_tags,
                                       ((mrec->opt.flags & FONTMAP_OPT_VERT) ? 1 : 0));
@@ -635,31 +636,39 @@ pdf_font_load_font (const char *ident, double font_scale, fontmap_rec *mrec)
         cmap_id = t1_load_UnicodeCMap(mrec->font_name, mrec->opt.otl_tags,
                                       ((mrec->opt.flags & FONTMAP_OPT_VERT) ? 1 : 0));
       }
-      if (cmap_id < 0)
-        ERROR("Failed to read UCS2/UCS4 TrueType cmap...");
+    } else if (!strstr(mrec->enc_name, ".enc") || strstr(mrec->enc_name, ".cmap")) {
+      cmap_id = CMap_cache_find(mrec->enc_name);
+#if 1
+      if (cmap_id >= 0) {
+        compat_set_mapchar(cmap_id, mrec);
+      }
+#endif
     }
     if (cmap_id < 0) {
       encoding_id = pdf_encoding_findresource(mrec->enc_name);
-      if (encoding_id < 0)
-	      ERROR("Could not find encoding file \"%s\".", mrec->enc_name);
     }
   }
 
+  if (mrec && mrec->enc_name) {
+    if (cmap_id < 0 && encoding_id < 0) {
+      WARN("Could not read encoding file: %s", mrec->enc_name);
+      return -1;
+    }
+  }
 
   if (mrec && cmap_id >= 0) {
-    /*
-     * Composite Font
-     */
     font_id = pdf_font_check_type0_opened(mrec->font_name, cmap_id, &mrec->opt);
     if (font_id >= 0 && font_id < font_cache.count) {
-      if (dpx_conf.verbose_level > 0) {
-        MESG("\npdf_font>> Type0 font \"%s\" (cmap_id=%d) found at font_id=%d.\n", mrec->font_name, cmap_id, font_id);
-      }
       font = &font_cache.fonts[font_id];
-      if (!strcmp(ident, font->ident)) {
-        return font_id;
-      } else {
-        alias = font_id;
+      if (font->encoding_id == cmap_id) {
+        if (dpx_conf.verbose_level > 0) {
+          MESG("\npdf_font>> Type0 font \"%s\" (cmap_id=%d) found at font_id=%d.\n", mrec->font_name, cmap_id, font_id);
+        }
+        if (!strcmp(ident, font->ident)) {
+          return font_id;
+        } else {
+          alias = font_id;
+        }
       }
     }
 
@@ -671,13 +680,13 @@ pdf_font_load_font (const char *ident, double font_scale, fontmap_rec *mrec)
     font = &font_cache.fonts[font_id];
     pdf_init_font_struct(font);
 
-    font->ident = NEW(strlen(ident) + 1, char);
+    font->ident   = NEW(strlen(ident) + 1, char);
     strcpy(font->ident, ident);
+    font->font_id = font_id;
+    font->subtype = PDF_FONT_FONTTYPE_TYPE0;
     if (alias >= 0) {
-      font->alias = alias;
+      font->alias       = alias;
     } else {
-      font->font_id     = font_id;
-      font->subtype     = PDF_FONT_FONTTYPE_TYPE0;
       font->encoding_id = cmap_id;
       font->point_size  = font_scale;
       font->filename    = NEW(strlen(fontname) + 1, char);
@@ -691,9 +700,12 @@ pdf_font_load_font (const char *ident, double font_scale, fontmap_rec *mrec)
     font_cache.count++;
 
     if (dpx_conf.verbose_level > 0) {
-      MESG("\npdf_font>> Type0 font \"%s\"", fontname);
-      MESG(" cmap_id=<%s,%d>", mrec->enc_name, font->encoding_id);
-      MESG(" opened at font_id=<%s,%d>.\n", ident, font_id);
+      MESG("\n");
+      MESG("pdf_font>> Type0 font \"%s\" ", fontname);
+      MESG("cmap_id=<%s,%d> ", mrec->enc_name, font->encoding_id);
+      MESG("(%s) ", alias < 0 ? "new" : "alias");
+      MESG("font_id=<%s,%d>.", ident, font_id);
+      MESG("\n");
     }
   } else {
     /*
@@ -759,8 +771,9 @@ pdf_font_load_font (const char *ident, double font_scale, fontmap_rec *mrec)
     font = &font_cache.fonts[font_id];
     pdf_init_font_struct(font);
 
-    font->ident       = NEW(strlen(ident) + 1, char);
+    font->ident   = NEW(strlen(ident) + 1, char);
     strcpy(font->ident, ident);
+    font->font_id = font_id;
     if (alias >= 0) {
       font->alias = alias;
     } else {
@@ -786,9 +799,11 @@ pdf_font_load_font (const char *ident, double font_scale, fontmap_rec *mrec)
     font_cache.count++;
 
     if (dpx_conf.verbose_level > 0) {
-	    MESG("\npdf_font>> Simple font \"%s\"", fontname);
-      MESG(" enc_id=<%s,%d>", (mrec && mrec->enc_name) ? mrec->enc_name : "builtin", font->encoding_id);
-      MESG(" opened at font_id=<%s,%d>.\n", ident, font_id);
+      MESG("\n");
+	    MESG("pdf_font>> Simple font \"%s\" ", fontname);
+      MESG("enc_id=<%s,%d> ", (mrec && mrec->enc_name) ? mrec->enc_name : "builtin", font->encoding_id);
+      MESG("(%s) ", alias < 0 ? "new" : "alias");
+      MESG("font_id=<%s,%d>.\n", ident, font_id);
     }
   }
 

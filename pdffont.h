@@ -36,9 +36,10 @@
 
 extern void pdf_font_set_dpi (int font_dpi);
 
-#define PDF_FONT_FLAG_NOEMBED   (1 << 0)
-#define PDF_FONT_FLAG_COMPOSITE (1 << 1)
-#define PDF_FONT_FLAG_BASEFONT  (1 << 2)
+#define PDF_FONT_FLAG_NOEMBED         (1 << 0)
+#define PDF_FONT_FLAG_COMPOSITE       (1 << 1)
+#define PDF_FONT_FLAG_BASEFONT        (1 << 2)
+#define PDF_FONT_FLAG_USEDCHAR_SHARED (1 << 3)
 
 #define PDF_FONT_PARAM_DESIGN_SIZE 1
 #define PDF_FONT_PARAM_POINT_SIZE  2
@@ -76,7 +77,11 @@ struct pdf_font
   double   point_size;
   double   design_size;
 
-  void    *fdata; /* Type0 font */
+  /* Type0 font */
+  struct {
+    int  descendant; /* Only single descendant is allowed. */
+    int  wmode;
+  } type0;
 };
 
 typedef struct pdf_font pdf_font;

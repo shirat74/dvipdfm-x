@@ -71,15 +71,6 @@ new_used_chars2(void)
   return used_chars;
 }
 
-#define FLAG_NONE              0
-#define FLAG_USED_CHARS_SHARED (1 << 0)
-
-typedef struct {
-  CIDFont *descendant; /* Only single descendant is allowed. */
-  int      flags;
-  int      wmode;
-} type0_data;
-
 /* PLEASE FIX THIS */
 #include "tt_cmap.h"
 
@@ -102,8 +93,7 @@ Type0Font_try_load_ToUnicode_stream(pdf_font *font, char *cmap_base) {
   RELEASE(cmap_name);
 
   if (!tounicode) {
-    type0_data *data    = font->fdata;
-    CIDFont    *cidfont = data->descendant;
+    CIDFont *cidfont = CIDFont_cache_get(font->type0.descendant);
     tounicode = otf_create_ToUnicode_stream(CIDFont_get_ident(cidfont),
                                             CIDFont_get_opt_index(cidfont),
                                             CIDFont_get_fontname(cidfont),
@@ -117,8 +107,7 @@ static void
 Type0Font_attach_ToUnicode_stream (pdf_font *font)
 {
   pdf_obj    *tounicode;
-  type0_data *data    = font->fdata;
-  CIDFont    *cidfont = data->descendant;
+  CIDFont    *cidfont = CIDFont_cache_get(font->type0.descendant);
   CIDSysInfo *csi;
   char       *fontname;
 
@@ -203,7 +192,7 @@ Type0Font_attach_ToUnicode_stream (pdf_font *font)
 }
 
 void
-Type0Font_dofont (pdf_font *font)
+pdf_font_load_type0 (pdf_font *font)
 {
   if (!font || !font->reference)
     return;
@@ -213,11 +202,11 @@ Type0Font_dofont (pdf_font *font)
     Type0Font_attach_ToUnicode_stream(font);
   }
   if (!pdf_lookup_dict(font->resource, "DescendantFonts")) {
-    pdf_obj    *array;
-    type0_data *data = font->fdata;
+    pdf_obj *array;
+    CIDFont *cidfont = CIDFont_cache_get(font->type0.descendant);
 
     array = pdf_new_array();
-    pdf_add_array(array, CIDFont_get_resource(data->descendant));
+    pdf_add_array(array, CIDFont_get_resource(cidfont));
     pdf_add_dict(font->resource, pdf_new_name("DescendantFonts"), array);
   }
 }
@@ -225,11 +214,9 @@ Type0Font_dofont (pdf_font *font)
 int
 Type0Font_get_wmode (Type0Font *font)
 {
-  type0_data *data = font->fdata;
-
   ASSERT(font);
 
-  return data->wmode;
+  return font->type0.wmode;
 }
 
 int
@@ -271,7 +258,6 @@ pdf_font_check_type0_opened (const char *map_name, int cmap_id, fontmap_opt *fma
 int
 pdf_font_open_type0 (pdf_font *font, int font_id, fontmap_opt *fmap_opt)
 {
-  type0_data *type0 = NULL;
   CIDFont    *cidfont;
   CMap       *cmap;
   CIDSysInfo *csi;
@@ -295,56 +281,11 @@ pdf_font_open_type0 (pdf_font *font, int font_id, fontmap_opt *fmap_opt)
   if (cid_id < 0) 
     return -1;
 
-  /*
-   * The descendant CID-keyed font has already been registerd.
-   * If CID-keyed font with ID = cid_id is new font, then create new parent
-   * Type 0 font. Otherwise, there already exists parent Type 0 font and
-   * then we find him and return his ID. We must check against their WMode.
-   */
-
   cidfont = CIDFont_cache_get(cid_id);
   wmode   = CMap_get_wmode(cmap);
 
-#if 0
-  /* Does CID-keyed font already have parent ? */
-  parent_id = CIDFont_get_parent_id(cidfont, wmode);
-  if (parent_id >= 0)
-    return parent_id; /* If so, we don't need new one. */
-#endif
-
-  /*
-   * CIDFont does not have parent or his parent's WMode does not matched with
-   * wmode. Create new Type0 font.
-   */
-  type0 = NEW(1, type0_data);
-  type0->descendant = NULL;
-  type0->wmode      = -1;
-  type0->flags      = FLAG_NONE;
-
-  /*
-   * All CJK double-byte characters are mapped so that resulting
-   * character codes coincide with CIDs of given character collection.
-   * So, the Encoding is always Identity-H for horizontal fonts or
-   * Identity-V for vertical fonts.
-   */
-  type0->wmode = wmode;
-  /*
-   * Now we start font dictionary.
-   */
-  font->resource = pdf_new_dict();
-  pdf_add_dict(font->resource, pdf_new_name ("Type"),    pdf_new_name ("Font"));
-  pdf_add_dict(font->resource, pdf_new_name ("Subtype"), pdf_new_name ("Type0"));
-
-  /*
-   * Type0 font does not have FontDescriptor because it is not a simple font.
-   * Instead, DescendantFonts appears here.
-   *
-   * Up to PDF version 1.5, Type0 font must have single descendant font which
-   * is a CID-keyed font. Future PDF spec. will allow multiple desecendant
-   * fonts.
-   */
-  type0->descendant = cidfont;
-  CIDFont_attach_parent(cidfont, font_id, wmode);
+  font->type0.wmode      = wmode;
+  font->type0.descendant = cid_id;
 
   /*
    * PostScript Font name:
@@ -373,57 +314,67 @@ pdf_font_open_type0 (pdf_font *font, int font_id, fontmap_opt *fmap_opt)
    * fonts having CIDFontType 2 font as their descendant.
    */
 
-  font->usedchars = NULL;
-  type0->flags    = FLAG_NONE;
+  parent_id = CIDFont_get_parent_id(cidfont, wmode);    
 
   switch (CIDFont_get_subtype(cidfont)) {
   case CIDFONT_TYPE0:
     font->fontname = NEW(strlen(fontname)+strlen("Identity-V")+2, char);
     sprintf(font->fontname, "%s-%s", fontname, wmode ? "Identity-V" : "Identity-H");
-    pdf_add_dict(font->resource,
-                 pdf_new_name("BaseFont"), pdf_new_name(font->fontname));
-    /*
-     * Need used_chars to write W, W2.
-     */
-    if ((parent_id = CIDFont_get_parent_id(cidfont, wmode ? 0 : 1)) < 0) {
-      font->usedchars  = new_used_chars2();
+    if (parent_id < 0) {
+      int other_id = CIDFont_get_parent_id(cidfont, wmode ? 0 : 1);
+      if (other_id < 0) {
+        font->usedchars  = new_used_chars2();
+      } else {
+        font->usedchars  = pdf_get_font_usedchars(other_id);
+        font->flags     |= PDF_FONT_FLAG_USEDCHAR_SHARED;
+      }
     } else {
-      /* Don't allocate new one. */
       font->usedchars  = pdf_get_font_usedchars(parent_id);
-      type0->flags    |= FLAG_USED_CHARS_SHARED;
+      font->flags     |= PDF_FONT_FLAG_USEDCHAR_SHARED;
     }
     break;
   case CIDFONT_TYPE2:
-    /*
-     * TrueType:
-     *
-     *  Use different used_chars for H and V.
-     */
     font->fontname = NEW(strlen(fontname)+1, char);
     strcpy(font->fontname, fontname);
-    pdf_add_dict(font->resource,
-                 pdf_new_name("BaseFont"), pdf_new_name(fontname));
     /* Adobe-Identity here means use GID as CID directly. No need to use GSUB for finding
      * vertical glyphs hence separate used_chars for H and V instances are not needed.
      */
     if (!csi || (!strcmp(csi->registry, "Adobe") && !strcmp(csi->ordering, "Identity"))) {
-      if ((parent_id = CIDFont_get_parent_id(cidfont, wmode ? 0 : 1)) < 0) {
-        font->usedchars  = new_used_chars2();
+      if (parent_id < 0) {
+        int other_id = CIDFont_get_parent_id(cidfont, wmode ? 0 : 1);
+        if (other_id < 0) {
+          font->usedchars  = new_used_chars2();
+        } else {
+          font->usedchars  = pdf_get_font_usedchars(other_id);
+          font->flags     |= PDF_FONT_FLAG_USEDCHAR_SHARED;
+        }
       } else {
-        /* Don't allocate new one. */
         font->usedchars  = pdf_get_font_usedchars(parent_id);
-        type0->flags    |= FLAG_USED_CHARS_SHARED;
+        font->flags     |= PDF_FONT_FLAG_USEDCHAR_SHARED;
       }
     } else {
-      font->usedchars    = new_used_chars2();
+      if (parent_id < 0) {
+        font->usedchars  = new_used_chars2();
+      } else {
+        font->usedchars  = pdf_get_font_usedchars(parent_id);
+        font->flags     |= PDF_FONT_FLAG_USEDCHAR_SHARED;
+      }
     }
     break;
   }
 
-  pdf_add_dict(font->resource,
-               pdf_new_name("Encoding"), pdf_new_name(wmode ? "Identity-V" : "Identity-H"));
-
-  font->fdata = type0;
+  if (parent_id < 0) {
+    CIDFont_attach_parent(cidfont, font_id, wmode);
+    font->resource = pdf_new_dict();
+    pdf_add_dict(font->resource, pdf_new_name ("Type"),    pdf_new_name ("Font"));
+    pdf_add_dict(font->resource, pdf_new_name ("Subtype"), pdf_new_name ("Type0"));
+    pdf_add_dict(font->resource,
+                 pdf_new_name("BaseFont"), pdf_new_name(font->fontname));
+    pdf_add_dict(font->resource,
+                 pdf_new_name("Encoding"), pdf_new_name(wmode ? "Identity-V" : "Identity-H"));
+  } else {
+    font->resource = pdf_link_obj(pdf_get_font_resource(parent_id));
+  }
 
   return 0;
 }

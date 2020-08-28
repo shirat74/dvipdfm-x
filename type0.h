@@ -32,7 +32,7 @@ typedef struct pdf_font Type0Font;
 extern int        Type0Font_get_wmode     (Type0Font *font);
 extern char      *Type0Font_get_usedchars (Type0Font *font);
 
-extern void       Type0Font_dofont (Type0Font *font);
+extern void       pdf_font_load_type0 (pdf_font *font);
 
 #include "fontmap.h"
 extern int pdf_font_check_type0_opened (const char *map_name, int cmap_id, fontmap_opt *fmap_opt);
