@@ -209,25 +209,6 @@ pdf_font_load_type0 (pdf_font *font)
 }
 
 int
-pdf_font_check_type0_opened (const char *map_name, int wmode, CIDSysInfo *csi, fontmap_opt *fmap_opt)
-{
-  CIDFont *cidfont;
-  int      cid_id = -1, parent_id = -1;
-
-  ASSERT(map_name);
-  ASSERT(wmode >= 0 && wmode <= 1);
-
-  cid_id = CIDFont_cache_lookup(map_name, csi, fmap_opt);
-  if (cid_id < 0) 
-    return -1;
-
-  cidfont   = CIDFont_cache_get(cid_id);
-  parent_id = CIDFont_get_parent_id(cidfont, wmode);
-
-  return parent_id;
-}
-
-int
 pdf_font_open_type0 (pdf_font *font, int font_id, fontmap_opt *fmap_opt)
 {
   CIDFont    *cidfont;

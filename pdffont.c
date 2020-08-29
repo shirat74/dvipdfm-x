@@ -737,12 +737,17 @@ pdf_font_load_font (const char *ident, double font_scale, fontmap_rec *mrec)
     int         reenc_id = -1;
     CMap       *cmap;
     CIDSysInfo *csi;
-    int         wmode;
+    int         wmode, cid_id;
 
     cmap    = CMap_cache_get(cmap_id);
     csi     = CMap_is_Identity(cmap) ? NULL : CMap_get_CIDSysInfo(cmap);
     wmode   = CMap_get_wmode(cmap);
-    font_id = pdf_font_check_type0_opened(mrec->font_name, wmode, csi, &mrec->opt);
+    
+    cid_id = CIDFont_cache_lookup(mrec->font_name, csi, &mrec->opt);
+    if (cid_id >= 0) {
+      CIDFont *cidfont = CIDFont_cache_get(cid_id);
+      font_id = CIDFont_get_parent_id(cidfont, wmode);
+    }
     if (font_id >= 0 && font_id < font_cache.count) {
       font = &font_cache.fonts[font_id];
       if (font->encoding_id == cmap_id) {

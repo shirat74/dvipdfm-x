@@ -25,12 +25,10 @@
 #define is_used_char2(b,c) (((b)[(c)/8]) & (1 << (7-((c)%8))))
 
 #include "pdffont.h"
-#include "cid.h"
 
 extern void pdf_font_load_type0 (pdf_font *font);
 
 #include "fontmap.h"
-extern int  pdf_font_check_type0_opened (const char *map_name, int wmode, CIDSysInfo *csi, fontmap_opt *fmap_opt);
 extern int  pdf_font_open_type0 (pdf_font *font, int font_id, fontmap_opt *fmap_opt);
 
 #endif /* _TYPE0_H_ */
