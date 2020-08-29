@@ -40,6 +40,8 @@ extern void pdf_font_set_dpi (int font_dpi);
 #define PDF_FONT_FLAG_COMPOSITE       (1 << 1)
 #define PDF_FONT_FLAG_BASEFONT        (1 << 2)
 #define PDF_FONT_FLAG_USEDCHAR_SHARED (1 << 3)
+#define PDF_FONT_FLAG_IS_ALIAS        (1 << 4)
+#define PDF_FONT_FLAG_IS_REENCODE     (1 << 5)
 
 #define PDF_FONT_PARAM_DESIGN_SIZE 1
 #define PDF_FONT_PARAM_POINT_SIZE  2
@@ -49,7 +51,6 @@ struct pdf_font
   char    *ident;   /* map name */
   int      font_id; /* ID of this font */
   int      subtype;
-  int      alias;
 
   char    *filename;
 
@@ -105,6 +106,8 @@ extern char    *pdf_get_font_usedchars (int font_id);
 
 extern int      pdf_get_font_encoding  (int font_id);
 extern int      pdf_get_font_wmode     (int font_id);
+
+extern int      pdf_sprint_resource_name (int font_id, char *buf);
 
 /* Each font drivers use the followings. */
 extern int      pdf_font_is_in_use      (pdf_font *font);

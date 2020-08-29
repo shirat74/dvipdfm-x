@@ -72,8 +72,9 @@ extern int      CIDFont_is_ACCFont  (CIDFont *font);
 extern int      CIDFont_is_UCSFont  (CIDFont *font);
 
 #include "fontmap.h"
-extern int      CIDFont_cache_find  (const char *map_name, CIDSysInfo *cmap_csi, fontmap_opt *fmap_opt);
-extern CIDFont *CIDFont_cache_get   (int fnt_id);
-extern void     CIDFont_cache_close (void);
+extern int      CIDFont_cache_load_font (const char *map_name, CIDSysInfo *cmap_csi, fontmap_opt *fmap_opt);
+extern int      CIDFont_cache_lookup    (const char *map_name, CIDSysInfo *cmap_csi, fontmap_opt *fmap_opt);
+extern CIDFont *CIDFont_cache_get       (int fnt_id);
+extern void     CIDFont_cache_close     (void);
 
 #endif /* _CID_H_ */

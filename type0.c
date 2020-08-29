@@ -209,36 +209,19 @@ pdf_font_load_type0 (pdf_font *font)
 }
 
 int
-pdf_font_check_type0_opened (const char *map_name, int cmap_id, fontmap_opt *fmap_opt)
+pdf_font_check_type0_opened (const char *map_name, int wmode, CIDSysInfo *csi, fontmap_opt *fmap_opt)
 {
-  CIDFont    *cidfont;
-  CMap       *cmap;
-  CIDSysInfo *csi;
-  int         cid_id = -1, parent_id = -1, wmode = 0;
+  CIDFont *cidfont;
+  int      cid_id = -1, parent_id = -1;
 
-  if (!map_name || cmap_id < 0)
-    return -1;
+  ASSERT(map_name);
+  ASSERT(wmode >= 0 && wmode <= 1);
 
-  /*
-   * Encoding is Identity-H or Identity-V according as thier WMode value.
-   * 
-   * We do not use match against the map_name since fonts (TrueType) covers
-   * characters across multiple character collection (eg, Adobe-Japan1 and
-   * Adobe-Japan2) must be splited into multiple CID-keyed fonts.
-   */
-
-  cmap = CMap_cache_get(cmap_id);
-  csi  = (CMap_is_Identity(cmap)) ? NULL : CMap_get_CIDSysInfo(cmap) ;
-
-  cid_id = CIDFont_cache_find(map_name, csi, fmap_opt);
-
+  cid_id = CIDFont_cache_lookup(map_name, csi, fmap_opt);
   if (cid_id < 0) 
     return -1;
 
-  cidfont = CIDFont_cache_get(cid_id);
-  wmode   = CMap_get_wmode(cmap);
-
-  /* Does CID-keyed font already have parent ? */
+  cidfont   = CIDFont_cache_get(cid_id);
   parent_id = CIDFont_get_parent_id(cidfont, wmode);
 
   return parent_id;
@@ -265,7 +248,7 @@ pdf_font_open_type0 (pdf_font *font, int font_id, fontmap_opt *fmap_opt)
   cmap = CMap_cache_get(font->encoding_id);
   csi  = (CMap_is_Identity(cmap)) ? NULL : CMap_get_CIDSysInfo(cmap) ;
 
-  cid_id = CIDFont_cache_find(font->filename, csi, fmap_opt);
+  cid_id = CIDFont_cache_load_font(font->filename, csi, fmap_opt);
 
   if (cid_id < 0) 
     return -1;

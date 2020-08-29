@@ -80,7 +80,6 @@ pdf_init_font_struct (pdf_font *font)
   ASSERT(font);
 
   font->ident       = NULL;
-  font->alias       = -1;
   font->filename    = NULL;
   font->subtype     = -1;
   font->font_id     = -1;
@@ -111,7 +110,9 @@ pdf_flush_font (pdf_font *font)
 {
   char *fontname, *uniqueTag;
 
-  if (!font || font->alias >= 0) {
+  if (!font)
+    return;
+  if ((font->flags & PDF_FONT_FLAG_IS_ALIAS) || (font->flags & PDF_FONT_FLAG_IS_REENCODE)) {
     return;
   }
 
@@ -230,10 +231,10 @@ GET_FONT (int font_id)
 {
   pdf_font *font = NULL;
 
-  if (font_id < font_cache.count) {
+  if (font_id >= 0 && font_id < font_cache.count) {
    font = &font_cache.fonts[font_id];
-   if (font->alias >= 0 && font->alias < font_cache.count) {
-     font = &font_cache.fonts[font->alias];
+   if (font->flags & PDF_FONT_FLAG_IS_ALIAS) {
+     font = &font_cache.fonts[font->font_id];
    }
   }
   
@@ -248,6 +249,9 @@ pdf_get_font_reference (int font_id)
   CHECK_ID(font_id);
 
   font = GET_FONT(font_id);
+  if (font->flags & PDF_FONT_FLAG_IS_REENCODE) {
+    font = GET_FONT(font->font_id);
+  }
   if (!font->reference) {
     font->reference = pdf_ref_obj(pdf_font_get_resource(font));
   }
@@ -263,6 +267,11 @@ pdf_get_font_resource (int font_id)
   CHECK_ID(font_id);
 
   font = GET_FONT(font_id);
+  if (font->flags & PDF_FONT_FLAG_IS_REENCODE) {
+    font = GET_FONT(font->font_id);
+  }
+  if (!font->resource)
+    font->resource = pdf_new_dict();
 
   return font->resource; /* FIXME */
 }
@@ -273,16 +282,24 @@ pdf_get_font_usedchars (int font_id)
   pdf_font *font;
 
   CHECK_ID(font_id);
+
   font = GET_FONT(font_id);
+  if (font->flags & PDF_FONT_FLAG_IS_REENCODE) {
+    font = GET_FONT(font->font_id);
+  }
   if (font->subtype == PDF_FONT_FONTTYPE_TYPE0) {
-    return font->usedchars;
+    if (!font->usedchars) {
+      font->usedchars = NEW(8192, char);
+      memset(font->usedchars, 0, 8192 * sizeof(char));
+    }
   } else {
     if (!font->usedchars) {
       font->usedchars = NEW(256, char);
       memset(font->usedchars, 0, 256 * sizeof(char));
     }
-    return font->usedchars;
   }
+
+  return font->usedchars;
 }
 
 int
@@ -293,6 +310,9 @@ pdf_get_font_wmode (int font_id)
   CHECK_ID(font_id);
 
   font = GET_FONT(font_id);
+  if (font->flags & PDF_FONT_FLAG_IS_REENCODE) {
+    font = GET_FONT(font->font_id);
+  }
   if (font->subtype == PDF_FONT_FONTTYPE_TYPE0) {
     return font->type0.wmode;
   } else {
@@ -308,6 +328,9 @@ pdf_get_font_subtype (int font_id)
   CHECK_ID(font_id);
 
   font = GET_FONT(font_id);
+  if (font->flags & PDF_FONT_FLAG_IS_REENCODE) {
+    font = GET_FONT(font->font_id);
+  }
 
   return font->subtype;
 }
@@ -322,6 +345,27 @@ pdf_get_font_encoding (int font_id)
   font = GET_FONT(font_id);
 
   return font->encoding_id;
+}
+
+int
+pdf_sprint_resource_name (int font_id, char *buff)
+{
+  int       len;
+  pdf_font *font;
+
+  CHECK_ID(font_id);
+
+  font = &font_cache.fonts[font_id];
+  if (font->flags & PDF_FONT_FLAG_IS_ALIAS) {
+    font_id = font->font_id;
+  }
+  font = GET_FONT(font_id);
+  if (font->flags & PDF_FONT_FLAG_IS_REENCODE) {
+    font_id = font->font_id;
+  }
+  len = sprintf(buff, "F%d", font_id);
+
+  return len;
 }
 
 /* The rule for ToUnicode creation is:
@@ -387,7 +431,8 @@ pdf_close_fonts (void)
     pdf_font  *font;
 
     font = &font_cache.fonts[font_id];
-    if (font->alias >= 0) {
+    if ((font->flags & PDF_FONT_FLAG_IS_ALIAS) ||
+        (font->flags & PDF_FONT_FLAG_IS_REENCODE)) {
       pdf_clean_font_struct(font);
       continue;
     }
@@ -584,6 +629,38 @@ compat_set_mapchar (int cmap_id, fontmap_rec *mrec)
 }
 #endif
 
+static int
+create_font_alias (const char *ident, int font_id)
+{
+  int       this_id;
+  pdf_font *font, *src;
+
+  if (font_id < 0 || font_id >= font_cache.count)
+    return -1;
+  
+  src = &font_cache.fonts[font_id];
+
+  this_id = font_cache.count;
+  if (font_cache.count >= font_cache.capacity) {
+    font_cache.capacity += CACHE_ALLOC_SIZE;
+    font_cache.fonts     = RENEW(font_cache.fonts, font_cache.capacity, pdf_font);
+  }
+  font = &font_cache.fonts[this_id];
+  pdf_init_font_struct(font);
+
+  font->ident   = NEW(strlen(ident) + 1, char);
+  strcpy(font->ident, ident);
+  font->font_id     = font_id;
+  font->subtype     = src->subtype;
+  font->encoding_id = src->encoding_id;
+
+  font->flags      |= PDF_FONT_FLAG_IS_ALIAS;
+
+  font_cache.count++;
+
+  return this_id;
+}
+
 int
 pdf_font_load_font (const char *ident, double font_scale, fontmap_rec *mrec)
 {
@@ -591,7 +668,6 @@ pdf_font_load_font (const char *ident, double font_scale, fontmap_rec *mrec)
   pdf_font    *font;
   int          encoding_id = -1, cmap_id = -1;
   const char  *fontname;
-  int          alias = -1;
 
   /*
    * Get appropriate info from map file. (PK fonts at two different
@@ -657,7 +733,16 @@ pdf_font_load_font (const char *ident, double font_scale, fontmap_rec *mrec)
   }
 
   if (mrec && cmap_id >= 0) {
-    font_id = pdf_font_check_type0_opened(mrec->font_name, cmap_id, &mrec->opt);
+    /* Composite font */
+    int         reenc_id = -1;
+    CMap       *cmap;
+    CIDSysInfo *csi;
+    int         wmode;
+
+    cmap    = CMap_cache_get(cmap_id);
+    csi     = CMap_is_Identity(cmap) ? NULL : CMap_get_CIDSysInfo(cmap);
+    wmode   = CMap_get_wmode(cmap);
+    font_id = pdf_font_check_type0_opened(mrec->font_name, wmode, csi, &mrec->opt);
     if (font_id >= 0 && font_id < font_cache.count) {
       font = &font_cache.fonts[font_id];
       if (font->encoding_id == cmap_id) {
@@ -667,9 +752,11 @@ pdf_font_load_font (const char *ident, double font_scale, fontmap_rec *mrec)
         if (!strcmp(ident, font->ident)) {
           return font_id;
         } else {
-          alias = font_id;
+          return create_font_alias(ident, font_id);
         }
       }
+      /* else rerencode */
+      reenc_id = font_id;
     }
 
     font_id = font_cache.count;
@@ -680,14 +767,12 @@ pdf_font_load_font (const char *ident, double font_scale, fontmap_rec *mrec)
     font = &font_cache.fonts[font_id];
     pdf_init_font_struct(font);
 
-    font->ident   = NEW(strlen(ident) + 1, char);
+    font->ident       = NEW(strlen(ident) + 1, char);
     strcpy(font->ident, ident);
-    font->font_id = font_id;
-    font->subtype = PDF_FONT_FONTTYPE_TYPE0;
-    if (alias >= 0) {
-      font->alias       = alias;
-    } else {
-      font->encoding_id = cmap_id;
+    font->font_id     = reenc_id >= 0 ? reenc_id : -1;
+    font->subtype     = PDF_FONT_FONTTYPE_TYPE0;
+    font->encoding_id = cmap_id;
+    if (reenc_id < 0) {
       font->point_size  = font_scale;
       font->filename    = NEW(strlen(fontname) + 1, char);
       strcpy(font->filename, fontname);
@@ -696,6 +781,9 @@ pdf_font_load_font (const char *ident, double font_scale, fontmap_rec *mrec)
         pdf_clean_font_struct(font);
         return -1;
       }
+    } else {
+      font->flags      |= PDF_FONT_FLAG_IS_REENCODE;
+      font->flags      |= PDF_FONT_FLAG_USEDCHAR_SHARED;
     }
     font_cache.count++;
 
@@ -703,19 +791,14 @@ pdf_font_load_font (const char *ident, double font_scale, fontmap_rec *mrec)
       MESG("\n");
       MESG("pdf_font>> Type0 font \"%s\" ", fontname);
       MESG("cmap_id=<%s,%d> ", mrec->enc_name, font->encoding_id);
-      MESG("(%s) ", alias < 0 ? "new" : "alias");
       MESG("font_id=<%s,%d>.", ident, font_id);
       MESG("\n");
     }
   } else {
-    /*
-     * Simple Font - always embed.
-     */
-    int  found = 0;
-
+    /* Simple Font - always embed. */
     for (font_id = 0; font_id < font_cache.count; font_id++) {
       font = &font_cache.fonts[font_id];
-      if (font->alias >= 0)
+      if (font->flags & PDF_FONT_FLAG_IS_ALIAS)
         continue;
       switch (font->subtype) {
       case PDF_FONT_FONTTYPE_TYPE1:
@@ -728,11 +811,14 @@ pdf_font_load_font (const char *ident, double font_scale, fontmap_rec *mrec)
          *       with two different encodings
          */
         if (!strcmp(fontname, font->filename) && encoding_id == font->encoding_id &&
-            (mrec && mrec->opt.index == font->index)) {
+            (!mrec || mrec->opt.index == font->index)) {
+          if (dpx_conf.verbose_level > 0) {
+            MESG("\npdf_font>> Simple font \"%s\" (enc_id=%d) found at id=%d.\n", fontname, encoding_id, font_id);
+          }
           if (!strcmp(ident, font->ident)) {
-            found = 1;
+            return font_id;
           } else {
-            alias = font_id;
+            return create_font_alias(ident, font_id);
           }
         }
         break;
@@ -743,24 +829,18 @@ pdf_font_load_font (const char *ident, double font_scale, fontmap_rec *mrec)
          * TODO: a PK font with two encodings makes no sense. Change?
          */
         if (!strcmp(fontname, font->filename) && font_scale == font->point_size) {
+          if (dpx_conf.verbose_level > 0) {
+            MESG("\npdf_font>> Simple font \"%s\" (enc_id=%d) found at id=%d.\n", fontname, encoding_id, font_id);
+          }
           if (!strcmp(ident, font->ident)) {
-            found = 1;
+            return font_id;
           } else {
-            alias = font_id;
+            return create_font_alias(ident, font_id);
           }
         }
         break;
       }
-
-      if (found || alias >= 0) {
-        if (dpx_conf.verbose_level > 0) {
-          MESG("\npdf_font>> Simple font \"%s\" (enc_id=%d) found at id=%d.\n", fontname, encoding_id, font_id);
-        }
-        break;
-      }
     }
-    if (found)
-      return font_id;
 
     font_id = font_cache.count;
     if (font_cache.count >= font_cache.capacity) {
@@ -771,39 +851,36 @@ pdf_font_load_font (const char *ident, double font_scale, fontmap_rec *mrec)
     font = &font_cache.fonts[font_id];
     pdf_init_font_struct(font);
 
-    font->ident   = NEW(strlen(ident) + 1, char);
+    font->ident       = NEW(strlen(ident) + 1, char);
     strcpy(font->ident, ident);
-    font->font_id = font_id;
-    if (alias >= 0) {
-      font->alias = alias;
-    } else {
-      font->point_size  = font_scale;
-      font->encoding_id = encoding_id;
-      font->filename    = NEW(strlen(fontname) + 1, char);
-      strcpy(font->filename, fontname);
-      font->index       = (mrec && mrec->opt.index) ? mrec->opt.index : 0;
+    font->font_id     = -1;
+    font->point_size  = font_scale;
+    font->encoding_id = encoding_id;
+    font->filename    = NEW(strlen(fontname) + 1, char);
+    strcpy(font->filename, fontname);
+    font->index       = (mrec && mrec->opt.index) ? mrec->opt.index : 0;
 
-      if (pdf_font_open_type1(font) >= 0) {
-        font->subtype = PDF_FONT_FONTTYPE_TYPE1;
-      } else if (pdf_font_open_type1c(font) >= 0) {
-        font->subtype = PDF_FONT_FONTTYPE_TYPE1C;
-      } else if (pdf_font_open_truetype(font) >= 0) {
-        font->subtype = PDF_FONT_FONTTYPE_TRUETYPE;
-      } else if (pdf_font_open_pkfont(font) >= 0) {
-        font->subtype = PDF_FONT_FONTTYPE_TYPE3;
-      } else {
-        pdf_clean_font_struct(font);
-        return -1;
-      }
+    if (pdf_font_open_type1(font) >= 0) {
+      font->subtype = PDF_FONT_FONTTYPE_TYPE1;
+    } else if (pdf_font_open_type1c(font) >= 0) {
+      font->subtype = PDF_FONT_FONTTYPE_TYPE1C;
+    } else if (pdf_font_open_truetype(font) >= 0) {
+      font->subtype = PDF_FONT_FONTTYPE_TRUETYPE;
+    } else if (pdf_font_open_pkfont(font) >= 0) {
+      font->subtype = PDF_FONT_FONTTYPE_TYPE3;
+    } else {
+      pdf_clean_font_struct(font);
+      return -1;
     }
+
     font_cache.count++;
 
     if (dpx_conf.verbose_level > 0) {
       MESG("\n");
 	    MESG("pdf_font>> Simple font \"%s\" ", fontname);
       MESG("enc_id=<%s,%d> ", (mrec && mrec->enc_name) ? mrec->enc_name : "builtin", font->encoding_id);
-      MESG("(%s) ", alias < 0 ? "new" : "alias");
-      MESG("font_id=<%s,%d>.\n", ident, font_id);
+      MESG("font_id=<%s,%d>.", ident, font_id);
+      MESG("\n");
     }
   }
 

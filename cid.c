@@ -546,8 +546,76 @@ CIDFont_cache_get (int font_id)
  * cmap_csi is NULL if CMap is Identity.
  */
 int
-CIDFont_cache_find (const char *map_name,
-                    CIDSysInfo *cmap_csi, fontmap_opt *fmap_opt)
+CIDFont_cache_lookup (const char *map_name, CIDSysInfo *cmap_csi, fontmap_opt *fmap_opt)
+{
+  int      font_id = -1;
+  CIDFont *font    = NULL;
+  cid_opt *opt     = NULL;
+
+  if (!__cache)
+    return -1;
+
+  opt        = NEW(1, cid_opt);
+  opt->style = fmap_opt->style;
+  opt->index = fmap_opt->index;
+  opt->embed = (fmap_opt->flags & FONTMAP_OPT_NOEMBED) ? 0 : 1;
+  opt->name  = NULL;
+  opt->csi   = get_cidsysinfo(map_name, fmap_opt);
+  opt->stemv = fmap_opt->stemv;
+
+  if (!opt->csi && cmap_csi) {
+    /*
+     * No CIDSystemInfo supplied explicitly. Copy from CMap's one if available.
+     * It is not neccesary for CID-keyed fonts. But TrueType requires them.
+     */
+    opt->csi = NEW(1, CIDSysInfo);
+    opt->csi->registry   = NEW(strlen(cmap_csi->registry)+1, char);
+    strcpy(opt->csi->registry, cmap_csi->registry);
+    opt->csi->ordering   = NEW(strlen(cmap_csi->ordering)+1, char);
+    strcpy(opt->csi->ordering, cmap_csi->ordering);
+    opt->csi->supplement = cmap_csi->supplement;
+  }
+  /*
+   * Here, we do not compare font->ident and map_name because of
+   * implicit CIDSystemInfo supplied by CMap for TrueType.
+   */
+  for (font_id = 0; font_id < __cache->num; font_id++) {
+    font = __cache->fonts[font_id];
+    if (!strcmp(font->name, map_name) &&
+        font->options->style == opt->style &&
+        font->options->index == opt->index) {
+      if (font->options->embed == opt->embed) {
+        /*
+         * Case 1: CSI not available (Identity CMap)
+         *         Font is TrueType --> continue
+         *         Font is CIDFont  --> break
+         * Case 2: CSI matched      --> break
+         */
+        if (!opt->csi) {
+          if (font->subtype == CIDFONT_TYPE2)
+            continue;
+          else
+            break;
+        } else if (!strcmp(font->csi->registry, opt->csi->registry) &&
+                   !strcmp(font->csi->ordering, opt->csi->ordering)) {
+          if (font->subtype == CIDFONT_TYPE2)
+            font->csi->supplement =
+              MAX(opt->csi->supplement, font->csi->supplement); /* FIXME: font modified */
+          break;
+        }
+      } else if (CIDFont_is_BaseFont(font)) {
+        opt->embed = 0;
+        break;
+      }
+    }
+  }
+  release_opt(opt);
+
+  return (font_id >= 0 && font_id < __cache->num) ? font_id : -1;
+}
+
+int
+CIDFont_cache_load_font (const char *map_name, CIDSysInfo *cmap_csi, fontmap_opt *fmap_opt)
 {
   int      font_id = -1;
   CIDFont *font    = NULL;
