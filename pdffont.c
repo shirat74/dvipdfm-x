@@ -294,7 +294,7 @@ pdf_get_font_wmode (int font_id)
 
   font = GET_FONT(font_id);
   if (font->subtype == PDF_FONT_FONTTYPE_TYPE0) {
-    return Type0Font_get_wmode(font);
+    return font->type0.wmode;
   } else {
     return 0;
   }
