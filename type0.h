@@ -29,7 +29,6 @@
 #include "pdffont.h"
 typedef struct pdf_font Type0Font;
 
-extern int        Type0Font_get_wmode     (Type0Font *font);
 extern char      *Type0Font_get_usedchars (Type0Font *font);
 
 extern void       pdf_font_load_type0 (pdf_font *font);
