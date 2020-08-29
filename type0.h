@@ -21,21 +21,15 @@
 #ifndef _TYPE0_H_
 #define _TYPE0_H_
 
-#include "pdfobj.h"
-
 #define add_to_used_chars2(b,c) {(b)[(c)/8] |= (1 << (7-((c)%8)));}
 #define is_used_char2(b,c) (((b)[(c)/8]) & (1 << (7-((c)%8))))
 
 #include "pdffont.h"
-typedef struct pdf_font Type0Font;
 
-extern char      *Type0Font_get_usedchars (Type0Font *font);
-
-extern void       pdf_font_load_type0 (pdf_font *font);
+extern void pdf_font_load_type0 (pdf_font *font);
 
 #include "fontmap.h"
-extern int pdf_font_check_type0_opened (const char *map_name, int cmap_id, fontmap_opt *fmap_opt);
-extern int pdf_font_open_type0 (pdf_font *font, int font_id, fontmap_opt *fmap_opt);
-
+extern int  pdf_font_check_type0_opened (const char *map_name, int cmap_id, fontmap_opt *fmap_opt);
+extern int  pdf_font_open_type0 (pdf_font *font, int font_id, fontmap_opt *fmap_opt);
 
 #endif /* _TYPE0_H_ */
