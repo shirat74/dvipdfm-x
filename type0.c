@@ -212,14 +212,6 @@ pdf_font_load_type0 (pdf_font *font)
 }
 
 int
-Type0Font_get_wmode (Type0Font *font)
-{
-  ASSERT(font);
-
-  return font->type0.wmode;
-}
-
-int
 pdf_font_check_type0_opened (const char *map_name, int cmap_id, fontmap_opt *fmap_opt)
 {
   CIDFont    *cidfont;
