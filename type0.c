@@ -47,9 +47,6 @@
 #include "type0.h"
 
 
-#define TYPE0FONT_DEBUG_STR "Type0"
-#define TYPE0FONT_DEBUG     3
-
 static pdf_obj *pdf_read_ToUnicode_file (const char *cmap_name);
 
 /*
