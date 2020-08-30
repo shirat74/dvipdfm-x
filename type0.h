@@ -27,8 +27,6 @@
 #include "pdffont.h"
 
 extern void pdf_font_load_type0 (pdf_font *font);
-
-#include "fontmap.h"
-extern int  pdf_font_open_type0 (pdf_font *font, int font_id, fontmap_opt *fmap_opt);
+extern int  pdf_font_open_type0 (pdf_font *font, int font_id, int cid_id, int wmode);
 
 #endif /* _TYPE0_H_ */
