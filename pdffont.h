@@ -44,9 +44,33 @@ extern void pdf_font_set_dpi (int font_dpi);
 #define PDF_FONT_FLAG_USEDCHAR_SHARED (1 << 3)
 #define PDF_FONT_FLAG_IS_ALIAS        (1 << 4)
 #define PDF_FONT_FLAG_IS_REENCODE     (1 << 5)
+#define PDF_FONT_FLAG_BASEFONT        (1 << 6)
+#define PDF_FONT_FLAG_ACCFONT         (1 << 7)
+#define PDF_FONT_FLAG_UCSFONT         (1 << 8)
 
 #define PDF_FONT_PARAM_DESIGN_SIZE 1
 #define PDF_FONT_PARAM_POINT_SIZE  2
+
+#include "fontmap.h"
+#define FONT_STYLE_NONE       FONTMAP_STYLE_NONE
+#define FONT_STYLE_BOLD       FONTMAP_STYLE_BOLD
+#define FONT_STYLE_ITALIC     FONTMAP_STYLE_ITALIC
+#define FONT_STYLE_BOLDITALIC FONTMAP_STYLE_BOLDITALIC
+
+typedef struct {
+  char *registry;
+  char *ordering;
+  int   supplement;
+} CIDSysInfo;
+
+typedef struct
+{
+  CIDSysInfo csi;
+  int        index;
+  int        style;
+  int        embed;
+  int        stemv;
+} cid_opt;
 
 struct pdf_font
 {
@@ -85,6 +109,12 @@ struct pdf_font
     int  descendant; /* Only single descendant is allowed. */
     int  wmode;
   } type0;
+
+  /* CIDFont */
+  struct {
+    CIDSysInfo csi;     /* Character collection */
+    cid_opt    options; /* Options from map record */
+  } cid;
 };
 
 typedef struct pdf_font pdf_font;
