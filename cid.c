@@ -564,6 +564,7 @@ CIDFont_cache_lookup (const char *map_name, CIDSysInfo *cmap_csi, fontmap_opt *f
     opt.csi.ordering   = NEW(strlen(cmap_csi->ordering)+1, char);
     strcpy(opt.csi.ordering, cmap_csi->ordering);
     opt.csi.supplement = cmap_csi->supplement;
+    has_csi = 1;
   }
   /*
    * Here, we do not compare font->ident and map_name because of
@@ -634,6 +635,7 @@ CIDFont_cache_load_font (const char *map_name, CIDSysInfo *cmap_csi, fontmap_opt
     opt.csi.ordering   = NEW(strlen(cmap_csi->ordering)+1, char);
     strcpy(opt.csi.ordering, cmap_csi->ordering);
     opt.csi.supplement = cmap_csi->supplement;
+    has_csi = 1;
   }
   /*
    * Here, we do not compare font->ident and map_name because of
