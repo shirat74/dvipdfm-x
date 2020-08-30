@@ -121,6 +121,9 @@ pdf_flush_font (pdf_font *font)
     case PDF_FONT_FONTTYPE_TYPE3:
     case PDF_FONT_FONTTYPE_TYPE0:
       break;
+    case PDF_FONT_FONTTYPE_CIDTYPE0:
+    case PDF_FONT_FONTTYPE_CIDTYPE2:
+      break;
     default:
       if (pdf_font_get_flag(font, PDF_FONT_FLAG_NOEMBED)) {
         pdf_add_dict(font->resource, pdf_new_name("BaseFont"), pdf_new_name(font->fontname));
