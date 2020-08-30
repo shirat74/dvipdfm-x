@@ -33,6 +33,8 @@
 #define PDF_FONT_FONTTYPE_TRUETYPE 3
 
 #define PDF_FONT_FONTTYPE_TYPE0    4
+#define PDF_FONT_FONTTYPE_CIDTYPE0 5
+#define PDF_FONT_FONTTYPE_CIDTYPE2 6
 
 extern void pdf_font_set_dpi (int font_dpi);
 
