@@ -468,15 +468,11 @@ write_fontfile (CIDFont *font, cff_font *cffont)
 }
 
 static char *
-CIDFont_type0_get_used_chars(CIDFont *font) {
-  int parent_id;
+CIDFont_type0_get_used_chars(CIDFont *font)
+{
   char *used_chars;
 
-  if ((parent_id = CIDFont_get_parent_id(font, 0)) < 0 &&
-      (parent_id = CIDFont_get_parent_id(font, 1)) < 0)
-    ERROR("No parent Type 0 font !");
-
-  used_chars = pdf_get_font_usedchars(parent_id);
+  used_chars = font->usedchars;
   if (!used_chars)
     ERROR("Unexpected error: Font not actually used???");
 
@@ -626,10 +622,10 @@ CIDFont_type0_dofont (CIDFont *font)
 
   ASSERT(font);
 
-  if (!font->indirect)
+  if (!font->reference)
     return;
 
-  pdf_add_dict(font->fontdict, 
+  pdf_add_dict(font->resource, 
                pdf_new_name("FontDescriptor"),
                pdf_ref_obj (font->descriptor));
 
@@ -638,7 +634,7 @@ CIDFont_type0_dofont (CIDFont *font)
   else if (!CIDFont_get_embedding(font) &&
            (opt_flags & CIDFONT_FORCE_FIXEDPITCH)) {
     /* No metrics needed. */
-    pdf_add_dict(font->fontdict,
+    pdf_add_dict(font->resource,
                  pdf_new_name("DW"), pdf_new_number(1000.0));
     return;
   }
@@ -827,7 +823,7 @@ CIDFont_type0_open (CIDFont *font, const char *name,
                     CIDSysInfo *cmap_csi, cid_opt *opt,
                     int expected_flag)
 {
-  CIDSysInfo *csi;
+  CIDSysInfo  csi;
   char       *fontname;
   sfnt       *sfont = NULL;
   cff_font   *cffont;
@@ -898,30 +894,29 @@ CIDFont_type0_open (CIDFont *font, const char *name,
     DPXFCLOSE(fp);
   }
 
-  csi = NEW(1, CIDSysInfo);
   if (is_cid_font) {
-    csi->registry =
+    csi.registry =
       cff_get_string(cffont, (s_SID)cff_dict_get(cffont->topdict, "ROS", 0));
-    csi->ordering =
+    csi.ordering =
       cff_get_string(cffont, (s_SID)cff_dict_get(cffont->topdict, "ROS", 1));
-    csi->supplement = (int)cff_dict_get(cffont->topdict, "ROS", 2);
+    csi.supplement = (int)cff_dict_get(cffont->topdict, "ROS", 2);
   } else {
-    csi->registry   = NEW(strlen("Adobe") + 1, char);
-    strcpy(csi->registry, "Adobe");
-    csi->ordering   = NEW(strlen("Identity") + 1, char);
-    strcpy(csi->ordering, "Identity");
-    csi->supplement = 0;
+    csi.registry   = NEW(strlen("Adobe") + 1, char);
+    strcpy(csi.registry, "Adobe");
+    csi.ordering   = NEW(strlen("Identity") + 1, char);
+    strcpy(csi.ordering, "Identity");
+    csi.supplement = 0;
   }
 
   if (!expect_type1_font && cmap_csi) {
-    if (strcmp(csi->registry, cmap_csi->registry) != 0 ||
-        strcmp(csi->ordering, cmap_csi->ordering) != 0) {
+    if (strcmp(csi.registry, cmap_csi->registry) != 0 ||
+        strcmp(csi.ordering, cmap_csi->ordering) != 0) {
       MESG("\nCharacter collection mismatched:\n");
-      MESG("\tFont: %s-%s-%d\n", csi->registry, csi->ordering, csi->supplement);
+      MESG("\tFont: %s-%s-%d\n", csi.registry, csi.ordering, csi.supplement);
       MESG("\tCMap: %s-%s-%d\n", cmap_csi->registry, cmap_csi->ordering, cmap_csi->supplement);
       ERROR("Inconsistent CMap specified for this font.");
     }
-    if (csi->supplement < cmap_csi->supplement) {
+    if (csi.supplement < cmap_csi->supplement) {
       WARN("CMap have higher supplement number.");
       WARN("Some characters may not be displayed or printed.");
     }
@@ -973,15 +968,15 @@ CIDFont_type0_open (CIDFont *font, const char *name,
   }
 
   font->fontname = fontname;
-  font->subtype  = CIDFONT_TYPE0;
-  font->csi      = csi;
+  font->subtype  = PDF_FONT_FONTTYPE_CIDTYPE0;
+  font->cid.csi  = csi;
   font->flags   |= expected_flag;
 
-  font->fontdict = pdf_new_dict();
-  pdf_add_dict(font->fontdict,
+  font->resource = pdf_new_dict();
+  pdf_add_dict(font->resource,
                pdf_new_name("Type"),
                pdf_new_name("Font"));
-  pdf_add_dict(font->fontdict,
+  pdf_add_dict(font->resource,
                pdf_new_name("Subtype"),
                pdf_new_name("CIDFontType0"));
 
@@ -1003,7 +998,7 @@ CIDFont_type0_open (CIDFont *font, const char *name,
   pdf_add_dict(font->descriptor,
                pdf_new_name("FontName"),
                pdf_new_name(fontname));
-  pdf_add_dict(font->fontdict, 
+  pdf_add_dict(font->resource, 
                pdf_new_name("BaseFont"),
                pdf_new_name(fontname));
   {
@@ -1052,10 +1047,10 @@ CIDFont_type0_t1cdofont (CIDFont *font)
 
   ASSERT(font);
 
-  if (!font->indirect)
+  if (!font->reference)
     return;
 
-  pdf_add_dict(font->fontdict, 
+  pdf_add_dict(font->resource, 
                pdf_new_name("FontDescriptor"),
                pdf_ref_obj (font->descriptor));
 
@@ -1638,7 +1633,7 @@ add_metrics (CIDFont *font, cff_font *cffont,
   double   val;
   card16   cid, gid;
   char    *used_chars;
-  int      i, parent_id;
+  int      i;
 
   /*
    * The original FontBBox of the font is preserved, instead
@@ -1656,11 +1651,7 @@ add_metrics (CIDFont *font, cff_font *cffont,
   }
   pdf_add_dict(font->descriptor, pdf_new_name("FontBBox"), tmp);
 
-  if ((parent_id = CIDFont_get_parent_id(font, 0)) < 0 &&
-      (parent_id = CIDFont_get_parent_id(font, 1)) < 0)
-    ERROR("No parent Type 0 font !");
-
-  used_chars = pdf_get_font_usedchars(parent_id);
+  used_chars = font->usedchars;
   if (!used_chars) {
     ERROR("Unexpected error: Font not actually used???");
   }
@@ -1681,7 +1672,7 @@ add_metrics (CIDFont *font, cff_font *cffont,
       }
     }
   }
-  pdf_add_dict(font->fontdict,
+  pdf_add_dict(font->resource,
                pdf_new_name("DW"), pdf_new_number(default_width));
   if (pdf_array_length(tmp) > 0) {
     pdf_add_dict(font->fontdict, pdf_new_name("W"), pdf_ref_obj(tmp));
@@ -1703,11 +1694,11 @@ CIDFont_type0_t1dofont (CIDFont *font)
 
   ASSERT(font);
 
-  if (!font->indirect) {
+  if (!font->reference) {
     return;
   }
 
-  pdf_add_dict(font->fontdict, 
+  pdf_add_dict(font->resource, 
                pdf_new_name("FontDescriptor"),
                pdf_ref_obj (font->descriptor));
 
