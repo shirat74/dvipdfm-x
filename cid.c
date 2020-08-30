@@ -164,10 +164,10 @@ static void
 CIDFont_flush (CIDFont *font)
 {
   if (font) {
-    if (font->indirect)   pdf_release_obj(font->indirect);
-    font->indirect = NULL;
-    if (font->fontdict)   pdf_release_obj(font->fontdict);
-    font->fontdict = NULL;
+    if (font->reference)   pdf_release_obj(font->reference);
+    font->reference = NULL;
+    if (font->resource)   pdf_release_obj(font->resource);
+    font->resource = NULL;
     if (font->descriptor) pdf_release_obj(font->descriptor);
     font->descriptor = NULL;
   }
@@ -177,9 +177,9 @@ static void
 CIDFont_release (CIDFont *font)
 {
   if (font) {
-    if (font->indirect)
+    if (font->reference)
       ERROR("%s: Object not flushed.", CIDFONT_DEBUG_STR);
-    if (font->fontdict)
+    if (font->resource)
       ERROR("%s: Object not flushed.", CIDFONT_DEBUG_STR);
     if (font->descriptor)
       ERROR("%s: Object not flushed.", CIDFONT_DEBUG_STR);
