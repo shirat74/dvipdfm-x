@@ -21,24 +21,11 @@
 #ifndef _CID_H_
 #define _CID_H_
 
-/* CIDFont types */
-#define CIDFONT_TYPE0 1
-#define CIDFONT_TYPE2 2
-
-typedef struct {
-  char *registry;
-  char *ordering;
-  int   supplement;
-} CIDSysInfo;
-
 extern CIDSysInfo CSI_IDENTITY;
 extern CIDSysInfo CSI_UNICODE;
 
 typedef struct CIDFont CIDFont;
 
-#if 0
-extern int  CIDFont_require_version (void);
-#endif
 extern void CIDFont_set_flags       (int flags);
 
 #define CIDFONT_FORCE_FIXEDPITCH (1 << 1)
@@ -51,6 +38,8 @@ extern void CIDFont_set_flags       (int flags);
 #define CIDFONT_FLAG_TYPE1      (1 << 8)
 #define CIDFONT_FLAG_TYPE1C     (1 << 9)
 #define CIDFONT_FLAG_TRUETYPE   (1 << 10)
+
+typedef pdf_font CIDFont;
 
 extern char       *CIDFont_get_fontname   (CIDFont *font);
 
