@@ -49,25 +49,6 @@
 
 static pdf_obj *pdf_read_ToUnicode_file (const char *cmap_name);
 
-/*
- * used_chars:
- *
- *  Single bit is used for each CIDs since used_chars can be reused as a
- *  stream content of CIDSet by doing so. See, cid.h for add_to_used() and
- *  is_used().
- */
-
-static char *
-new_used_chars2(void)
-{
-  char *used_chars;
-
-  used_chars = NEW(8192, char);
-  memset(used_chars, 0, 8192);
-
-  return used_chars;
-}
-
 /* PLEASE FIX THIS */
 #include "tt_cmap.h"
 
@@ -142,7 +123,7 @@ Type0Font_attach_ToUnicode_stream (pdf_font *font)
 
   if (!strcmp(csi->registry, "Adobe") && !strcmp(csi->ordering, "Identity")) {
     switch (CIDFont_get_subtype(cidfont)) {
-    case CIDFONT_TYPE2:
+    case PDF_FONT_FONTTYPE_CIDTYPE2:
     /* PLEASE FIX THIS */
       {
         tounicode = otf_create_ToUnicode_stream(CIDFont_get_ident(cidfont),
@@ -212,8 +193,8 @@ int
 pdf_font_open_type0 (pdf_font *font, int font_id, int cid_id, int wmode)
 {
   CIDFont    *cidfont;
+  CIDSysInfo *csi;
   char       *fontname = NULL;
-  int         parent_id = -1;
 
   if (cid_id < 0) 
     return -1;
@@ -238,79 +219,37 @@ pdf_font_open_type0 (pdf_font *font, int font_id, int cid_id, int wmode)
       MESG("(CID:%s)", fontname);
   }
 
-  /*
-   * The difference between CID-keyed font and TrueType font appears here.
-   *
-   * Glyph substitution for vertical writing is done in CMap mapping process
-   * for CID-keyed fonts. But we must rely on OpenType layout table in the
-   * case of TrueType fonts. So, we must use different used_chars for each
-   * horizontal and vertical fonts in that case.
-   *
-   * In most PDF file, encoding name is not appended to fontname for Type0
-   * fonts having CIDFontType 2 font as their descendant.
-   */
-
-  parent_id = CIDFont_get_parent_id(cidfont, wmode);    
-
   switch (CIDFont_get_subtype(cidfont)) {
-  case CIDFONT_TYPE0:
-    font->fontname = NEW(strlen(fontname)+strlen("Identity-V")+2, char);
+  case PDF_FONT_FONTTYPE_CIDTYPE0:
+    font->fontname  = NEW(strlen(fontname)+strlen("Identity-V")+2, char);
     sprintf(font->fontname, "%s-%s", fontname, wmode ? "Identity-V" : "Identity-H");
-    if (parent_id < 0) {
-      int other_id = CIDFont_get_parent_id(cidfont, wmode ? 0 : 1);
-      if (other_id < 0) {
-        font->usedchars  = new_used_chars2();
-      } else {
-        font->usedchars  = pdf_get_font_usedchars(other_id);
-        font->flags     |= PDF_FONT_FLAG_USEDCHAR_SHARED;
-      }
-    } else {
-      font->usedchars  = pdf_get_font_usedchars(parent_id);
-      font->flags     |= PDF_FONT_FLAG_USEDCHAR_SHARED;
-    }
+    font->usedchars = CIDFont_get_usedchars(cidfont);
+    font->flags    |= PDF_FONT_FLAG_USEDCHAR_SHARED;
     break;
-  case CIDFONT_TYPE2:
+  case PDF_FONT_FONTTYPE_CIDTYPE2:
     font->fontname = NEW(strlen(fontname)+1, char);
     strcpy(font->fontname, fontname);
     /* Adobe-Identity here means use GID as CID directly. No need to use GSUB for finding
      * vertical glyphs hence separate used_chars for H and V instances are not needed.
      */
+    csi = CIDFont_get_CIDSysInfo(cidfont);
     if (!csi || (!strcmp(csi->registry, "Adobe") && !strcmp(csi->ordering, "Identity"))) {
-      if (parent_id < 0) {
-        int other_id = CIDFont_get_parent_id(cidfont, wmode ? 0 : 1);
-        if (other_id < 0) {
-          font->usedchars  = new_used_chars2();
-        } else {
-          font->usedchars  = pdf_get_font_usedchars(other_id);
-          font->flags     |= PDF_FONT_FLAG_USEDCHAR_SHARED;
-        }
-      } else {
-        font->usedchars  = pdf_get_font_usedchars(parent_id);
-        font->flags     |= PDF_FONT_FLAG_USEDCHAR_SHARED;
-      }
+      font->usedchars  = CIDFont_get_usedchars(cidfont);
+      font->flags     |= PDF_FONT_FLAG_USEDCHAR_SHARED;
     } else {
-      if (parent_id < 0) {
-        font->usedchars  = new_used_chars2();
-      } else {
-        font->usedchars  = pdf_get_font_usedchars(parent_id);
-        font->flags     |= PDF_FONT_FLAG_USEDCHAR_SHARED;
-      }
+      font->usedchars  = wmode ? CIDFont_get_usedchars_v(cidfont) : CIDFont_get_usedchars(cidfont);
+      font->flags     |= PDF_FONT_FLAG_USEDCHAR_SHARED;
     }
     break;
   }
 
-  if (parent_id < 0) {
-    CIDFont_attach_parent(cidfont, font_id, wmode);
-    font->resource = pdf_new_dict();
-    pdf_add_dict(font->resource, pdf_new_name ("Type"),    pdf_new_name ("Font"));
-    pdf_add_dict(font->resource, pdf_new_name ("Subtype"), pdf_new_name ("Type0"));
-    pdf_add_dict(font->resource,
-                 pdf_new_name("BaseFont"), pdf_new_name(font->fontname));
-    pdf_add_dict(font->resource,
-                 pdf_new_name("Encoding"), pdf_new_name(wmode ? "Identity-V" : "Identity-H"));
-  } else {
-    font->resource = pdf_link_obj(pdf_get_font_resource(parent_id));
-  }
+  font->resource = pdf_new_dict();
+  pdf_add_dict(font->resource, pdf_new_name ("Type"),    pdf_new_name ("Font"));
+  pdf_add_dict(font->resource, pdf_new_name ("Subtype"), pdf_new_name ("Type0"));
+  pdf_add_dict(font->resource,
+               pdf_new_name("BaseFont"), pdf_new_name(font->fontname));
+  pdf_add_dict(font->resource,
+               pdf_new_name("Encoding"), pdf_new_name(wmode ? "Identity-V" : "Identity-H"));
 
   return 0;
 }

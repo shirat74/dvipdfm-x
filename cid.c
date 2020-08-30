@@ -116,7 +116,7 @@ static struct {
 };
 
 static void release_opt (cid_opt *opt);
-static CIDSysInfo *get_cidsysinfo (const char *map_name, fontmap_opt *fmap_opt);
+static int  get_cidsysinfo (CIDSysInfo *csi, const char *map_name, fontmap_opt *fmap_opt);
 
 static int cidoptflags = 0;
 
@@ -126,17 +126,20 @@ CIDFont_new (void)
   CIDFont *font = NULL;
   cid_opt *opts;
 
-  font = NEW(1, struct CIDFont);
+  font = NEW(1, CIDFont);
 
   font->filename = NULL;
   font->fontname = NULL;
   font->ident    = NULL;
 
+  font->usedchars       = NULL;
+  font->cid.usedchars_v = NULL;
+
   /*
    * CIDFont
    */
   font->subtype = -1;
-  font->flags   = PDF_FONT_FLAG_NONE;
+  font->flags   = 0;
   font->cid.csi.registry   = NULL;
   font->cid.csi.ordering   = NULL;
   font->cid.csi.supplement = 0;
@@ -192,6 +195,10 @@ CIDFont_release (CIDFont *font)
     if (font->cid.csi.ordering)
       RELEASE(font->cid.csi.ordering);
     release_opt(&font->cid.options);
+    if (font->usedchars)
+      RELEASE(font->usedchars);
+    if (font->cid.usedchars_v)
+      RELEASE(font->cid.usedchars_v);
   }
 }
 
@@ -284,6 +291,28 @@ CIDFont_is_UCSFont (CIDFont *font)
     return 1;
 
   return 0;
+}
+
+char *
+CIDFont_get_usedchars (CIDFont *font)
+{
+  if (!font->usedchars) {
+    font->usedchars = NEW(8192, char);
+    memset(font->usedchars, 0, 8192*sizeof(char));
+  }
+
+  return font->usedchars;
+}
+
+char *
+CIDFont_get_usedchars_v (CIDFont *font)
+{
+  if (!font->cid.usedchars_v) {
+    font->cid.usedchars_v = NEW(8192, char);
+    memset(font->cid.usedchars_v, 0, 8192*sizeof(char));
+  }
+
+  return font->cid.usedchars_v;
 }
 
 /* FIXME */
@@ -433,7 +462,7 @@ CIDFont_base_open (CIDFont *font, const char *name, CIDSysInfo *cmap_csi, cid_op
 
     type = pdf_name_value(tmp);
     if (!strcmp(type, "CIDFontType0"))
-      font->subtype = PDF_FONT_FINTTYPE_CIDTYPE0;
+      font->subtype = PDF_FONT_FONTTYPE_CIDTYPE0;
     else if (!strcmp(type, "CIDFontType2"))
       font->subtype = PDF_FONT_FONTTYPE_CIDTYPE2;
     else {
@@ -491,7 +520,7 @@ CIDFont_cache_init (void)
   __cache = NEW(1, struct FontCache);
 
   __cache->max  = CACHE_ALLOC_SIZE;
-  __cache->fonts = NEW(__cache->max, struct CIDFont *);
+  __cache->fonts = NEW(__cache->max, CIDFont *);
   __cache->num  = 0;
 }
 
@@ -519,6 +548,9 @@ CIDFont_cache_lookup (const char *map_name, CIDSysInfo *cmap_csi, fontmap_opt *f
   opt.style = fmap_opt->style;
   opt.index = fmap_opt->index;
   opt.embed = (fmap_opt->flags & FONTMAP_OPT_NOEMBED) ? 0 : 1;
+  opt.csi.registry   = NULL;
+  opt.csi.ordering   = NULL;
+  opt.csi.supplement = 0;
   has_csi   = get_cidsysinfo(&opt.csi, map_name, fmap_opt);
   opt.stemv = fmap_opt->stemv;
 
@@ -586,7 +618,10 @@ CIDFont_cache_load_font (const char *map_name, CIDSysInfo *cmap_csi, fontmap_opt
   opt.style = fmap_opt->style;
   opt.index = fmap_opt->index;
   opt.embed = (fmap_opt->flags & FONTMAP_OPT_NOEMBED) ? 0 : 1;
-  has_csi   = get_cidsysinfo(&opt_csi, map_name, fmap_opt);
+  opt.csi.registry   = NULL;
+  opt.csi.ordering   = NULL;
+  opt.csi.supplement = 0;
+  has_csi   = get_cidsysinfo(&opt.csi, map_name, fmap_opt);
   opt.stemv = fmap_opt->stemv;
 
   if (!has_csi && cmap_csi) {
@@ -621,8 +656,8 @@ CIDFont_cache_load_font (const char *map_name, CIDSysInfo *cmap_csi, fontmap_opt
             continue;
           else
             break;
-        } else if (!strcmp(font.csi.registry, opt.csi.registry) &&
-                   !strcmp(font.csi.ordering, opt.csi.ordering)) {
+        } else if (!strcmp(font->cid.csi.registry, opt.csi.registry) &&
+                   !strcmp(font->cid.csi.ordering, opt.csi.ordering)) {
           if (font->subtype == PDF_FONT_FONTTYPE_CIDTYPE2)
             font->cid.csi.supplement =
               MAX(opt.csi.supplement, font->cid.csi.supplement);
@@ -658,13 +693,17 @@ CIDFont_cache_load_font (const char *map_name, CIDSysInfo *cmap_csi, fontmap_opt
       if (__cache->num >= __cache->max) {
         __cache->max  += CACHE_ALLOC_SIZE;
         __cache->fonts = RENEW(__cache->fonts,
-                               __cache->max, struct CIDFont *);
+                               __cache->max, CIDFont *);
       }
       font->filename = NEW(strlen(map_name)+1, char);
       strcpy(font->filename,  map_name);
       font->ident    = NEW(strlen(map_name)+1, char);
       strcpy(font->ident, map_name);
-      font->cid.options = opt;
+      font->cid.options.embed = opt.embed;
+      font->cid.options.index = opt.index;
+      font->cid.options.stemv = opt.stemv;
+      font->cid.options.style = opt.style;
+      font->cid.options.csi   = opt.csi;
       __cache->fonts[font_id] = font;
       (__cache->num)++;
     }
@@ -732,7 +771,7 @@ get_cidsysinfo (CIDSysInfo *csi, const char *map_name, fontmap_opt *fmap_opt)
   sup_idx = (sup_idx > SUP_IDX_MAX) ? SUP_IDX_MAX : sup_idx;
 
   if (!fmap_opt || !fmap_opt->charcoll)
-    return NULL;
+    return 0;
 
   /* First try alias for standard one. */
   for (i = 0; CIDFont_stdcc_alias[i].name != NULL; i++) {

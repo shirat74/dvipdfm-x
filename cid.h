@@ -21,23 +21,18 @@
 #ifndef _CID_H_
 #define _CID_H_
 
+#include "pdffont.h"
+
 extern CIDSysInfo CSI_IDENTITY;
 extern CIDSysInfo CSI_UNICODE;
 
-typedef struct CIDFont CIDFont;
+typedef struct pdf_font CIDFont;
 
 extern void CIDFont_set_flags       (int flags);
 
 #define CIDFONT_FORCE_FIXEDPITCH (1 << 1)
 
 #include "pdfobj.h"
-#include "type0.h"
-
-/* FIXME */
-/* Converted from Type 1 */
-#define CIDFONT_FLAG_TYPE1      (1 << 8)
-#define CIDFONT_FLAG_TYPE1C     (1 << 9)
-#define CIDFONT_FLAG_TRUETYPE   (1 << 10)
 
 typedef pdf_font CIDFont;
 
@@ -53,8 +48,8 @@ extern int         CIDFont_get_embedding  (CIDFont *font);
 extern pdf_obj    *CIDFont_get_resource   (CIDFont *font);
 extern CIDSysInfo *CIDFont_get_CIDSysInfo (CIDFont *font);
 
-extern void     CIDFont_attach_parent (CIDFont *font, int parent_id, int wmode);
-extern int      CIDFont_get_parent_id (CIDFont *font, int wmode);
+extern char       *CIDFont_get_usedchars   (CIDFont *font);
+extern char       *CIDFont_get_usedchars_v (CIDFont *font);
 
 extern int      CIDFont_is_BaseFont (CIDFont *font);
 extern int      CIDFont_is_ACCFont  (CIDFont *font);

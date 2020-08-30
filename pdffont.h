@@ -44,9 +44,14 @@ extern void pdf_font_set_dpi (int font_dpi);
 #define PDF_FONT_FLAG_USEDCHAR_SHARED (1 << 3)
 #define PDF_FONT_FLAG_IS_ALIAS        (1 << 4)
 #define PDF_FONT_FLAG_IS_REENCODE     (1 << 5)
-#define PDF_FONT_FLAG_BASEFONT        (1 << 6)
-#define PDF_FONT_FLAG_ACCFONT         (1 << 7)
-#define PDF_FONT_FLAG_UCSFONT         (1 << 8)
+#define PDF_FONT_FLAG_ACCFONT         (1 << 6)
+#define PDF_FONT_FLAG_UCSFONT         (1 << 7)
+
+/* FIXME */
+/* Converted from Type 1 */
+#define CIDFONT_FLAG_TYPE1      (1 << 8)
+#define CIDFONT_FLAG_TYPE1C     (1 << 9)
+#define CIDFONT_FLAG_TRUETYPE   (1 << 10)
 
 #define PDF_FONT_PARAM_DESIGN_SIZE 1
 #define PDF_FONT_PARAM_POINT_SIZE  2
@@ -114,6 +119,7 @@ struct pdf_font
   struct {
     CIDSysInfo csi;     /* Character collection */
     cid_opt    options; /* Options from map record */
+    char      *usedchars_v;
   } cid;
 };
 
@@ -165,5 +171,8 @@ extern int      pdf_font_set_flags      (pdf_font *font, int flags);
 extern int      pdf_font_set_subtype    (pdf_font *font, int subtype);
 
 extern void     pdf_font_make_uniqueTag (char *tag);
+
+#define add_to_used_chars2(b,c) {(b)[(c)/8] |= (1 << (7-((c)%8)));}
+#define is_used_char2(b,c) (((b)[(c)/8]) & (1 << (7-((c)%8))))
 
 #endif /* _PDFFONT_H_ */

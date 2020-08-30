@@ -21,9 +21,6 @@
 #ifndef _TYPE0_H_
 #define _TYPE0_H_
 
-#define add_to_used_chars2(b,c) {(b)[(c)/8] |= (1 << (7-((c)%8)));}
-#define is_used_char2(b,c) (((b)[(c)/8]) & (1 << (7-((c)%8))))
-
 #include "pdffont.h"
 
 extern void pdf_font_load_type0 (pdf_font *font);

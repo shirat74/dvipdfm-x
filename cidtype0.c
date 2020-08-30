@@ -685,11 +685,11 @@ CIDFont_type0_dofont (CIDFont *font)
    * Those values are obtained from OpenType table (not TFM).
    */
   if (opt_flags & CIDFONT_FORCE_FIXEDPITCH) {
-    pdf_add_dict(font->fontdict,
+    pdf_add_dict(font->resource,
                  pdf_new_name("DW"), pdf_new_number(1000.0));
   } else {
-    add_CIDMetrics(info.sfont, font->fontdict, CIDToGIDMap, last_cid,
-                   ((CIDFont_get_parent_id(font, 1) < 0) ? 0 : 1));
+    add_CIDMetrics(info.sfont, font->resource, CIDToGIDMap, last_cid,
+                   font->cid.usedchars_v ? 1 : 0);
   }
 
   if (!CIDFont_get_embedding(font)) {
@@ -1005,17 +1005,17 @@ CIDFont_type0_open (CIDFont *font, const char *name,
     pdf_obj *csi_dict = pdf_new_dict();
     pdf_add_dict(csi_dict,
                  pdf_new_name("Registry"),
-                 pdf_new_string(csi->registry, strlen(csi->registry)));
+                 pdf_new_string(csi.registry, strlen(csi.registry)));
     pdf_add_dict(csi_dict,
                  pdf_new_name("Ordering"),
-                 pdf_new_string(csi->ordering, strlen(csi->ordering)));
+                 pdf_new_string(csi.ordering, strlen(csi.ordering)));
     pdf_add_dict(csi_dict,
                  pdf_new_name("Supplement"),
-                 pdf_new_number(csi->supplement));
-    pdf_add_dict(font->fontdict, pdf_new_name("CIDSystemInfo"), csi_dict);
+                 pdf_new_number(csi.supplement));
+    pdf_add_dict(font->resource, pdf_new_name("CIDSystemInfo"), csi_dict);
   }
   if (is_cid_font) {
-    pdf_add_dict(font->fontdict,
+    pdf_add_dict(font->resource,
                  pdf_new_name("DW"),
                  pdf_new_number(1000)); /* not sure */
   }
@@ -1248,8 +1248,8 @@ CIDFont_type0_t1cdofont (CIDFont *font)
         CIDToGIDMap[2*cid+1] = cid & 0xff;
       }
     }
-    add_CIDMetrics(info.sfont, font->fontdict, CIDToGIDMap, last_cid,
-                   ((CIDFont_get_parent_id(font, 1) < 0) ? 0 : 1));
+    add_CIDMetrics(info.sfont, font->resource, CIDToGIDMap, last_cid,
+                   font->cid.usedchars_v ? 1 : 0);
     RELEASE(CIDToGIDMap);
   }
 
@@ -1675,7 +1675,7 @@ add_metrics (CIDFont *font, cff_font *cffont,
   pdf_add_dict(font->resource,
                pdf_new_name("DW"), pdf_new_number(default_width));
   if (pdf_array_length(tmp) > 0) {
-    pdf_add_dict(font->fontdict, pdf_new_name("W"), pdf_ref_obj(tmp));
+    pdf_add_dict(font->resource, pdf_new_name("W"), pdf_ref_obj(tmp));
   }
   pdf_release_obj(tmp);
 }
@@ -1715,6 +1715,9 @@ CIDFont_type0_t1dofont (CIDFont *font)
   if (!font->fontname)
     ERROR("Fontname undefined...");
 
+  used_chars = font->usedchars;
+  /* NYI */
+#if 0
   {
     pdf_obj *tounicode;
     int      vparent_id, hparent_id;
@@ -1746,6 +1749,7 @@ CIDFont_type0_t1dofont (CIDFont *font)
     }
     pdf_release_obj(tounicode);
   }
+#endif
 
   cff_set_name(cffont, font->fontname);
 
