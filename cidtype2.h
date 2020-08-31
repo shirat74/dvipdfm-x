@@ -26,8 +26,7 @@
 
 extern void CIDFont_type2_set_flags   (int flags);
 
-extern int  CIDFont_type2_open    (CIDFont *font, const char *name,
-				   CIDSysInfo *cmap_csi, cid_opt *opt);
-extern void CIDFont_type2_dofont  (CIDFont *font);
+extern int  CIDFont_type2_open   (CIDFont *font, const char *name, int index, CIDSysInfo *cmap_csi, cid_opt *opt);
+extern void CIDFont_type2_dofont (CIDFont *font);
 
 #endif /* _CIDTYPE2_H_ */

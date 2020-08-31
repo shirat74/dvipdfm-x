@@ -71,7 +71,7 @@ Type0Font_try_load_ToUnicode_stream(pdf_font *font, char *cmap_base) {
   RELEASE(cmap_name);
 
   if (!tounicode) {
-    CIDFont *cidfont = CIDFont_cache_get(font->type0.descendant);
+    pdf_font *cidfont = pdf_get_font_data(font->type0.descendant);
     tounicode = otf_create_ToUnicode_stream(cidfont->ident, cidfont->index,
                                             cidfont->fontname, font->usedchars);   
   }
@@ -83,7 +83,7 @@ static void
 Type0Font_attach_ToUnicode_stream (pdf_font *font)
 {
   pdf_obj    *tounicode;
-  CIDFont    *cidfont = CIDFont_cache_get(font->type0.descendant);
+  pdf_font   *cidfont = pdf_get_font_data(font->type0.descendant);
   CIDSysInfo *csi;
   char       *fontname;
 
@@ -174,26 +174,25 @@ pdf_font_load_type0 (pdf_font *font)
     Type0Font_attach_ToUnicode_stream(font);
   }
   if (!pdf_lookup_dict(font->resource, "DescendantFonts")) {
-    pdf_obj *array;
-    CIDFont *cidfont = CIDFont_cache_get(font->type0.descendant);
+    pdf_obj  *array;
 
     array = pdf_new_array();
-    pdf_add_array(array, CIDFont_get_resource(cidfont)); /* FIXME */
+    pdf_add_array(array, pdf_get_font_reference(font->type0.descendant));
     pdf_add_dict(font->resource, pdf_new_name("DescendantFonts"), array);
   }
 }
 
 int
-pdf_font_open_type0 (pdf_font *font, int font_id, int cid_id, int wmode)
+pdf_font_open_type0 (pdf_font *font, int cid_id, int wmode)
 {
-  CIDFont    *cidfont;
+  pdf_font   *cidfont;
   CIDSysInfo *csi;
   char       *fontname = NULL;
 
   if (cid_id < 0) 
     return -1;
 
-  cidfont = CIDFont_cache_get(cid_id);
+  cidfont = pdf_get_font_data(cid_id);
 
   font->type0.wmode      = wmode;
   font->type0.descendant = cid_id;
@@ -207,7 +206,7 @@ pdf_font_open_type0 (pdf_font *font, int font_id, int cid_id, int wmode)
   fontname = cidfont->fontname;
 
   if (dpx_conf.verbose_level > 0) {
-    if (cidfont->options.embed && strlen(fontname) > 7)
+    if (cidfont->cid.options.embed && strlen(fontname) > 7)
       MESG("(CID:%s)", fontname+7); /* skip XXXXXX+ */
     else
       MESG("(CID:%s)", fontname);

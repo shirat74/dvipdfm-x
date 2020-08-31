@@ -631,7 +631,7 @@ CIDFont_type0_dofont (CIDFont *font)
 
   if (CIDFont_is_BaseFont(font))
     return;
-  else if (!CIDFont_get_embedding(font) &&
+  else if (!font->cid.options.embed &&
            (opt_flags & CIDFONT_FORCE_FIXEDPITCH)) {
     /* No metrics needed. */
     pdf_add_dict(font->resource,
@@ -641,8 +641,7 @@ CIDFont_type0_dofont (CIDFont *font)
 
   used_chars = CIDFont_type0_get_used_chars(font);
 
-  error = CIDFont_type0_try_open(font->ident, CIDFont_get_opt_index(font),
-                                 1, &info);
+  error = CIDFont_type0_try_open(font->ident, font->index, 1, &info);
   if (error != CID_OPEN_ERROR_NO_ERROR) {
     CIDType0Error_Show(error, font->ident);
     return;
@@ -692,7 +691,7 @@ CIDFont_type0_dofont (CIDFont *font)
                    font->cid.usedchars_v ? 1 : 0);
   }
 
-  if (!CIDFont_get_embedding(font)) {
+  if (!font->cid.options.embed) {
     RELEASE(CIDToGIDMap);
     CIDFontInfo_close(&info);
 
@@ -819,7 +818,7 @@ CIDFont_type0_dofont (CIDFont *font)
 }
 
 int
-CIDFont_type0_open (CIDFont *font, const char *name,
+CIDFont_type0_open (CIDFont *font, const char *name, int index,
                     CIDSysInfo *cmap_csi, cid_opt *opt,
                     int expected_flag)
 {
@@ -858,7 +857,7 @@ CIDFont_type0_open (CIDFont *font, const char *name,
     }
 
     if (sfont->type == SFNT_TYPE_TTC)
-      offset = ttc_read_offset(sfont, opt->index);
+      offset = ttc_read_offset(sfont, index);
 
     if ((sfont->type != SFNT_TYPE_TTC && sfont->type != SFNT_TYPE_POSTSCRIPT) ||
         sfnt_read_table_directory(sfont, offset) < 0 ||
@@ -1056,8 +1055,7 @@ CIDFont_type0_t1cdofont (CIDFont *font)
 
   used_chars = CIDFont_type0_get_used_chars(font);
 
-  error = CIDFont_type0_try_open(font->ident, CIDFont_get_opt_index(font),
-                                 0, &info);
+  error = CIDFont_type0_try_open(font->ident, font->index, 0, &info);
   if (error != CID_OPEN_ERROR_NO_ERROR) {
     CIDType0Error_Show(error, font->ident);
     return;

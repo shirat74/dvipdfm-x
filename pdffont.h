@@ -71,7 +71,6 @@ typedef struct {
 typedef struct
 {
   CIDSysInfo csi;
-  int        index;
   int        style;
   int        embed;
   int        stemv;
@@ -137,40 +136,43 @@ extern void     pdf_close_fonts (void);
 extern int      pdf_font_findresource  (const char *tex_name, double font_scale);
 extern int      pdf_font_load_font     (const char *tex_name, double font_scale, fontmap_rec *mrec);
 
-extern int      pdf_get_font_subtype   (int font_id);
-extern pdf_obj *pdf_get_font_reference (int font_id);
-extern pdf_obj *pdf_get_font_resource  (int font_id);
-extern char    *pdf_get_font_usedchars (int font_id);
+extern pdf_font *pdf_get_font_data      (int font_id);
 
-extern int      pdf_get_font_encoding  (int font_id);
-extern int      pdf_get_font_wmode     (int font_id);
+extern char     *pdf_get_font_ident     (int font_id);
+extern int       pdf_get_font_subtype   (int font_id);
+extern pdf_obj  *pdf_get_font_reference (int font_id);
+extern pdf_obj  *pdf_get_font_resource  (int font_id);
+extern char     *pdf_get_font_usedchars (int font_id);
 
-extern int      pdf_sprint_resource_name (int font_id, char *buf);
+extern int       pdf_get_font_encoding  (int font_id);
+extern int       pdf_get_font_wmode     (int font_id);
+
+extern int       pdf_sprint_resource_name (int font_id, char *buf);
 
 /* Each font drivers use the followings. */
-extern int      pdf_font_is_in_use      (pdf_font *font);
+extern int       pdf_font_is_in_use      (pdf_font *font);
 
-extern char    *pdf_font_get_filename   (pdf_font *font);
-extern char    *pdf_font_get_mapname    (pdf_font *font);
-extern char    *pdf_font_get_fontname   (pdf_font *font); /* without unique tag */
-extern char    *pdf_font_get_uniqueTag  (pdf_font *font);
+extern char     *pdf_font_get_filename   (pdf_font *font);
+extern char     *pdf_font_get_mapname    (pdf_font *font);
+extern char     *pdf_font_get_fontname   (pdf_font *font); /* without unique tag */
+extern char     *pdf_font_get_uniqueTag  (pdf_font *font);
 
-extern pdf_obj *pdf_font_get_resource   (pdf_font *font);
-extern pdf_obj *pdf_font_get_descriptor (pdf_font *font);
+extern pdf_obj  *pdf_font_get_resource   (pdf_font *font);
+extern pdf_obj  *pdf_font_get_descriptor (pdf_font *font);
 
-extern char    *pdf_font_get_usedchars  (pdf_font *font);
-extern int      pdf_font_get_encoding   (pdf_font *font);
+extern char     *pdf_font_get_usedchars  (pdf_font *font);
+extern int       pdf_font_get_encoding   (pdf_font *font);
 
-extern int      pdf_font_get_flag       (pdf_font *font, int mask);
-extern double   pdf_font_get_param      (pdf_font *font, int type);
+extern int       pdf_font_get_flag       (pdf_font *font, int mask);
+extern double    pdf_font_get_param      (pdf_font *font, int type);
 
-extern uint32_t pdf_font_get_index      (pdf_font *font);
+extern uint32_t  pdf_font_get_index      (pdf_font *font);
 
-extern int      pdf_font_set_fontname   (pdf_font *font, const char *fontname);
-extern int      pdf_font_set_flags      (pdf_font *font, int flags);
-extern int      pdf_font_set_subtype    (pdf_font *font, int subtype);
+extern int       pdf_font_set_fontname   (pdf_font *font, const char *fontname);
+extern int       pdf_font_set_flags      (pdf_font *font, int flags);
+extern int       pdf_font_set_subtype    (pdf_font *font, int subtype);
 
-extern void     pdf_font_make_uniqueTag (char *tag);
+extern void      pdf_font_make_uniqueTag (char *tag);
 
 #define add_to_used_chars2(b,c) {(b)[(c)/8] |= (1 << (7-((c)%8)));}
 #define is_used_char2(b,c) (((b)[(c)/8]) & (1 << (7-((c)%8))))
