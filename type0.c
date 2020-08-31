@@ -72,10 +72,8 @@ Type0Font_try_load_ToUnicode_stream(pdf_font *font, char *cmap_base) {
 
   if (!tounicode) {
     CIDFont *cidfont = CIDFont_cache_get(font->type0.descendant);
-    tounicode = otf_create_ToUnicode_stream(CIDFont_get_ident(cidfont),
-                                            CIDFont_get_opt_index(cidfont),
-                                            CIDFont_get_fontname(cidfont),
-                                            font->usedchars);   
+    tounicode = otf_create_ToUnicode_stream(cidfont->ident, cidfont->index,
+                                            cidfont->fontname, font->usedchars);   
   }
 
   return tounicode;
@@ -115,30 +113,26 @@ Type0Font_attach_ToUnicode_stream (pdf_font *font)
   }
 
   tounicode = NULL;
-  csi       = CIDFont_get_CIDSysInfo(cidfont);
-  fontname  = CIDFont_get_fontname(cidfont);
-  if (CIDFont_get_embedding(cidfont)) {
+  csi       = &cidfont->cid.csi;
+  fontname  = cidfont->fontname;
+  if (cidfont->cid.options.embed) {
     fontname += 7; /* FIXME: Skip pseudo unique tag... */
   }
 
   if (!strcmp(csi->registry, "Adobe") && !strcmp(csi->ordering, "Identity")) {
-    switch (CIDFont_get_subtype(cidfont)) {
+    switch (cidfont->subtype) {
     case PDF_FONT_FONTTYPE_CIDTYPE2:
     /* PLEASE FIX THIS */
       {
-        tounicode = otf_create_ToUnicode_stream(CIDFont_get_ident(cidfont),
-                                                CIDFont_get_opt_index(cidfont),
-                                                CIDFont_get_fontname(cidfont),
-                                                font->usedchars);
+        tounicode = otf_create_ToUnicode_stream(cidfont->ident, cidfont->index,
+                                                cidfont->fontname, font->usedchars);
       }
       break;
     default:
-      if (CIDFont_get_flag(cidfont, CIDFONT_FLAG_TYPE1C)) {
-        tounicode = otf_create_ToUnicode_stream(CIDFont_get_ident(cidfont),
-                                                CIDFont_get_opt_index(cidfont),
-                                                CIDFont_get_fontname(cidfont),
-                                                font->usedchars);
-      } else if (CIDFont_get_flag(cidfont, CIDFONT_FLAG_TYPE1)) {
+      if (cidfont->flags & CIDFONT_FLAG_TYPE1C) {
+        tounicode = otf_create_ToUnicode_stream(cidfont->ident, cidfont->index,
+                                                cidfont->fontname, font->usedchars);
+      } else if (cidfont->flags & CIDFONT_FLAG_TYPE1) {
         /* FIXME: handled on very different timing.
          * Font loader will create ToUnicode and set.
          */
@@ -184,7 +178,7 @@ pdf_font_load_type0 (pdf_font *font)
     CIDFont *cidfont = CIDFont_cache_get(font->type0.descendant);
 
     array = pdf_new_array();
-    pdf_add_array(array, CIDFont_get_resource(cidfont));
+    pdf_add_array(array, CIDFont_get_resource(cidfont)); /* FIXME */
     pdf_add_dict(font->resource, pdf_new_name("DescendantFonts"), array);
   }
 }
@@ -210,16 +204,16 @@ pdf_font_open_type0 (pdf_font *font, int font_id, int cid_id, int wmode)
    *  Type0 font's fontname is usually descendant CID-keyed font's font name 
    *  appended by -ENCODING.
    */
-  fontname = CIDFont_get_fontname(cidfont);
+  fontname = cidfont->fontname;
 
   if (dpx_conf.verbose_level > 0) {
-    if (CIDFont_get_embedding(cidfont) && strlen(fontname) > 7)
+    if (cidfont->options.embed && strlen(fontname) > 7)
       MESG("(CID:%s)", fontname+7); /* skip XXXXXX+ */
     else
       MESG("(CID:%s)", fontname);
   }
 
-  switch (CIDFont_get_subtype(cidfont)) {
+  switch (cidfont->subtype) {
   case PDF_FONT_FONTTYPE_CIDTYPE0:
     font->fontname  = NEW(strlen(fontname)+strlen("Identity-V")+2, char);
     sprintf(font->fontname, "%s-%s", fontname, wmode ? "Identity-V" : "Identity-H");
@@ -232,7 +226,7 @@ pdf_font_open_type0 (pdf_font *font, int font_id, int cid_id, int wmode)
     /* Adobe-Identity here means use GID as CID directly. No need to use GSUB for finding
      * vertical glyphs hence separate used_chars for H and V instances are not needed.
      */
-    csi = CIDFont_get_CIDSysInfo(cidfont);
+    csi = &cidfont->cid.csi;
     if (!csi || (!strcmp(csi->registry, "Adobe") && !strcmp(csi->ordering, "Identity"))) {
       font->usedchars  = CIDFont_get_usedchars(cidfont);
       font->flags     |= PDF_FONT_FLAG_USEDCHAR_SHARED;
