@@ -525,7 +525,7 @@ CIDFont_type2_dofont (CIDFont *font)
   }
 
   /* Quick exit for non-embedded & fixed-pitch font. */
-  if (!CIDFont_get_embedding(font) &&
+  if (!font->cid.options.embed &&
       (opt_flags & CIDFONT_FORCE_FIXEDPITCH)) {
     pdf_add_dict(font->resource, pdf_new_name("DW"), pdf_new_number(1000.0));
     return;
@@ -812,7 +812,7 @@ CIDFont_type2_dofont (CIDFont *font)
 
   tt_cmap_release(ttcmap);
 
-  if (CIDFont_get_embedding(font)) {
+  if (font->cid.options.embed) {
     if (tt_build_tables(sfont, glyphs) < 0)
       ERROR("Could not created FontFile stream.");
     if (dpx_conf.verbose_level > 1)
@@ -856,7 +856,7 @@ CIDFont_type2_dofont (CIDFont *font)
   tt_build_finish(glyphs);
 
   /* Finish here if not embedded. */
-  if (!CIDFont_get_embedding(font)) {
+  if (!font->cid.options.embed) {
     if (cidtogidmap)
       RELEASE(cidtogidmap);
     sfnt_close(sfont);
