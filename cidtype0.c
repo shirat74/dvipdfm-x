@@ -71,14 +71,6 @@
 #include "cmap_write.h"
 #include "fontmap.h"
 
-static int  opt_flags = 0;
-
-void
-CIDFont_type0_set_flags (int flags)
-{
-  opt_flags = flags;
-}
-
 /*
  * PDF Reference 3rd. ed., p.340, "Glyph Metrics in CID Fonts".
  */
@@ -632,7 +624,7 @@ CIDFont_type0_dofont (CIDFont *font)
   if (CIDFont_is_BaseFont(font))
     return;
   else if (!font->cid.options.embed &&
-           (opt_flags & CIDFONT_FORCE_FIXEDPITCH)) {
+           (opt_flags_cidfont & CIDFONT_FORCE_FIXEDPITCH)) {
     /* No metrics needed. */
     pdf_add_dict(font->resource,
                  pdf_new_name("DW"), pdf_new_number(1000.0));
@@ -683,7 +675,7 @@ CIDFont_type0_dofont (CIDFont *font)
    * DW, W, DW2 and W2:
    * Those values are obtained from OpenType table (not TFM).
    */
-  if (opt_flags & CIDFONT_FORCE_FIXEDPITCH) {
+  if (opt_flags_cidfont & CIDFONT_FORCE_FIXEDPITCH) {
     pdf_add_dict(font->resource,
                  pdf_new_name("DW"), pdf_new_number(1000.0));
   } else {
