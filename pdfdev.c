@@ -1422,7 +1422,7 @@ pdf_dev_locate_font (const char *font_name, spt_t ptsize)
       return  -1;
   }
 
-  pdf_sprint_resource_name(font->font_id, font->short_name);
+  pdf_font_resource_name(font->font_id, font->short_name);
 
   font->used_on_this_page = 0;
 
