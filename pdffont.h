@@ -169,6 +169,7 @@ extern uint32_t  pdf_font_get_index      (pdf_font *font);
 
 extern int       pdf_font_set_fontname   (pdf_font *font, const char *fontname);
 extern int       pdf_font_set_flags      (pdf_font *font, int flags);
+extern int       pdf_font_unset_flags    (pdf_font *font, int flags);
 extern int       pdf_font_set_subtype    (pdf_font *font, int subtype);
 
 extern void      pdf_font_make_uniqueTag (char *tag);
