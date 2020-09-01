@@ -43,8 +43,6 @@
 #include "cid_p.h"
 #include "cid.h"
 
-#include "cff.h"
-
 #define PDF_CID_SUPPORT_MIN 2
 #define PDF_CID_SUPPORT_MAX 6
 
@@ -115,7 +113,7 @@ static struct {
 static void release_opt (cid_opt *opt);
 static int  get_cidsysinfo (CIDSysInfo *csi, const char *map_name, fontmap_opt *fmap_opt);
 
-static int cidoptflags = 0;
+int opt_flags_cidfont = 0;
 
 int
 CIDFont_is_ACCFont (CIDFont *font)
@@ -599,7 +597,5 @@ get_cidsysinfo (CIDSysInfo *csi, const char *map_name, fontmap_opt *fmap_opt)
 void
 CIDFont_set_flags (int flags)
 {
-  CIDFont_type0_set_flags(flags);
-  CIDFont_type2_set_flags(flags);
-  cidoptflags |= flags;
+  opt_flags_cidfont |= flags;
 }
