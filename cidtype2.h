@@ -22,9 +22,6 @@
 #define _CIDTYPE2_H_
 
 #include "cid.h"
-#include "cid_p.h"
-
-extern void CIDFont_type2_set_flags   (int flags);
 
 extern int  CIDFont_type2_open   (CIDFont *font, const char *name, int index, CIDSysInfo *cmap_csi, cid_opt *opt);
 extern void CIDFont_type2_dofont (CIDFont *font);
