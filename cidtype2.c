@@ -55,16 +55,7 @@
 #include "cmap.h"
 #include "type0.h"
 #include "cid.h"
-#include "cid_p.h"
 #include "cidtype2.h"
-
-static int opt_flags = 0;
-
-void
-CIDFont_type2_set_flags (int32_t flags)
-{
-  opt_flags = flags;
-}
 
 /*
  * PDF viewer applications use following tables (CIDFontType 2)
@@ -526,7 +517,7 @@ CIDFont_type2_dofont (CIDFont *font)
 
   /* Quick exit for non-embedded & fixed-pitch font. */
   if (!font->cid.options.embed &&
-      (opt_flags & CIDFONT_FORCE_FIXEDPITCH)) {
+      (opt_flags_cidfont & CIDFONT_FORCE_FIXEDPITCH)) {
     pdf_add_dict(font->resource, pdf_new_name("DW"), pdf_new_number(1000.0));
     return;
   }
@@ -825,7 +816,7 @@ CIDFont_type2_dofont (CIDFont *font)
   /*
    * DW, W, DW2, and W2
    */
-  if (opt_flags & CIDFONT_FORCE_FIXEDPITCH) {
+  if (opt_flags_cidfont & CIDFONT_FORCE_FIXEDPITCH) {
     pdf_add_dict(font->resource, pdf_new_name("DW"), pdf_new_number(1000.0));
   } else {
     add_TTCIDHMetrics(font->resource, glyphs, used_chars, cidtogidmap, last_cid);
