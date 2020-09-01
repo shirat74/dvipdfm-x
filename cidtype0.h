@@ -22,10 +22,6 @@
 #define _CIDTYPE0_H_
 
 #include "cid.h"
-#include "cid_p.h"
-#include "fontmap.h"
-
-extern void CIDFont_type0_set_flags   (int flags);
 
 extern int  CIDFont_type0_open   (CIDFont *font, const char *name, int index, CIDSysInfo *cmap_csi, cid_opt *opt, int expected_flag);
 extern void CIDFont_type0_dofont (CIDFont *font);
