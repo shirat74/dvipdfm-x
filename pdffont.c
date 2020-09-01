@@ -480,7 +480,6 @@ pdf_close_fonts (void)
     font = &font_cache.fonts[font_id];
     if ((font->flags & PDF_FONT_FLAG_IS_ALIAS) ||
         (font->flags & PDF_FONT_FLAG_IS_REENCODE)) {
-      pdf_clean_font_struct(font);
       continue;
     }
     if (font->subtype == PDF_FONT_FONTTYPE_CIDTYPE0 ||
@@ -556,6 +555,11 @@ pdf_close_fonts (void)
   for (font_id = 0; font_id < font_cache.count; font_id++) {
     pdf_font *font = &font_cache.fonts[font_id];
 
+    if ((font->flags & PDF_FONT_FLAG_IS_ALIAS) ||
+        (font->flags & PDF_FONT_FLAG_IS_REENCODE)) {
+      continue;
+    }
+
     switch (font->subtype) {
     case PDF_FONT_FONTTYPE_CIDTYPE0:
     case PDF_FONT_FONTTYPE_CIDTYPE2:
@@ -568,6 +572,13 @@ pdf_close_fonts (void)
     pdf_font *font;
 
     font = &font_cache.fonts[font_id];
+
+    if ((font->flags & PDF_FONT_FLAG_IS_ALIAS) ||
+        (font->flags & PDF_FONT_FLAG_IS_REENCODE)) {
+      pdf_clean_font_struct(font);
+      continue;
+    }
+  
     if (font->encoding_id >= 0 &&
         font->subtype != PDF_FONT_FONTTYPE_TYPE0 &&
         font->subtype != PDF_FONT_FONTTYPE_CIDTYPE0 &&
@@ -833,7 +844,7 @@ pdf_font_load_font (const char *ident, double font_scale, fontmap_rec *mrec)
     csi     = CMap_is_Identity(cmap) ? NULL : CMap_get_CIDSysInfo(cmap);
     wmode   = CMap_get_wmode(cmap);
     
-    cid_id = pdf_font_cid_lookup_cache(&font_cache.fonts, font_cache.count, mrec->font_name, csi, &mrec->opt);
+    cid_id = pdf_font_cidfont_lookup_cache(font_cache.fonts, font_cache.count, mrec->font_name, csi, &mrec->opt);
     if (cid_id >= 0) {
       for (font_id = 0; font_id < font_cache.count; font_id++) {
         font = &font_cache.fonts[font_id];
@@ -973,14 +984,14 @@ pdf_font_load_font (const char *ident, double font_scale, fontmap_rec *mrec)
     font->filename    = NEW(strlen(fontname) + 1, char);
     strcpy(font->filename, fontname);
     font->index       = (mrec && mrec->opt.index) ? mrec->opt.index : 0;
-
-    if (pdf_font_open_type1(font) >= 0) {
+    font->flags      |= (mrec && (mrec->opt.flags & FONTMAP_OPT_NOEMBED)) ? PDF_FONT_FLAG_NOEMBED : 0;
+    if (pdf_font_open_type1(font, font->filename, font->index, font->encoding_id, (font->flags & PDF_FONT_FLAG_NOEMBED) ? 0 : 1) >= 0) {
       font->subtype = PDF_FONT_FONTTYPE_TYPE1;
-    } else if (pdf_font_open_type1c(font) >= 0) {
+    } else if (pdf_font_open_type1c(font, font->filename, font->index, font->encoding_id, (font->flags & PDF_FONT_FLAG_NOEMBED) ? 0 : 1) >= 0) {
       font->subtype = PDF_FONT_FONTTYPE_TYPE1C;
-    } else if (pdf_font_open_truetype(font) >= 0) {
+    } else if (pdf_font_open_truetype(font, font->filename, font->index, font->encoding_id, (font->flags & PDF_FONT_FLAG_NOEMBED) ? 0 : 1) >= 0) {
       font->subtype = PDF_FONT_FONTTYPE_TRUETYPE;
-    } else if (pdf_font_open_pkfont(font) >= 0) {
+    } else if (pdf_font_open_pkfont(font,font->filename, font->index, font->encoding_id, (font->flags & PDF_FONT_FLAG_NOEMBED) ? 0 : 1, font->point_size) >= 0) {
       font->subtype = PDF_FONT_FONTTYPE_TYPE3;
     } else {
       pdf_clean_font_struct(font);

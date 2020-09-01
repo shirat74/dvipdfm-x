@@ -98,20 +98,19 @@ dpx_open_pk_font_at (const char *ident, unsigned dpi)
 
 
 int
-pdf_font_open_pkfont (pdf_font *font)
+pdf_font_open_pkfont (pdf_font *font, const char *ident, int index, int encoding_id, int embedding, double point_size)
 {
-  char     *ident;
-  double    point_size;
-  int       encoding_id;
   unsigned  dpi;
   FILE     *fp;
 
-  ident       = pdf_font_get_filename(font);
-  point_size  = pdf_font_get_param(font, PDF_FONT_PARAM_POINT_SIZE);
-  encoding_id = pdf_font_get_encoding(font);
-
   if (!ident || point_size <= 0.0)
     return  -1;
+  if (!embedding) {
+    WARN("Ignoring no-embed option for PK font: %s", ident);
+  }
+  if (index != 0) {
+    WARN("Ignoring font index option for PK font: %s", ident);
+  }
 
   dpi = truedpi(ident, point_size, base_dpi);
   fp  = dpx_open_pk_font_at(ident, dpi);

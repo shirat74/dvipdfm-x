@@ -340,7 +340,7 @@ CIDFont_base_open (CIDFont *font, const char *name, CIDSysInfo *cmap_csi, cid_op
     }
   }
 
-  if (cidoptflags & CIDFONT_FORCE_FIXEDPITCH) {
+  if (opt_flags_cidfont & CIDFONT_FORCE_FIXEDPITCH) {
     if (pdf_lookup_dict(fontdict, "W")) {
        pdf_remove_dict(fontdict, "W");
     }
@@ -363,7 +363,7 @@ CIDFont_base_open (CIDFont *font, const char *name, CIDSysInfo *cmap_csi, cid_op
 }
 
 int
-pdf_font_cidfont_lookup_cache (pdf_font **fonts, int count, const char *map_name, CIDSysInfo *cmap_csi, fontmap_opt *fmap_opt)
+pdf_font_cidfont_lookup_cache (pdf_font *fonts, int count, const char *map_name, CIDSysInfo *cmap_csi, fontmap_opt *fmap_opt)
 {
   int       font_id = -1;
   pdf_font *font    = NULL;
@@ -397,7 +397,7 @@ pdf_font_cidfont_lookup_cache (pdf_font **fonts, int count, const char *map_name
    * implicit CIDSystemInfo supplied by CMap for TrueType.
    */
   for (font_id = 0; font_id < count; font_id++) {
-    font = fonts[font_id];
+    font = &fonts[font_id];
     if (font->subtype != PDF_FONT_FONTTYPE_CIDTYPE0 &&
         font->subtype != PDF_FONT_FONTTYPE_CIDTYPE2)
       continue;

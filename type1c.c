@@ -65,37 +65,51 @@
 #include "tfm.h"
 
 int
-pdf_font_open_type1c (pdf_font *font, const char ident, int index, int embedding)
+pdf_font_open_type1c (pdf_font *font, const char *ident, int index, int encoding_id, int embedding)
 {
   char     *fontname;
   FILE     *fp = NULL;
   sfnt     *sfont;
   cff_font *cffont;
   pdf_obj  *descriptor, *tmp;
-  unsigned  offset = 0;
+  ULONG     offset = 0;
 
   ASSERT(font);
   ASSERT(ident);
 
   fp = DPXFOPEN(ident, DPX_RES_TYPE_OTFONT);
   if (!fp)
+    fp = DPXFOPEN(ident, DPX_RES_TYPE_TTFONT);
+  if (!fp)
     return -1;
 
   sfont = sfnt_open(fp);
-  if (!sfont ||
-      sfont->type != SFNT_TYPE_POSTSCRIPT     ||
-      sfnt_read_table_directory(sfont, 0) < 0) {
-    ERROR("Not a CFF/OpenType font (9)?");
+  if (!sfont) {
+    if (fp)
+      DPXFCLOSE(fp);
+    return -1;
   }
 
-  offset = sfnt_find_table_pos(sfont, "CFF ");
-  if (offset < 1) {
-    ERROR("No \"CFF \" table found; not a CFF/OpenType font (or variable font?) (10)?");
+  if (sfont->type == SFNT_TYPE_TTC) {
+    offset = ttc_read_offset(sfont, index);
+  }
+
+  if ((sfont->type != SFNT_TYPE_TTC && sfont->type != SFNT_TYPE_POSTSCRIPT) ||
+      sfnt_read_table_directory(sfont, offset) < 0 ||
+      (offset = sfnt_find_table_pos(sfont, "CFF ")) == 0) {
+    sfnt_close(sfont);
+    if (fp)
+      DPXFCLOSE(fp);
+    return -1;
   }
 
   cffont = cff_open(sfont->stream, offset, 0);
   if (!cffont) {
-    ERROR("Could not read CFF font data");
+    WARN("Could not read CFF font data: %s", ident);
+    sfnt_close(sfont);
+    if (fp)
+      DPXFCLOSE(fp);
+    return -1;
   }
 
   if (cffont->flag & FONTTYPE_CIDFONT) {
@@ -108,13 +122,28 @@ pdf_font_open_type1c (pdf_font *font, const char ident, int index, int embedding
 
   fontname = cff_get_name(cffont);
   if (!fontname) {
-    ERROR("No valid FontName found in CFF/OpenType font.");
+    WARN("No valid FontName found in CFF/OpenType font: %s", ident);
+    cff_close (cffont);
+    sfnt_close(sfont);
+    if (fp)
+      DPXFCLOSE(fp);
+    return -1;   
   }
   pdf_font_set_fontname(font, fontname);
   RELEASE(fontname);
 
   cff_close(cffont);
 
+  /*
+   * Font like AdobePiStd does not have meaningful built-in encoding.
+   * Some software generate CFF/OpenType font with incorrect encoding.
+   */
+  if (encoding_id < 0) {
+    WARN("Built-in encoding used for CFF/OpenType font.");
+    WARN("CFF font in OpenType font sometimes have strange built-in encoding.");
+    WARN("If you find text is not encoded properly in the generated PDF file,");
+    WARN("please specify appropriate \".enc\" file in your fontmap.");
+  }
   pdf_font_set_subtype (font, PDF_FONT_FONTTYPE_TYPE1C);
 
   descriptor = pdf_font_get_descriptor(font);
@@ -195,11 +224,10 @@ add_SimpleMetrics (pdf_font *font, cff_font *cffont,
                  pdf_font_get_mapname(font));
             WARN("TFM: %g vs. CFF font: %g", width, widths[code]);
             }
-	pdf_add_array(tmp_array,
-		      pdf_new_number(ROUND(width, 0.1)));
+            pdf_add_array(tmp_array, pdf_new_number(ROUND(width, 0.1)));
         }
       } else {
-	pdf_add_array(tmp_array, pdf_new_number(0.0));
+        pdf_add_array(tmp_array, pdf_new_number(0.0));
       }
     }
   }
@@ -326,23 +354,21 @@ pdf_font_load_type1c (pdf_font *font)
     enc_vec = NEW(256, char *);
     for (code = 0; code < 256; code++) {
       if (usedchars[code]) {
-	card16  gid;
-
-	gid = cff_encoding_lookup(cffont, code);
-	enc_vec[code] = cff_get_string(cffont,
-				       cff_charsets_lookup_inverse(cffont, gid));
+        card16  gid;
+        
+        gid = cff_encoding_lookup(cffont, code);
+        enc_vec[code] = cff_get_string(cffont, cff_charsets_lookup_inverse(cffont, gid));
       } else {
-	enc_vec[code] = NULL;
+        enc_vec[code] = NULL;
       }
     }
     if (!pdf_lookup_dict(fontdict, "ToUnicode")) {
-      tounicode = pdf_create_ToUnicode_CMap(fullname,
-					    enc_vec, usedchars);
+      tounicode = pdf_create_ToUnicode_CMap(fullname, enc_vec, usedchars);
       if (tounicode) {
-	pdf_add_dict(fontdict,
+        pdf_add_dict(fontdict,
                      pdf_new_name("ToUnicode"),
                      pdf_ref_obj (tounicode));
-	pdf_release_obj(tounicode);
+        pdf_release_obj(tounicode);
       }
     }
   }
@@ -394,8 +420,7 @@ pdf_font_load_type1c (pdf_font *font)
     double stemv;
 
     stemv = cff_dict_get(cffont->private[0], "StdVW", 0);
-    pdf_add_dict(descriptor,
-		 pdf_new_name("StemV"), pdf_new_number(stemv));
+    pdf_add_dict(descriptor, pdf_new_name("StemV"), pdf_new_number(stemv));
   }
   
   /*

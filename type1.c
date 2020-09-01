@@ -89,7 +89,7 @@ is_basefont (const char *name)
 }
 
 int
-pdf_font_open_type1 (pdf_font *font, const char *ident, int index)
+pdf_font_open_type1 (pdf_font *font, const char *ident, int index, int encoding_id, int embedding)
 {
   FILE    *fp;
   char     fontname[PDF_NAME_LEN_MAX+1];
@@ -111,6 +111,9 @@ pdf_font_open_type1 (pdf_font *font, const char *ident, int index)
     if (!fp)
       return -1;
 
+    if (!embedding) {
+      WARN("Ignoring no-embed option for Type1 font: %s", ident);
+    }
     memset(fontname, 0, PDF_NAME_LEN_MAX+1);
     if (!is_pfb(fp) || t1_get_fontname(fp, fontname) < 0) {
       ERROR("Failed to read Type 1 font \"%s\".", ident);
