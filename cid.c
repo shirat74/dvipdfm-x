@@ -193,7 +193,7 @@ source_font_type (CIDFont *font)
 }
 
 void
-pdf_font_cid_dofont (pdf_font *font)
+pdf_font_load_cidfont (pdf_font *font)
 {
   if (!font || !font->reference)
     return;
@@ -365,7 +365,7 @@ CIDFont_base_open (CIDFont *font, const char *name, CIDSysInfo *cmap_csi, cid_op
 }
 
 int
-pdf_font_cid_lookup_cache (pdf_font **fonts, int count, const char *map_name, CIDSysInfo *cmap_csi, fontmap_opt *fmap_opt)
+pdf_font_cidfont_lookup_cache (pdf_font **fonts, int count, const char *map_name, CIDSysInfo *cmap_csi, fontmap_opt *fmap_opt)
 {
   int       font_id = -1;
   pdf_font *font    = NULL;
@@ -436,7 +436,7 @@ pdf_font_cid_lookup_cache (pdf_font **fonts, int count, const char *map_name, CI
 }
 
 int
-pdf_font_open_cid (pdf_font *font, const char *map_name, CIDSysInfo *cmap_csi, fontmap_opt *fmap_opt)
+pdf_font_open_cidfont (pdf_font *font, const char *map_name, CIDSysInfo *cmap_csi, fontmap_opt *fmap_opt)
 {
   int      error = 0;
   cid_opt  opt;
