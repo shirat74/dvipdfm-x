@@ -395,7 +395,7 @@ pdf_get_font_encoding (int font_id)
 }
 
 int
-pdf_sprint_resource_name (int font_id, char *buff)
+pdf_font_resource_name (int font_id, char *buff)
 {
   int       len;
   pdf_font *font;
@@ -559,7 +559,7 @@ pdf_close_fonts (void)
     switch (font->subtype) {
     case PDF_FONT_FONTTYPE_CIDTYPE0:
     case PDF_FONT_FONTTYPE_CIDTYPE2:
-      pdf_font_cid_dofont(font);
+      pdf_font_load_cidfont(font);
       break;
     }
   }
@@ -568,7 +568,10 @@ pdf_close_fonts (void)
     pdf_font *font;
 
     font = &font_cache.fonts[font_id];
-    if (font->encoding_id >= 0 && font->subtype != PDF_FONT_FONTTYPE_TYPE0) {
+    if (font->encoding_id >= 0 &&
+        font->subtype != PDF_FONT_FONTTYPE_TYPE0 &&
+        font->subtype != PDF_FONT_FONTTYPE_CIDTYPE0 &&
+        font->subtype != PDF_FONT_FONTTYPE_CIDTYPE2) {
       pdf_obj *enc_obj = pdf_get_encoding_obj(font->encoding_id);
       pdf_obj *tounicode;
 
@@ -874,7 +877,7 @@ pdf_font_load_font (const char *ident, double font_scale, fontmap_rec *mrec)
       cid_id  = font_cache.count;
       cidfont = &font_cache.fonts[cid_id];
       pdf_init_font_struct(cidfont);
-      if (pdf_font_open_cid(cidfont, fontname, csi, &mrec->opt) < 0) {
+      if (pdf_font_open_cidfont(cidfont, fontname, csi, &mrec->opt) < 0) {
         pdf_clean_font_struct(cidfont);
         return -1;
       }
