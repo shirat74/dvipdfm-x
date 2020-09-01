@@ -45,9 +45,6 @@
 
 #include "cff.h"
 
-#define CIDFONT_DEBUG     3
-#define CIDFONT_DEBUG_STR "CIDFont"
-
 #define PDF_CID_SUPPORT_MIN 2
 #define PDF_CID_SUPPORT_MAX 6
 
@@ -549,19 +546,16 @@ get_cidsysinfo (CIDSysInfo *csi, const char *map_name, fontmap_opt *fmap_opt)
     /* Full REGISTRY-ORDERING-SUPPLEMENT */
     p = strchr(fmap_opt->charcoll, '-');
     if (!p || p[1] == '\0')
-      ERROR("%s: String can't be converted to REGISTRY-ORDERING-SUPPLEMENT: %s",
-            CIDFONT_DEBUG_STR, fmap_opt->charcoll);
+      ERROR("String can't be converted to REGISTRY-ORDERING-SUPPLEMENT: %s", fmap_opt->charcoll);
     p++;
 
     q = strchr(p, '-');
     if (!q || q[1] == '\0')
-      ERROR("%s: String can't be converted to REGISTRY-ORDERING-SUPPLEMENT: %s",
-            CIDFONT_DEBUG_STR, fmap_opt->charcoll);
+      ERROR("String can't be converted to REGISTRY-ORDERING-SUPPLEMENT: %s", fmap_opt->charcoll);
     q++;
 
     if (!isdigit((unsigned char)q[0]))
-      ERROR("%s: String can't be converted to REGISTRY-ORDERING-SUPPLEMENT: %s",
-            CIDFONT_DEBUG_STR, fmap_opt->charcoll);
+      ERROR("String can't be converted to REGISTRY-ORDERING-SUPPLEMENT: %s", fmap_opt->charcoll);
 
     n = strlen(fmap_opt->charcoll) - strlen(p) - 1;
     csi->registry = NEW(n+1, char);
@@ -591,12 +585,11 @@ get_cidsysinfo (CIDSysInfo *csi, const char *map_name, fontmap_opt *fmap_opt)
   if (csi && csi_idx >= 0) {
     if (csi->supplement > CIDFont_stdcc_def[csi_idx].supplement[sup_idx]
         && (fmap_opt->flags & FONTMAP_OPT_NOEMBED)) {
-      WARN("%s: Heighest supplement number supported in PDF-%d.%d for %s-%s is %d.",
-           CIDFONT_DEBUG_STR, pdf_get_version_major(), pdf_get_version_minor(),
+      WARN("Heighest supplement number supported in PDF-%d.%d for %s-%s is %d.",
+           pdf_get_version_major(), pdf_get_version_minor(),
            csi->registry, csi->ordering,
            CIDFont_stdcc_def[csi_idx].supplement[sup_idx]);
-      WARN("%s: Some character may not shown without embedded font (--> %s).",
-           CIDFONT_DEBUG_STR, map_name);
+      WARN("Some character may not shown without embedded font (--> %s).", map_name);
     }
   }
 
