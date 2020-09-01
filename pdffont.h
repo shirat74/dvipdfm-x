@@ -86,7 +86,6 @@ struct pdf_font
 
   int      encoding_id; /* encoding or CMap */
 
-  /* For simple font */
   uint32_t index;
   char    *fontname;
   char     uniqueID[7];
@@ -147,7 +146,7 @@ extern char     *pdf_get_font_usedchars (int font_id);
 extern int       pdf_get_font_encoding  (int font_id);
 extern int       pdf_get_font_wmode     (int font_id);
 
-extern int       pdf_sprint_resource_name (int font_id, char *buf);
+extern int       pdf_font_resource_name (int font_id, char *buf);
 
 /* Each font drivers use the followings. */
 extern int       pdf_font_is_in_use      (pdf_font *font);
