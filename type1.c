@@ -89,15 +89,17 @@ is_basefont (const char *name)
 }
 
 int
-pdf_font_open_type1 (pdf_font *font)
+pdf_font_open_type1 (pdf_font *font, const char *ident, int index)
 {
-  char    *ident;
   FILE    *fp;
   char     fontname[PDF_NAME_LEN_MAX+1];
 
   ASSERT(font);
+  ASSERT(ident);
 
-  ident = pdf_font_get_filename(font);
+  if (index != 0) {
+    WARN("Ignoring non-zero font index: %s", ident);
+  }
 
   if (is_basefont(ident)) {
     pdf_font_set_fontname(font, ident);
