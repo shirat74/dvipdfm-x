@@ -1188,3 +1188,13 @@ pdf_font_set_flags (pdf_font *font, int flags)
 
   return 0;
 }
+
+void
+pdf_font_unset_flags (pdf_font *font, int flags)
+{
+  ASSERT(font);
+
+  font->flags &= ~flags;
+
+  return 0;
+}
