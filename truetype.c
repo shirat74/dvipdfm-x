@@ -54,19 +54,19 @@
 #include "tfm.h"
 
 int
-pdf_font_open_truetype (pdf_font *font, const char *ident, int index)
+pdf_font_open_truetype (pdf_font *font, const char *filename, int index)
 {
   pdf_obj  *fontdict, *descriptor;
   sfnt     *sfont;
   FILE     *fp = NULL;
   int       length, error = 0;
 
-  ASSERT(font);
-  ASSERT(ident);
+  ASSERT( font );
+  ASSERT( filename );
 
-  fp = DPXFOPEN(ident, DPX_RES_TYPE_TTFONT);
+  fp = DPXFOPEN(filename, DPX_RES_TYPE_TTFONT);
   if (!fp) {
-    fp = DPXFOPEN(ident, DPX_RES_TYPE_DFONT);
+    fp = DPXFOPEN(filename, DPX_RES_TYPE_DFONT);
     if (!fp) return  -1;
     sfont = dfont_open(fp, index);
   } else {
@@ -74,7 +74,7 @@ pdf_font_open_truetype (pdf_font *font, const char *ident, int index)
   }
 
   if (!sfont) {
-    WARN("Could not open TrueType font: %s", ident);
+    WARN("Could not open TrueType font: %s", filename);
     if (fp)
       DPXFCLOSE(fp);
     return  -1;
@@ -85,7 +85,7 @@ pdf_font_open_truetype (pdf_font *font, const char *ident, int index)
 
     offset = ttc_read_offset(sfont, index);
     if (offset == 0) {
-      WARN("Invalid TTC index in %s.", ident);
+      WARN("Invalid TTC index in %s.", filename);
       error = -1;
     } else {
       error = sfnt_read_table_directory(sfont, offset);
@@ -126,14 +126,14 @@ pdf_font_open_truetype (pdf_font *font, const char *ident, int index)
       }
     }
     if (strlen(fontname) == 0) {
-      WARN("Can't find valid fontname for \"%s\".", ident);
+      WARN("Can't find valid fontname for \"%s\".", filename);
       error = -1;
     } else {
       pdf_font_set_fontname(font, fontname);
 
       tmp  = tt_get_fontdesc(sfont, &embedding, -1, 1, fontname);
       if (!tmp) {
-        WARN("Could not obtain necessary font info: %s", ident);
+        WARN("Could not obtain necessary font info: %s", filename);
         error = -1;
       } else {
         ASSERT(pdf_obj_typeof(tmp) == PDF_DICT);
