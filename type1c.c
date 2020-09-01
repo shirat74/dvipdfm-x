@@ -65,21 +65,17 @@
 #include "tfm.h"
 
 int
-pdf_font_open_type1c (pdf_font *font)
+pdf_font_open_type1c (pdf_font *font, const char ident, int index, int embedding)
 {
   char     *fontname;
-  char     *ident;
   FILE     *fp = NULL;
   sfnt     *sfont;
   cff_font *cffont;
   pdf_obj  *descriptor, *tmp;
   unsigned  offset = 0;
-  int       encoding_id, embedding;
 
   ASSERT(font);
-
-  ident       = pdf_font_get_filename(font);
-  encoding_id = pdf_font_get_encoding(font);
+  ASSERT(ident);
 
   fp = DPXFOPEN(ident, DPX_RES_TYPE_OTFONT);
   if (!fp)
@@ -119,19 +115,8 @@ pdf_font_open_type1c (pdf_font *font)
 
   cff_close(cffont);
 
-  /*
-   * Font like AdobePiStd does not have meaningful built-in encoding.
-   * Some software generate CFF/OpenType font with incorrect encoding.
-   */
-  if (encoding_id < 0) {
-    WARN("Built-in encoding used for CFF/OpenType font.");
-    WARN("CFF font in OpenType font sometimes have strange built-in encoding.");
-    WARN("If you find text is not encoded properly in the generated PDF file,");
-    WARN("please specify appropriate \".enc\" file in your fontmap.");
-  }
   pdf_font_set_subtype (font, PDF_FONT_FONTTYPE_TYPE1C);
 
-  embedding  = pdf_font_get_flag(font, PDF_FONT_FLAG_NOEMBED) ? 0 : 1;
   descriptor = pdf_font_get_descriptor(font);
   /*
    * Create font descriptor from OpenType tables.
