@@ -459,18 +459,6 @@ write_fontfile (CIDFont *font, cff_font *cffont)
   return destlen;
 }
 
-static char *
-CIDFont_type0_get_used_chars(CIDFont *font)
-{
-  char *used_chars;
-
-  used_chars = font->usedchars;
-  if (!used_chars)
-    ERROR("Unexpected error: Font not actually used???");
-
-  return used_chars;
-}
-
 typedef struct
 {
   FILE      *fp;
@@ -631,7 +619,7 @@ CIDFont_type0_dofont (CIDFont *font)
     return;
   }
 
-  used_chars = CIDFont_type0_get_used_chars(font);
+  used_chars = font->usedchars;
 
   error = CIDFont_type0_try_open(font->ident, font->index, 1, &info);
   if (error != CID_OPEN_ERROR_NO_ERROR) {
@@ -1045,7 +1033,7 @@ CIDFont_type0_t1cdofont (CIDFont *font)
                pdf_new_name("FontDescriptor"),
                pdf_ref_obj (font->descriptor));
 
-  used_chars = CIDFont_type0_get_used_chars(font);
+  used_chars = font->usedchars;
 
   error = CIDFont_type0_try_open(font->ident, font->index, 0, &info);
   if (error != CID_OPEN_ERROR_NO_ERROR) {
@@ -1423,14 +1411,14 @@ create_ToUnicode_stream (cff_font *cffont,
   endptr = wbuf + WBUF_SIZE;
   for (cid = 1; cid < cffont->num_glyphs; cid++) { /* Skip .notdef */
     if (is_used_char2(used_glyphs, cid)) {
-      char *glyph;
-      int32_t len;
-      int   fail_count;
+      char    *glyph;
+      int32_t  len;
+      int      fail_count;
 
       wbuf[0] = (cid >> 8) & 0xff;
       wbuf[1] = (cid & 0xff);
 
-      p = wbuf + 2;
+      p   = wbuf + 2;
       gid = cff_charsets_lookup_inverse(cffont, cid);
       if (gid == 0)
         continue;
@@ -1706,40 +1694,10 @@ CIDFont_type0_t1dofont (CIDFont *font)
     ERROR("Fontname undefined...");
 
   used_chars = font->usedchars;
-  /* NYI */
-#if 0
-  {
-    pdf_obj *tounicode;
-    int      vparent_id, hparent_id;
 
-    hparent_id = CIDFont_get_parent_id(font, 0);
-    vparent_id = CIDFont_get_parent_id(font, 1);
-    if (hparent_id < 0 && vparent_id < 0)
-      ERROR("No parent Type 0 font !");
-
-    /* usedchars is same for h and v */
-    if (hparent_id >= 0) {
-      used_chars = pdf_get_font_usedchars(hparent_id);
-    }
-    if (vparent_id >= 0) {
-      used_chars = pdf_get_font_usedchars(vparent_id);
-    }
-    if (!used_chars)
-      ERROR("Unexpected error: Font not actually used???");
-
-    tounicode = create_ToUnicode_stream(cffont, font->fontname, used_chars);
-
-    if (hparent_id >= 0) {
-      pdf_obj *fontdict = pdf_get_font_resource(hparent_id);
-      pdf_add_dict(fontdict, pdf_new_name("ToUnicode"), pdf_ref_obj(tounicode));
-    }
-    if (vparent_id >= 0) {
-      pdf_obj *fontdict = pdf_get_font_resource(hparent_id);
-      pdf_add_dict(fontdict, pdf_new_name("ToUnicode"), pdf_ref_obj(tounicode));
-    }
-    pdf_release_obj(tounicode);
+  if (!font->tounicode) {
+    font->tounicode = create_ToUnicode_stream(cffont, font->fontname, used_chars);
   }
-#endif
 
   cff_set_name(cffont, font->fontname);
 
