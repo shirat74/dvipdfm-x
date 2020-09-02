@@ -112,8 +112,11 @@ pdf_font_open_truetype (pdf_font *font, const char *ident, int index, int encodi
   fontdict   = pdf_font_get_resource(font);
   descriptor = pdf_font_get_descriptor(font);
 #ifndef  ENABLE_NOEMBED
-  WARN("No-embed option not supported for TrueType font: %s", ident);
-  embedding  = 1;
+  if (!embedding) {
+    WARN("No-embed option not supported for TrueType font: %s", ident);
+    embedding = 1;
+    pdf_font_unset_flags(font, PDF_FONT_FLAG_NOEMBED);
+  }
 #endif /* ENABLE_NOEMBED */
 
   ASSERT( fontdict && descriptor );
@@ -161,6 +164,10 @@ pdf_font_open_truetype (pdf_font *font, const char *ident, int index, int encodi
   }
 
   if (!embedding) {
+#ifndef ENABLE_NOEMBED
+      WARN("Font file=\"%s\" can't be embedded due to liscence restrictions.", ident);
+      error = -1;
+#else
     if (encoding_id >= 0 && !pdf_encoding_is_predefined(encoding_id)) {
       WARN("Custom encoding not allowed for non-embedded TrueType font: %s", ident);
       error = -1;
@@ -176,10 +183,6 @@ pdf_font_open_truetype (pdf_font *font, const char *ident, int index, int encodi
       pdf_obj *tmp;
       int      flags;
 
-#ifndef  ENABLE_NOEMBED
-      WARN("Font file=\"%s\" can't be embedded due to liscence restrictions.", ident);
-      error = -1;
-#endif /* ENABLE_NOEMBED */
       pdf_font_set_flags(font, PDF_FONT_FLAG_NOEMBED);
       tmp = pdf_lookup_dict(descriptor, "Flags");
       if (tmp && pdf_obj_typeof(tmp) == PDF_NUMBER) {
@@ -189,6 +192,7 @@ pdf_font_open_truetype (pdf_font *font, const char *ident, int index, int encodi
         pdf_add_dict(descriptor, pdf_new_name("Flags"), pdf_new_number(flags));
       }
     }
+#endif /* ENABLE_NOEMBED */
   }
 
   sfnt_close(sfont);
