@@ -115,7 +115,7 @@ pdf_font_open_truetype (pdf_font *font, const char *ident, int index, int encodi
   if (!embedding) {
     WARN("No-embed option not supported for TrueType font: %s", ident);
     embedding = 1;
-    pdf_font_unset_flags(font, PDF_FONT_FLAG_NOEMBED);
+    font->flags &= ~PDF_FONT_FLAG_NOEMBED;
   }
 #endif /* ENABLE_NOEMBED */
 
@@ -142,15 +142,14 @@ pdf_font_open_truetype (pdf_font *font, const char *ident, int index, int encodi
       WARN("Can't find valid fontname for \"%s\".", ident);
       error = -1;
     } else {
-      pdf_font_set_fontname(font, fontname);
-
+      font->fontname = NEW(strlen(fontname)+1, char);
+      strcpy(font->fontname, fontname);
       tmp = tt_get_fontdesc(sfont, &embedding, -1, 1, fontname);
       if (!tmp) {
         WARN("Could not obtain necessary font info: %s", ident);
         error = -1;
       } else {
         ASSERT(pdf_obj_typeof(tmp) == PDF_DICT);
-
         pdf_merge_dict(descriptor, tmp);
         pdf_release_obj(tmp);
       }
@@ -183,7 +182,7 @@ pdf_font_open_truetype (pdf_font *font, const char *ident, int index, int encodi
       pdf_obj *tmp;
       int      flags;
 
-      pdf_font_set_flags(font, PDF_FONT_FLAG_NOEMBED);
+      font->flags |= PDF_FONT_FLAG_NOEMBED;
       tmp = pdf_lookup_dict(descriptor, "Flags");
       if (tmp && pdf_obj_typeof(tmp) == PDF_NUMBER) {
         flags  = (int) pdf_number_value(tmp);
@@ -240,8 +239,8 @@ do_widths (pdf_font *font, double *widths)
   int       code, firstchar, lastchar, tfm_id;
   char     *usedchars;
 
-  fontdict   = pdf_font_get_resource  (font);
-  usedchars  = pdf_font_get_usedchars (font);
+  fontdict   = font->resource;
+  usedchars  = font->usedchars;
 
   tmparray = pdf_new_array();
   for (firstchar = 255, lastchar = 0, code = 0; code < 256; code++) {
@@ -255,7 +254,7 @@ do_widths (pdf_font *font, double *widths)
     pdf_release_obj(tmparray);
     return;
   }
-  tfm_id = tfm_open(pdf_font_get_mapname(font), 0);
+  tfm_id = tfm_open(font->ident, 0);
   for (code = firstchar; code <= lastchar; code++) {
     if (usedchars[code]) {
       double width;
@@ -337,7 +336,7 @@ do_builtin_encoding (pdf_font *font, const char *usedchars, sfnt *sfont)
     gid = tt_cmap_lookup(ttcm, code);
     if (gid == 0) {
       WARN("Glyph for character code=0x%02x missing in font font-file=\"%s\".",
-           code, pdf_font_get_filename(font));
+           code, font->filename);
       idx = 0;
     } else {
       idx = tt_find_glyph(glyphs, gid);
@@ -795,8 +794,7 @@ do_custom_encoding (pdf_font *font,
 
   error = setup_glyph_mapper(&gm, sfont);
   if (error) {
-    WARN("No post table nor Unicode cmap found in font: %s",
-         pdf_font_get_filename(font));
+    WARN("No post table nor Unicode cmap found in font: %s", font->filename);
     WARN(">> I can't find glyphs without this!");
     return  -1;
   }
@@ -821,7 +819,7 @@ do_custom_encoding (pdf_font *font,
 
     if (!encoding[code] || !strcmp(encoding[code], ".notdef")) {
       WARN("Character code=\"0x%02X\" mapped to \".notdef\" glyph used in font font-file=\"%s\"",
-           code, pdf_font_get_filename(font));
+           code, font->filename);
       WARN(">> Maybe incorrect encoding specified?");
       idx = 0;
     } else {
@@ -836,7 +834,7 @@ do_custom_encoding (pdf_font *font,
        */
       if (error) {
         WARN("Glyph \"%s\" not available in font \"%s\".",
-             encoding[code], pdf_font_get_filename(font));
+             encoding[code], font->filename);
       } else {
         if (dpx_conf.verbose_level > 1)
           MESG("truetype>> Glyph glyph-name=\"%s\" found at glyph-id=\"%u\".\n", encoding[code], gid);
@@ -881,21 +879,21 @@ do_custom_encoding (pdf_font *font,
 int
 pdf_font_load_truetype (pdf_font *font)
 {
-  pdf_obj   *descriptor  = pdf_font_get_descriptor(font);
-  char      *ident       = pdf_font_get_filename(font);
-  int        encoding_id = pdf_font_get_encoding(font);
-  char      *usedchars   = pdf_font_get_usedchars(font);
+  pdf_obj   *descriptor  = font->descriptor;
+  char      *ident       = font->filename;
+  int        encoding_id = font->encoding_id;
+  char      *usedchars   = font->usedchars;
 #ifdef  ENABLE_NOEMBED
-  int        embedding   = pdf_font_get_flag(font, PDF_FONT_FLAG_NOEMBED) ? 0 : 1;
+  int        embedding   = font->flags & PDF_FONT_FLAG_NOEMBED ? 0 : 1;
 #endif /* ENABLE_NOEMBED */
-  int        index       = pdf_font_get_index(font);
+  int        index       = font->index;
   char     **enc_vec;
   pdf_obj   *fontfile;
   FILE      *fp = NULL;
   sfnt      *sfont;
   int        i, error = 0;
 
-  if (!pdf_font_is_in_use(font))
+  if (!font->reference)
     return  0;
 
   fp = DPXFOPEN(ident, DPX_RES_TYPE_TTFONT);
