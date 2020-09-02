@@ -905,19 +905,15 @@ pdf_font_load_font (const char *ident, double font_scale, fontmap_rec *mrec)
     font_id = font_cache.count;
     font    = &font_cache.fonts[font_id];
     pdf_init_font_struct(font);
-    font->ident       = NEW(strlen(ident) + 1, char);
-    strcpy(font->ident, ident);
-    font->font_id     = -1;
-    font->subtype     = PDF_FONT_FONTTYPE_TYPE0;
-    font->encoding_id = cmap_id;
-    font->point_size  = font_scale;
-    font->filename    = NEW(strlen(fontname) + 1, char);
-    strcpy(font->filename, fontname);
-    font->index       = (mrec && mrec->opt.index) ? mrec->opt.index : 0;
     if (pdf_font_open_type0(font, cid_id, wmode) < 0) {
       pdf_clean_font_struct(font);
       return -1;
     }
+    font->ident       = NEW(strlen(ident) + 1, char);
+    strcpy(font->ident, ident);
+    font->subtype     = PDF_FONT_FONTTYPE_TYPE0;
+    font->encoding_id = cmap_id;
+    
     font_cache.count++;
 
     if (dpx_conf.verbose_level > 0) {
@@ -986,8 +982,6 @@ pdf_font_load_font (const char *ident, double font_scale, fontmap_rec *mrec)
 
     font->ident       = NEW(strlen(ident) + 1, char);
     strcpy(font->ident, ident);
-    font->font_id     = -1;
-    font->point_size  = font_scale;
     font->encoding_id = encoding_id;
     font->filename    = NEW(strlen(fontname) + 1, char);
     strcpy(font->filename, fontname);
