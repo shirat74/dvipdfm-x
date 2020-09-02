@@ -1198,3 +1198,34 @@ pdf_font_unset_flags (pdf_font *font, int flags)
 
   return 0;
 }
+
+int
+pdf_check_tfm_widths (const char *ident, double *widths, int firstchar, int lastchar, const char *usedchars)
+{
+  int    error = 0;
+  int    tfm_id, code, count = 0;
+  double sum   = 0;
+  double tolerance = 1.0;
+
+  tfm_id = tfm_open(ident, 0);
+  if (tfm_id < 0)
+    return 0;
+  for (code = firstchar; code <= lastchar; code++) {
+    if (usedchars[code]) {
+      double width, diff;
+      
+      width = 1000. * tfm_get_width(tfm_id, code);
+      diff  = widths[code] - width;
+      diff  = diff < 0 ? -diff : diff;
+      if (diff > tolerance) {
+        WARN("Intolerable difference in glyph width: font=%s, char=%d", ident, code);
+        sum  += diff;
+      }
+      count++;
+    }
+  }
+
+  error = sum > 0.5*count*tolerance ? -1 : 0;
+
+  return error;
+}
