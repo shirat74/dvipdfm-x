@@ -774,10 +774,10 @@ create_font_reencoded (const char *ident, int font_id, int cmap_id)
 int
 pdf_font_load_font (const char *ident, double font_scale, fontmap_rec *mrec)
 {
-  int          font_id = -1;
-  pdf_font    *font;
-  int          encoding_id = -1, cmap_id = -1;
-  const char  *fontname;
+  int         font_id = -1;
+  pdf_font   *font;
+  int         encoding_id = -1, cmap_id = -1;
+  const char *fontname;
 
   /*
    * Get appropriate info from map file. (PK fonts at two different
@@ -1074,6 +1074,16 @@ pdf_font_get_uniqueTag (pdf_font *font)
   return font->uniqueID;
 }
 
+/*
+ * Please don’t use TFM widths for the /Widths
+ * entry of the font dictionary.
+ *
+ * PDF 32000-1:2008 (p.255)
+ *
+ *   These widths shall be consistent with the
+ *   actual widths given in the font program.
+ */
+
 #include "tfm.h"
 
 int
@@ -1083,7 +1093,7 @@ pdf_check_tfm_widths (const char *ident, double *widths, int firstchar, int last
   int    tfm_id, code, count = 0;
   double sum       = 0.0;
   double tolerance = 1.0;
-  int    overwrite = 0; /* Don't set to 1! */
+  int    override  = 0; /* Don't set to 1! */
 
   tfm_id = tfm_open(ident, 0);
   if (tfm_id < 0)
@@ -1095,11 +1105,13 @@ pdf_check_tfm_widths (const char *ident, double *widths, int firstchar, int last
       width = 1000. * tfm_get_width(tfm_id, code);
       diff  = widths[code] - width;
       diff  = diff < 0 ? -diff : diff;
-      if (overwrite) {
+      if (override) {
         widths[code] = width;
       } else if (diff > tolerance) {
-        WARN("Intolerable difference in glyph width: font=%s, char=%d", ident, code);
-        WARN("font: %g vs. tfm: %g", widths[code], width);
+        if (dpx_conf.verbose_level > 0) {
+          WARN("Intolerable difference in glyph width: font=%s, char=%d", ident, code);
+          WARN("font: %g vs. tfm: %g", widths[code], width);
+        }
         sum  += diff;
       }
       count++;
@@ -1108,5 +1120,5 @@ pdf_check_tfm_widths (const char *ident, double *widths, int firstchar, int last
 
   error = sum > 0.5 * count * tolerance ? -1 : 0;
 
-  return overwrite ? 0 : error;
+  return override ? 0 : error;
 }
