@@ -121,7 +121,8 @@ pdf_font_open_pkfont (pdf_font *font, const char *ident, int index, int encoding
   /* Type 3 fonts doesn't have FontName.
    * FontFamily is recommended for PDF 1.5.
    */
-  pdf_font_set_fontname(font, ident);
+  font->fontname = NEW(strlen(ident)+1, char);
+  strcpy(font->fontname, ident);
 
   if (encoding_id >= 0) {
     pdf_encoding_used_by_type3(encoding_id);
@@ -501,15 +502,14 @@ pdf_font_load_pkfont (pdf_font *font)
 #endif /* ENABLE_GLYPHENC */
   int       error = 0;
 
-  if (!pdf_font_is_in_use(font)) {
+  if (!font->reference)
     return 0;
-  }
 
-  ident       = pdf_font_get_filename(font);
-  point_size  = pdf_font_get_param(font, PDF_FONT_PARAM_POINT_SIZE);
-  usedchars   = pdf_font_get_usedchars(font);
+  ident       = font->filename;
+  point_size  = font->point_size;
+  usedchars   = font->usedchars;
 #if  ENABLE_GLYPHENC
-  encoding_id = pdf_font_get_encoding(font);
+  encoding_id = font->encoding_id;
   if (encoding_id < 0)
     enc_vec = NULL;
   else {

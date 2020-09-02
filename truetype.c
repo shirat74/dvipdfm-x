@@ -51,8 +51,6 @@
 
 #include "truetype.h"
 
-#include "tfm.h"
-
 /* Modifying this has no effect :P */
 #ifdef ENABLE_NOEMBED
 #  undef ENABLE_NOEMBED
@@ -203,6 +201,7 @@ pdf_font_open_truetype (pdf_font *font, const char *ident, int index, int encodi
                 pdf_new_name("Type"),    pdf_new_name("Font"));
     pdf_add_dict(fontdict,
                 pdf_new_name("Subtype"), pdf_new_name("TrueType"));
+    font->subtype = PDF_FONT_FONTTYPE_TRUETYPE;
   }
 
   return error;
@@ -235,14 +234,13 @@ static void
 do_widths (pdf_font *font, double *widths)
 {
   pdf_obj  *fontdict;
-  pdf_obj  *tmparray;
-  int       code, firstchar, lastchar, tfm_id;
+  pdf_obj  *array;
+  int       code, firstchar, lastchar;
   char     *usedchars;
 
   fontdict   = font->resource;
   usedchars  = font->usedchars;
 
-  tmparray = pdf_new_array();
   for (firstchar = 255, lastchar = 0, code = 0; code < 256; code++) {
     if (usedchars[code]) {
       if (code < firstchar) firstchar = code;
@@ -251,29 +249,23 @@ do_widths (pdf_font *font, double *widths)
   }
   if (firstchar > lastchar) {
     WARN("No glyphs actually used???");
-    pdf_release_obj(tmparray);
     return;
   }
-  tfm_id = tfm_open(font->ident, 0);
+
+  pdf_check_tfm_widths(font->ident, widths, firstchar, lastchar, usedchars);
+
+  array = pdf_new_array();
   for (code = firstchar; code <= lastchar; code++) {
     if (usedchars[code]) {
-      double width;
-      if (tfm_id < 0) /* tfm is not found */
-        width = widths[code];
-      else
-        width = 1000. * tfm_get_width(tfm_id, code);
-      pdf_add_array(tmparray,
-                    pdf_new_number(ROUND(width, 0.1)));
+      pdf_add_array(array, pdf_new_number(ROUND(widths[code], 0.1)));
     } else {
-      pdf_add_array(tmparray, pdf_new_number(0.0));
+      pdf_add_array(array, pdf_new_number(0.0));
     }
   }
-
-  if (pdf_array_length(tmparray) > 0) {
-    pdf_add_dict(fontdict,
-                 pdf_new_name("Widths"), pdf_ref_obj(tmparray));
+  if (pdf_array_length(array) > 0) {
+    pdf_add_dict(fontdict, pdf_new_name("Widths"), pdf_ref_obj(array));
   }
-  pdf_release_obj(tmparray);
+  pdf_release_obj(array);
 
   pdf_add_dict(fontdict,
                pdf_new_name("FirstChar"), pdf_new_number(firstchar));

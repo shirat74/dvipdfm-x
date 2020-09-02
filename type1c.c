@@ -62,8 +62,6 @@
 
 #include "type1c.h"
 
-#include "tfm.h"
-
 int
 pdf_font_open_type1c (pdf_font *font, const char *ident, int index, int encoding_id, int embedding)
 {
@@ -129,8 +127,7 @@ pdf_font_open_type1c (pdf_font *font, const char *ident, int index, int encoding
       DPXFCLOSE(fp);
     return -1;   
   }
-  pdf_font_set_fontname(font, fontname);
-  RELEASE(fontname);
+  font->fontname = fontname;
 
   cff_close(cffont);
 
@@ -144,7 +141,7 @@ pdf_font_open_type1c (pdf_font *font, const char *ident, int index, int encoding
     WARN("If you find text is not encoded properly in the generated PDF file,");
     WARN("please specify appropriate \".enc\" file in your fontmap.");
   }
-  pdf_font_set_subtype (font, PDF_FONT_FONTTYPE_TYPE1C);
+  font->subtype = PDF_FONT_FONTTYPE_TYPE1C;
 
   descriptor = pdf_font_get_descriptor(font);
   /*
@@ -159,7 +156,7 @@ pdf_font_open_type1c (pdf_font *font, const char *ident, int index, int encoding
   pdf_merge_dict (descriptor, tmp); /* copy */
   pdf_release_obj(tmp);
   if (!embedding) { /* tt_get_fontdesc may have changed this */
-    pdf_font_set_flags(font, PDF_FONT_FLAG_NOEMBED);
+    font->flags |= PDF_FONT_FLAG_NOEMBED;
   }
 
   sfnt_close(sfont);
@@ -170,78 +167,63 @@ pdf_font_open_type1c (pdf_font *font, const char *ident, int index, int encoding
 }
 
 static void
-add_SimpleMetrics (pdf_font *font, cff_font *cffont,
-		   double *widths, card16 num_glyphs)
+add_SimpleMetrics (pdf_font *font, cff_font *cffont, double *widths, card16 num_glyphs)
 {
   pdf_obj *fontdict;
-  int      code, firstchar, lastchar, tfm_id;
+  int      code, firstchar, lastchar;
   char    *usedchars;
-  pdf_obj *tmp_array;
-  double   scaling;
+  pdf_obj *array;
+  double   scaling = 1.0;
 
   fontdict  = pdf_font_get_resource(font);
-  usedchars = pdf_font_get_usedchars(font);
+  usedchars = font->usedchars;
 
   /* The widhts array in the font dictionary must be given relative
    * to the default scaling of 1000:1, not relative to the scaling
    * given by the font matrix.
    */
-  if (cff_dict_known(cffont->topdict, "FontMatrix"))
-    scaling = 1000*cff_dict_get(cffont->topdict, "FontMatrix", 0);
-  else
-    scaling = 1;
+  if (cff_dict_known(cffont->topdict, "FontMatrix")) {
+    scaling = 1000.0 * cff_dict_get(cffont->topdict, "FontMatrix", 0);
+  } else {
+    scaling = 1.0;
+  }
 
-  tmp_array = pdf_new_array();
+  array = pdf_new_array();
   if (num_glyphs <= 1) {
     /* This should be error. */
     firstchar = lastchar = 0;
-    pdf_add_array(tmp_array, pdf_new_number(0.0));
+    pdf_add_array(array, pdf_new_number(0.0));
   } else {
     firstchar = 255; lastchar = 0;
     for (code = 0; code < 256; code++) {
       if (usedchars[code]) {
-	if (code < firstchar) firstchar = code;
-	if (code > lastchar)  lastchar  = code;
+        if (code < firstchar) firstchar = code;
+        if (code > lastchar)  lastchar  = code;
+        widths[code] *= scaling;
       }
     }
     if (firstchar > lastchar) {
       ERROR("No glyphs used at all!");
-      pdf_release_obj(tmp_array);
       return;
     }
-    tfm_id = tfm_open(pdf_font_get_mapname(font), 0);
+    pdf_check_tfm_widths(font->ident, widths, firstchar, lastchar, usedchars);
+
     for (code = firstchar; code <= lastchar; code++) {
       if (usedchars[code]) {
-        double width;
-        if (tfm_id < 0) /* tfm is not found */
-          width = scaling * widths[code];
-        else {
-          double diff;
-          width = 1000. * tfm_get_width(tfm_id, code);
-          diff  = width - scaling * widths[code];
-          if (fabs(diff) > 1.) {
-            WARN("Glyph width mismatch for TFM and font (%s)",
-                 pdf_font_get_mapname(font));
-            WARN("TFM: %g vs. CFF font: %g", width, widths[code]);
-            }
-            pdf_add_array(tmp_array, pdf_new_number(ROUND(width, 0.1)));
-        }
+        pdf_add_array(array, pdf_new_number(ROUND(widths[code], 0.1)));
       } else {
-        pdf_add_array(tmp_array, pdf_new_number(0.0));
+        pdf_add_array(array, pdf_new_number(0.0));
       }
     }
   }
 
-  if (pdf_array_length(tmp_array) > 0) {
-    pdf_add_dict(fontdict,
-		 pdf_new_name("Widths"),  pdf_ref_obj(tmp_array));
+  if (pdf_array_length(array) > 0) {
+    pdf_add_dict(fontdict, pdf_new_name("Widths"), pdf_ref_obj(array));
   }
-  pdf_release_obj(tmp_array);
+  pdf_release_obj(array);
 
-  pdf_add_dict(fontdict,
-	       pdf_new_name("FirstChar"), pdf_new_number(firstchar));
-  pdf_add_dict(fontdict,
-	       pdf_new_name("LastChar"),  pdf_new_number(lastchar));
+  pdf_add_dict(fontdict, pdf_new_name("FirstChar"), pdf_new_number(firstchar));
+  pdf_add_dict(fontdict, pdf_new_name("LastChar"),  pdf_new_number(lastchar));
 
   return;
 }
@@ -274,26 +256,25 @@ pdf_font_load_type1c (pdf_font *font)
 
   ASSERT(font);
 
-  if (!pdf_font_is_in_use(font)) {
+  if (!font->reference)
     return 0;
-  }
 
-  if (pdf_font_get_flag(font, PDF_FONT_FLAG_NOEMBED)) {
+  if (font->flags & PDF_FONT_FLAG_NOEMBED) {
     ERROR("Only embedded font supported for CFF/OpenType font.");
   }
 
-  usedchars = pdf_font_get_usedchars (font);
-  fontname  = pdf_font_get_fontname  (font);
-  ident     = pdf_font_get_filename  (font);
+  usedchars = font->usedchars;
+  fontname  = font->fontname;
+  ident     = font->filename;
   uniqueTag = pdf_font_get_uniqueTag (font);
-  if (!usedchars ||
-      !fontname  || !ident) {
-    ERROR("Unexpected error....");
-  }
+  
+  ASSERT(usedchars);
+  ASSERT(fontname);
+  ASSERT(ident);
 
   fontdict    = pdf_font_get_resource  (font);
   descriptor  = pdf_font_get_descriptor(font);
-  encoding_id = pdf_font_get_encoding  (font);
+  encoding_id = font->encoding_id;
 
   fp = DPXFOPEN(ident, DPX_RES_TYPE_OTFONT);
   if (!fp) {

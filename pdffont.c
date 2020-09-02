@@ -99,6 +99,7 @@ pdf_init_font_struct (pdf_font *font)
   font->reference   = NULL;
   font->resource    = NULL;
   font->descriptor  = NULL;
+  font->tounicode   = NULL;
 
   font->point_size  = 0;
   font->design_size = 0;
@@ -139,7 +140,7 @@ pdf_flush_font (pdf_font *font)
     case PDF_FONT_FONTTYPE_CIDTYPE2:
       break;
     default:
-      if (pdf_font_get_flag(font, PDF_FONT_FLAG_NOEMBED)) {
+      if (font->flags & PDF_FONT_FLAG_NOEMBED) {
         pdf_add_dict(font->resource, pdf_new_name("BaseFont"), pdf_new_name(font->fontname));
         if (font->descriptor) {
           pdf_add_dict(font->descriptor, pdf_new_name("FontName"), pdf_new_name(font->fontname));
@@ -426,10 +427,9 @@ pdf_font_resource_name (int font_id, char *buff)
 static int
 try_load_ToUnicode_CMap (pdf_font *font)
 {
-  pdf_obj     *fontdict;
   pdf_obj     *tounicode;
   const char  *cmap_name = NULL;
-  fontmap_rec *mrec; /* Be sure fontmap is still alive here */
+  fontmap_rec *mrec      = NULL; /* Be sure fontmap is still alive here */
 
   ASSERT(font);
 
@@ -441,21 +441,28 @@ try_load_ToUnicode_CMap (pdf_font *font)
 
   ASSERT(font->ident);
 
-  mrec = pdf_lookup_fontmap_record(font->ident);
-  if (MREC_HAS_TOUNICODE(mrec))
-    cmap_name = mrec->opt.tounicode;
-  else {
-    cmap_name = font->ident;
+  if (font->tounicode) {
+    tounicode = font->tounicode;
+  } else {
+    mrec = pdf_lookup_fontmap_record(font->ident);
+    if (MREC_HAS_TOUNICODE(mrec)) {
+      cmap_name = mrec->opt.tounicode;
+    } else {
+      cmap_name = font->ident;
+    }
+    tounicode = pdf_load_ToUnicode_stream(cmap_name);
   }
 
-  fontdict  = pdf_font_get_resource(font);
-  tounicode = pdf_load_ToUnicode_stream(cmap_name);
-  if (!tounicode && MREC_HAS_TOUNICODE(mrec))
-    WARN("Failed to read ToUnicode mapping \"%s\"...", mrec->opt.tounicode);
-  else if (tounicode) {
-    if (pdf_obj_typeof(tounicode) != PDF_STREAM)
+  if (!tounicode) {
+    if (MREC_HAS_TOUNICODE(mrec)) {
+      WARN("Failed to read ToUnicode mapping \"%s\"...", mrec->opt.tounicode);
+    }
+  } else {
+    if (pdf_obj_typeof(tounicode) != PDF_STREAM) {
       ERROR("Object returned by pdf_load_ToUnicode_stream() not stream object! (This must be bug)");
-    else if (pdf_stream_length(tounicode) > 0) {
+    } else if (pdf_stream_length(tounicode) > 0) {
+      pdf_obj *fontdict = pdf_font_get_resource(font);
+
       pdf_add_dict(fontdict,
                    pdf_new_name("ToUnicode"),
                    pdf_ref_obj (tounicode)); /* _FIXME_ */
@@ -464,6 +471,7 @@ try_load_ToUnicode_CMap (pdf_font *font)
              cmap_name, font->ident);
     }
     pdf_release_obj(tounicode);
+    font->tounicode = NULL;
   }
 
   return  0;
@@ -488,16 +496,16 @@ pdf_close_fonts (void)
 
     if (dpx_conf.verbose_level > 0) {
       if (font->subtype != PDF_FONT_FONTTYPE_TYPE0) {
-        MESG("(%s", pdf_font_get_filename(font));
+        MESG("(%s", font->filename);
         if (dpx_conf.verbose_level > 2 &&
-            !pdf_font_get_flag(font, PDF_FONT_FLAG_NOEMBED)) {
-          MESG("[%s+%s]", pdf_font_get_uniqueTag(font), pdf_font_get_fontname(font));
+            !(font->flags & PDF_FONT_FLAG_NOEMBED)) {
+          MESG("[%s+%s]", pdf_font_get_uniqueTag(font), font->fontname);
         } else if (dpx_conf.verbose_level > 1) {
-          MESG("[%s]", pdf_font_get_fontname(font));
+          MESG("[%s]", font->fontname);
         }
         if (dpx_conf.verbose_level > 1) {
-          if (pdf_font_get_encoding(font) >= 0) {
-            MESG("[%s]", pdf_encoding_get_name(pdf_font_get_encoding(font)));
+          if (font->encoding_id >= 0) {
+            MESG("[%s]", pdf_encoding_get_name(font->encoding_id));
           } else {
             MESG("[built-in]");
           }
@@ -512,7 +520,7 @@ pdf_close_fonts (void)
     case PDF_FONT_FONTTYPE_TYPE1:
       if (dpx_conf.verbose_level > 0)
         MESG("[Type1]");
-      if (!pdf_font_get_flag(font, PDF_FONT_FLAG_BASEFONT))
+      if (!(font->flags & PDF_FONT_FLAG_BASEFONT))
         pdf_font_load_type1(font);
       break;
     case PDF_FONT_FONTTYPE_TYPE1C:
@@ -1012,46 +1020,6 @@ pdf_font_load_font (const char *ident, double font_scale, fontmap_rec *mrec)
   return  font_id;
 }
 
-int 
-pdf_font_is_in_use (pdf_font *font)
-{
-  ASSERT(font);
-
-  return ((font->reference) ? 1 : 0);
-}
-
-uint32_t
-pdf_font_get_index (pdf_font *font)
-{
-  ASSERT(font);
-
-  return font->index;
-}
-
-char *
-pdf_font_get_filename (pdf_font *font)
-{
-  ASSERT(font);
-
-  return font->filename;
-}
-
-char *
-pdf_font_get_mapname (pdf_font *font)
-{
-  ASSERT(font);
-
-  return font->ident;
-}
-
-char *
-pdf_font_get_fontname (pdf_font *font)
-{
-  ASSERT(font);
-
-  return font->fontname;
-}
-
 pdf_obj *
 pdf_font_get_resource (pdf_font *font)
 {
@@ -1095,51 +1063,6 @@ pdf_font_get_descriptor (pdf_font *font)
 }
 
 char *
-pdf_font_get_usedchars (pdf_font *font)
-{
-  ASSERT(font);
-
-  return font->usedchars;
-}
-
-int
-pdf_font_get_encoding (pdf_font *font)
-{
-  ASSERT(font);
-
-  return font->encoding_id;
-}
-
-int
-pdf_font_get_flag (pdf_font *font, int mask)
-{
-  ASSERT(font);
-
-  return ((font->flags & mask) ? 1 : 0);
-}
-
-double
-pdf_font_get_param (pdf_font *font, int param_type)
-{
-  double param = 0.0;
-
-  ASSERT(font);
-
-  switch (param_type) {
-  case PDF_FONT_PARAM_DESIGN_SIZE:
-    param = font->design_size;
-    break;
-  case PDF_FONT_PARAM_POINT_SIZE:
-    param = font->point_size;
-    break;
-  default:
-    break;
-  }
-
-  return param;
-}
-
-char *
 pdf_font_get_uniqueTag (pdf_font *font)
 {
   ASSERT(font);
@@ -1151,54 +1074,6 @@ pdf_font_get_uniqueTag (pdf_font *font)
   return font->uniqueID;
 }
 
-int
-pdf_font_set_fontname (pdf_font *font, const char *fontname)
-{
-  ASSERT(font && fontname);
-
-  if (strlen(fontname) > PDF_NAME_LEN_MAX) {
-    ERROR("Unexpected error...");
-    return -1;
-  }
-  if (font->fontname) {
-    RELEASE(font->fontname);
-  }
-  font->fontname = NEW(strlen(fontname)+1, char);
-  strcpy(font->fontname, fontname);
-
-  return 0;
-}
-
-int
-pdf_font_set_subtype (pdf_font *font, int subtype)
-{
-  ASSERT(font);
-
-  font->subtype = subtype;
-
-  return 0;
-}
-
-int
-pdf_font_set_flags (pdf_font *font, int flags)
-{
-  ASSERT(font);
-
-  font->flags |= flags;
-
-  return 0;
-}
-
-int
-pdf_font_unset_flags (pdf_font *font, int flags)
-{
-  ASSERT(font);
-
-  font->flags &= ~flags;
-
-  return 0;
-}
-
 #include "tfm.h"
 
 int
@@ -1208,7 +1083,7 @@ pdf_check_tfm_widths (const char *ident, double *widths, int firstchar, int last
   int    tfm_id, code, count = 0;
   double sum       = 0.0;
   double tolerance = 1.0;
-  int    overwrite = 0;
+  int    overwrite = 0; /* Don't set to 1! */
 
   tfm_id = tfm_open(ident, 0);
   if (tfm_id < 0)
@@ -1224,6 +1099,7 @@ pdf_check_tfm_widths (const char *ident, double *widths, int firstchar, int last
         widths[code] = width;
       } else if (diff > tolerance) {
         WARN("Intolerable difference in glyph width: font=%s, char=%d", ident, code);
+        WARN("font: %g vs. tfm: %g", widths[code], width);
         sum  += diff;
       }
       count++;
