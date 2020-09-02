@@ -97,7 +97,10 @@ Type0Font_attach_ToUnicode_stream (pdf_font *font)
    */
   ASSERT(cidfont);
 
-  if (CIDFont_is_ACCFont(cidfont)) {
+  if (cidfont->tounicode) {
+     pdf_add_dict(font->resource, pdf_new_name("ToUnicode"), cidfont->tounicode);
+     cidfont->tounicode = NULL;
+  } else if (CIDFont_is_ACCFont(cidfont)) {
     /* No need to embed ToUnicode */
     return;
   } else if (CIDFont_is_UCSFont(cidfont)) {
