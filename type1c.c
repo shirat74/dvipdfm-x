@@ -131,6 +131,11 @@ pdf_font_open_type1c (pdf_font *font, const char *ident, int index, int encoding
 
   cff_close(cffont);
 
+  if (!embedding) {
+    WARN("Ignoring no-embed option for Type1C font: %s", ident);
+    embedding = 1;
+    font->flags &= ~PDF_FONT_FLAG_NOEMBED;
+  }
   /*
    * Font like AdobePiStd does not have meaningful built-in encoding.
    * Some software generate CFF/OpenType font with incorrect encoding.
@@ -156,7 +161,11 @@ pdf_font_open_type1c (pdf_font *font, const char *ident, int index, int encoding
   pdf_merge_dict (descriptor, tmp); /* copy */
   pdf_release_obj(tmp);
   if (!embedding) { /* tt_get_fontdesc may have changed this */
-    font->flags |= PDF_FONT_FLAG_NOEMBED;
+    WARN("Font embedding disallowed for \"%s\"", ident);
+    sfnt_close(sfont);
+    if (fp)
+      DPXFCLOSE(fp);
+    return -1;
   }
 
   sfnt_close(sfont);
