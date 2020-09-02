@@ -165,8 +165,8 @@ pdf_font_open_truetype (pdf_font *font, const char *ident, int index, int encodi
 
   if (!embedding) {
 #ifndef ENABLE_NOEMBED
-      WARN("Font file=\"%s\" can't be embedded due to liscence restrictions.", ident);
-      error = -1;
+    WARN("Font file=\"%s\" can't be embedded due to liscence restrictions.", ident);
+    error = -1;
 #else
     if (encoding_id >= 0 && !pdf_encoding_is_predefined(encoding_id)) {
       WARN("Custom encoding not allowed for non-embedded TrueType font: %s", ident);
