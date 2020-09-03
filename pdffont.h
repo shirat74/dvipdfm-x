@@ -96,7 +96,7 @@ struct pdf_font
   pdf_obj *reference;
   pdf_obj *resource;
   pdf_obj *descriptor;
-  pdf_obj *tounicode;
+
   /*
    * Font format specific data
    */
