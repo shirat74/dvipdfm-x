@@ -97,11 +97,7 @@ Type0Font_attach_ToUnicode_stream (pdf_font *font)
    */
   ASSERT(cidfont);
 
-  if (cidfont->tounicode) {
-    pdf_add_dict(font->resource, pdf_new_name("ToUnicode"), cidfont->tounicode);
-    cidfont->tounicode = NULL;
-    return;
-  } else if (CIDFont_is_ACCFont(cidfont)) {
+  if (CIDFont_is_ACCFont(cidfont)) {
     /* No need to embed ToUnicode */
     return;
   } else if (CIDFont_is_UCSFont(cidfont)) {
@@ -137,10 +133,7 @@ Type0Font_attach_ToUnicode_stream (pdf_font *font)
         tounicode = otf_create_ToUnicode_stream(cidfont->ident, cidfont->index,
                                                 cidfont->fontname, font->usedchars);
       } else if (cidfont->flags & CIDFONT_FLAG_TYPE1) {
-        /* FIXME: handled on very different timing.
-         * Font loader will create ToUnicode and set.
-         */
-        return;
+        tounicode = CIDFont_type0_t1create_ToUnicode_stream(cidfont->ident, cidfont->fontname, font->usedchars);
       } else {
         tounicode = Type0Font_try_load_ToUnicode_stream(font, fontname);
       }
