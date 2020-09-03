@@ -176,13 +176,6 @@ pdf_font_load_type0 (pdf_font *font)
   if (!pdf_lookup_dict(font->resource, "ToUnicode")) {
     Type0Font_attach_ToUnicode_stream(font);
   }
-  if (!pdf_lookup_dict(font->resource, "DescendantFonts")) {
-    pdf_obj  *array;
-
-    array = pdf_new_array();
-    pdf_add_array(array, pdf_get_font_reference(font->type0.descendant));
-    pdf_add_dict(font->resource, pdf_new_name("DescendantFonts"), array);
-  }
 }
 
 int
