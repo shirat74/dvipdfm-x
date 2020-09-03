@@ -99,7 +99,6 @@ pdf_init_font_struct (pdf_font *font)
   font->reference   = NULL;
   font->resource    = NULL;
   font->descriptor  = NULL;
-  font->tounicode   = NULL;
 
   font->point_size  = 0;
   font->design_size = 0;
@@ -450,17 +449,13 @@ try_load_ToUnicode_CMap (pdf_font *font)
 
   ASSERT(font->ident);
 
-  if (font->tounicode) {
-    tounicode = font->tounicode;
+  mrec = pdf_lookup_fontmap_record(font->ident);
+  if (MREC_HAS_TOUNICODE(mrec)) {
+    cmap_name = mrec->opt.tounicode;
   } else {
-    mrec = pdf_lookup_fontmap_record(font->ident);
-    if (MREC_HAS_TOUNICODE(mrec)) {
-      cmap_name = mrec->opt.tounicode;
-    } else {
-      cmap_name = font->ident;
-    }
-    tounicode = pdf_load_ToUnicode_stream(cmap_name);
+    cmap_name = font->ident;
   }
+  tounicode = pdf_load_ToUnicode_stream(cmap_name);
 
   if (!tounicode) {
     if (MREC_HAS_TOUNICODE(mrec)) {
@@ -480,7 +475,6 @@ try_load_ToUnicode_CMap (pdf_font *font)
              cmap_name, font->ident);
     }
     pdf_release_obj(tounicode);
-    font->tounicode = NULL;
   }
 
   return  0;
