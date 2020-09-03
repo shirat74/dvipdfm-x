@@ -331,7 +331,7 @@ add_CIDMetrics (sfnt *sfont, pdf_obj *fontdict,
  * Create an instance of embeddable font.
  */
 static int
-write_fontfile (CIDFont *font, cff_font *cffont)
+write_fontfile (pdf_font *font, cff_font *cffont)
 {
   cff_index *topdict, *fdarray, *private;
   unsigned char *dest;
@@ -566,7 +566,7 @@ CIDFont_type0_try_open (const char *name,
 }
 
 static void
-CIDFont_type0_add_CIDSet(CIDFont *font, char *used_chars, card16 last_cid) {
+CIDFont_type0_add_CIDSet (pdf_font *font, char *used_chars, card16 last_cid) {
   /*
    * CIDSet:
    * Length of CIDSet stream is not clear. Must be 8192 bytes long?
@@ -581,7 +581,7 @@ CIDFont_type0_add_CIDSet(CIDFont *font, char *used_chars, card16 last_cid) {
 }
 
 void
-CIDFont_type0_dofont (CIDFont *font)
+CIDFont_type0_dofont (pdf_font *font)
 {
   cff_font *cffont;
   cff_index    *charstrings, *idx;
@@ -798,7 +798,7 @@ CIDFont_type0_dofont (CIDFont *font)
 }
 
 int
-CIDFont_type0_open (CIDFont *font, const char *name, int index,
+CIDFont_type0_open (pdf_font *font, const char *name, int index,
                     CIDSysInfo *cmap_csi, cid_opt *opt,
                     int expected_flag)
 {
@@ -1009,7 +1009,7 @@ CIDFont_type0_open (CIDFont *font, const char *name, int index,
 }
 
 void
-CIDFont_type0_t1cdofont (CIDFont *font)
+CIDFont_type0_t1cdofont (pdf_font *font)
 {
   cff_font  *cffont;
   cff_index *charstrings, *idx;
@@ -1452,7 +1452,8 @@ create_ToUnicode_stream (cff_font *cffont,
 pdf_obj *
 CIDFont_type0_t1create_ToUnicode_stream (const char *filename, const char *fontname, const char *used_chars)
 {
-  pdf_obj  *tounicode = NULL;
+  pdf_obj  *ref = NULL;
+  pdf_obj  *tounicode;
   cff_font *cffont;  
   FILE     *fp;
 
@@ -1466,11 +1467,16 @@ CIDFont_type0_t1create_ToUnicode_stream (const char *filename, const char *fontn
   }
 
   cffont = t1_load_font(NULL, 1, fp);
-  if (cffont)
+  if (cffont) {
     tounicode = create_ToUnicode_stream(cffont, fontname, used_chars);
+    if (tounicode) {
+      ref = pdf_ref_obj(tounicode);
+      pdf_release_obj(tounicode);
+    }
+  }
   DPXFCLOSE(fp);
 
-  return tounicode;
+  return ref;
 }
 
 /* Duplicate from type1.c */
@@ -1486,9 +1492,8 @@ CIDFont_type0_t1create_ToUnicode_stream (const char *filename, const char *fontn
 #define FONT_FLAG_SMALLCAP   (1 << 17) /* Small-cap font */
 #define FONT_FLAG_FORCEBOLD  (1 << 18) /* Force bold at small text sizes */
 
-/* pdf_font --> CIDFont */
 static void
-get_font_attr (CIDFont *font, cff_font *cffont)
+get_font_attr (pdf_font *font, cff_font *cffont)
 {
   double capheight, ascent, descent;
   double italicangle, stemv;
@@ -1627,7 +1632,7 @@ get_font_attr (CIDFont *font, cff_font *cffont)
 }
 
 static void
-add_metrics (CIDFont *font, cff_font *cffont,
+add_metrics (pdf_font *font, cff_font *cffont,
              unsigned char *CIDToGIDMap,
              double *widths, double default_width, CID last_cid)
 {
@@ -1683,7 +1688,7 @@ add_metrics (CIDFont *font, cff_font *cffont,
 }
 
 void
-CIDFont_type0_t1dofont (CIDFont *font)
+CIDFont_type0_t1dofont (pdf_font *font)
 {
   cff_font *cffont;
   double    defaultwidth, nominalwidth;

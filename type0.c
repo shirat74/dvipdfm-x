@@ -42,6 +42,7 @@
 #include "fontmap.h"
 
 #include "cmap.h"
+#include "cidtype0.h"
 #include "cid.h"
 
 #include "type0.h"
@@ -57,7 +58,8 @@ static pdf_obj *pdf_read_ToUnicode_file (const char *cmap_name);
  * CHANGED: CMap here is not always Unicode to CID mapping. Don't use reverse lookup.
  */
 static pdf_obj *
-Type0Font_try_load_ToUnicode_stream(pdf_font *font, char *cmap_base) {
+try_load_ToUnicode_file (char *cmap_base)
+{
   pdf_obj *tounicode;
   char    *cmap_name;
 
@@ -69,12 +71,6 @@ Type0Font_try_load_ToUnicode_stream(pdf_font *font, char *cmap_base) {
     tounicode = pdf_read_ToUnicode_file(cmap_name);
   }
   RELEASE(cmap_name);
-
-  if (!tounicode) {
-    pdf_font *cidfont = pdf_get_font_data(font->type0.descendant);
-    tounicode = otf_create_ToUnicode_stream(cidfont->ident, cidfont->index,
-                                            cidfont->fontname, font->usedchars);   
-  }
 
   return tounicode;
 }
@@ -104,9 +100,10 @@ Type0Font_attach_ToUnicode_stream (pdf_font *font)
     /*
      * Old version of dvipdfmx mistakenly used Adobe-Identity as Unicode.
      */
+    /* ref returned */
     tounicode = pdf_read_ToUnicode_file("Adobe-Identity-UCS2");
     if (!tounicode) { /* This should work */
-      tounicode = pdf_new_name("Identity-H");
+      tounicode = pdf_new_name("Identity-H");      
     }
     pdf_add_dict(font->resource, pdf_new_name("ToUnicode"), tounicode);
     return;
@@ -119,31 +116,32 @@ Type0Font_attach_ToUnicode_stream (pdf_font *font)
     fontname += 7; /* FIXME: Skip pseudo unique tag... */
   }
 
-  if (!strcmp(csi->registry, "Adobe") && !strcmp(csi->ordering, "Identity")) {
-    switch (cidfont->subtype) {
-    case PDF_FONT_FONTTYPE_CIDTYPE2:
-    /* PLEASE FIX THIS */
-      {
-        tounicode = otf_create_ToUnicode_stream(cidfont->ident, cidfont->index,
-                                                cidfont->fontname, font->usedchars);
-      }
-      break;
-    default:
-      if (cidfont->flags & CIDFONT_FLAG_TYPE1C) {
-        tounicode = otf_create_ToUnicode_stream(cidfont->ident, cidfont->index,
-                                                cidfont->fontname, font->usedchars);
-      } else if (cidfont->flags & CIDFONT_FLAG_TYPE1) {
-        tounicode = CIDFont_type0_t1create_ToUnicode_stream(cidfont->ident, cidfont->fontname, font->usedchars);
-      } else {
-        tounicode = Type0Font_try_load_ToUnicode_stream(font, fontname);
-      }
-      break;
+  switch (cidfont->subtype) {
+  case PDF_FONT_FONTTYPE_CIDTYPE2:
+    if (!strcmp(csi->registry, "Adobe") && !strcmp(csi->ordering, "Identity")) {
+      tounicode = otf_create_ToUnicode_stream(cidfont->ident, cidfont->index,
+                                              cidfont->fontname, font->usedchars);
+    } else {
+      char *cmap_base = NEW(strlen(csi->registry) + strlen(csi->ordering) + 2, char);
+      sprintf(cmap_base, "%s-%s", csi->registry, csi->ordering);
+      tounicode = try_load_ToUnicode_file(cmap_base);
+      RELEASE(cmap_base);
+      /* In this case glyphs are re-ordered hance otf_create... won't work */
     }
-  } else {
-    char *cmap_base = NEW(strlen(csi->registry) + strlen(csi->ordering) + 2, char);
-    sprintf(cmap_base, "%s-%s", csi->registry, csi->ordering);
-    tounicode = Type0Font_try_load_ToUnicode_stream(font, cmap_base);
-    RELEASE(cmap_base);
+    break;
+  default:
+    if (cidfont->flags & CIDFONT_FLAG_TYPE1C) {
+      tounicode = otf_create_ToUnicode_stream(cidfont->ident, cidfont->index,
+                                              cidfont->fontname, font->usedchars);
+    } else if (cidfont->flags & CIDFONT_FLAG_TYPE1) {
+      tounicode = CIDFont_type0_t1create_ToUnicode_stream(cidfont->ident, cidfont->fontname, font->usedchars);
+    } else {
+      tounicode = try_load_ToUnicode_file(fontname);
+      if (!tounicode) {
+        tounicode = otf_create_ToUnicode_stream(cidfont->ident, cidfont->index,
+                                                cidfont->fontname, font->usedchars);
+      }
+    }
   }
 
   if (tounicode) {

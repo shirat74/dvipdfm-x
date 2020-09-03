@@ -472,7 +472,7 @@ cid_to_code (CMap *cmap, CID cid)
 /* #define NO_GHOSTSCRIPT_BUG 1 */
 
 void
-CIDFont_type2_dofont (CIDFont *font)
+CIDFont_type2_dofont (pdf_font *font)
 {
   pdf_obj *fontfile;
   sfnt    *sfont;
@@ -907,7 +907,7 @@ CIDFont_type2_dofont (CIDFont *font)
 }
 
 int
-CIDFont_type2_open (CIDFont *font, const char *name, int index, CIDSysInfo *cmap_csi, cid_opt *opt)
+CIDFont_type2_open (pdf_font *font, const char *name, int index, CIDSysInfo *cmap_csi, cid_opt *opt)
 {
   char    *fontname;
   sfnt    *sfont;

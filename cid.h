@@ -26,23 +26,17 @@
 extern CIDSysInfo CSI_IDENTITY;
 extern CIDSysInfo CSI_UNICODE;
 
-typedef struct pdf_font CIDFont;
-
 extern int  opt_flags_cidfont;
 extern void CIDFont_set_flags       (int flags);
 
 #define CIDFONT_FORCE_FIXEDPITCH (1 << 1)
 
-#include "pdfobj.h"
+extern char       *CIDFont_get_usedchars   (pdf_font *font);
+extern char       *CIDFont_get_usedchars_v (pdf_font *font);
 
-typedef pdf_font CIDFont;
-
-extern char       *CIDFont_get_usedchars   (CIDFont *font);
-extern char       *CIDFont_get_usedchars_v (CIDFont *font);
-
-extern int         CIDFont_is_BaseFont (CIDFont *font);
-extern int         CIDFont_is_ACCFont  (CIDFont *font);
-extern int         CIDFont_is_UCSFont  (CIDFont *font);
+extern int         CIDFont_is_BaseFont (pdf_font *font);
+extern int         CIDFont_is_ACCFont  (pdf_font *font);
+extern int         CIDFont_is_UCSFont  (pdf_font *font);
 
 #include "fontmap.h"
 extern int      pdf_font_cidfont_lookup_cache (pdf_font *fonts, int count, const char *map_name, CIDSysInfo *cmap_csi, fontmap_opt *fmap_opt);

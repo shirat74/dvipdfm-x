@@ -116,7 +116,7 @@ static int  get_cidsysinfo (CIDSysInfo *csi, const char *map_name, fontmap_opt *
 int opt_flags_cidfont = 0;
 
 int
-CIDFont_is_ACCFont (CIDFont *font)
+CIDFont_is_ACCFont (pdf_font *font)
 {
   int         i;
   CIDSysInfo *csi;
@@ -134,7 +134,7 @@ CIDFont_is_ACCFont (CIDFont *font)
 }
 
 int
-CIDFont_is_UCSFont (CIDFont *font)
+CIDFont_is_UCSFont (pdf_font *font)
 {
   CIDSysInfo *csi;
 
@@ -150,7 +150,7 @@ CIDFont_is_UCSFont (CIDFont *font)
 }
 
 char *
-CIDFont_get_usedchars (CIDFont *font)
+CIDFont_get_usedchars (pdf_font *font)
 {
   if (!font->usedchars) {
     font->usedchars = NEW(8192, char);
@@ -161,7 +161,7 @@ CIDFont_get_usedchars (CIDFont *font)
 }
 
 char *
-CIDFont_get_usedchars_v (CIDFont *font)
+CIDFont_get_usedchars_v (pdf_font *font)
 {
   if (!font->cid.usedchars_v) {
     font->cid.usedchars_v = NEW(8192, char);
@@ -173,7 +173,7 @@ CIDFont_get_usedchars_v (CIDFont *font)
 
 
 static int
-source_font_type (CIDFont *font)
+source_font_type (pdf_font *font)
 {
   int type = PDF_FONT_FONTTYPE_CIDTYPE0;
 
@@ -230,7 +230,7 @@ pdf_font_load_cidfont (pdf_font *font)
 }
 
 int
-CIDFont_is_BaseFont (CIDFont *font)
+CIDFont_is_BaseFont (pdf_font *font)
 {
   ASSERT(font);
   return (font->flags & PDF_FONT_FLAG_BASEFONT) ? 1 : 0;
@@ -239,11 +239,8 @@ CIDFont_is_BaseFont (CIDFont *font)
 #include "pdfparse.h"
 #include "cid_basefont.h"
 
-static int CIDFont_base_open (CIDFont *font,
-                              const char *name, CIDSysInfo *cmap_csi, cid_opt *opt);
-
 static int
-CIDFont_base_open (CIDFont *font, const char *name, CIDSysInfo *cmap_csi, cid_opt *opt)
+CIDFont_base_open (pdf_font *font, const char *name, CIDSysInfo *cmap_csi, cid_opt *opt)
 {
   pdf_obj *fontdict, *descriptor;
   char    *fontname = NULL;

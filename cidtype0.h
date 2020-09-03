@@ -21,15 +21,15 @@
 #ifndef _CIDTYPE0_H_
 #define _CIDTYPE0_H_
 
-#include "cid.h"
+#include "pdffont.h"
 
-extern int  CIDFont_type0_open   (CIDFont *font, const char *name, int index, CIDSysInfo *cmap_csi, cid_opt *opt, int expected_flag);
-extern void CIDFont_type0_dofont (CIDFont *font);
+extern int  CIDFont_type0_open   (pdf_font *font, const char *name, int index, CIDSysInfo *cmap_csi, cid_opt *opt, int expected_flag);
+extern void CIDFont_type0_dofont (pdf_font *font);
 
 /* Type1 --> CFF CIDFont */
 extern int  t1_load_UnicodeCMap  (const char *font_name, const char *otl_tags, int wmode);
-extern void CIDFont_type0_t1dofont (CIDFont *font);
-extern void CIDFont_type0_t1cdofont (CIDFont *font);
+extern void CIDFont_type0_t1dofont  (pdf_font *font);
+extern void CIDFont_type0_t1cdofont (pdf_font *font);
 
 extern pdf_obj *CIDFont_type0_t1create_ToUnicode_stream (const char *filename, const char *fontname, const char *used_chars);
 
