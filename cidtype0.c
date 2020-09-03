@@ -1449,6 +1449,30 @@ create_ToUnicode_stream (cff_font *cffont,
   return stream;
 }
 
+pdf_obj *
+CIDFont_type0_t1create_ToUnicode_stream (const char *filename, const char *fontname, const char *used_chars)
+{
+  pdf_obj  *tounicode = NULL;
+  cff_font *cffont;  
+  FILE     *fp;
+
+  ASSERT(filename);
+  ASSERT(fontname);
+  ASSERT(used_chars);
+
+  fp = DPXFOPEN(filename, DPX_RES_TYPE_T1FONT);
+  if (!fp) {
+    return NULL;
+  }
+
+  cffont = t1_load_font(NULL, 1, fp);
+  if (cffont)
+    tounicode = create_ToUnicode_stream(cffont, fontname, used_chars);
+  DPXFCLOSE(fp);
+
+  return tounicode;
+}
+
 /* Duplicate from type1.c */
 #define TYPE1_NAME_LEN_MAX   127
 
@@ -1694,10 +1718,6 @@ CIDFont_type0_t1dofont (CIDFont *font)
     ERROR("Fontname undefined...");
 
   used_chars = font->usedchars;
-
-  if (!font->tounicode) {
-    font->tounicode = create_ToUnicode_stream(cffont, font->fontname, used_chars);
-  }
 
   cff_set_name(cffont, font->fontname);
 
