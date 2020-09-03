@@ -31,4 +31,6 @@ extern int  t1_load_UnicodeCMap  (const char *font_name, const char *otl_tags, i
 extern void CIDFont_type0_t1dofont (CIDFont *font);
 extern void CIDFont_type0_t1cdofont (CIDFont *font);
 
+extern pdf_obj *CIDFont_type0_t1create_ToUnicode_stream (const char *filename, const char *fontname, const char *used_chars);
+
 #endif /* _CIDTYPE0_H_ */
