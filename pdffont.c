@@ -308,6 +308,15 @@ pdf_get_font_reference (int font_id)
   if (!font->reference) {
     font->reference = pdf_ref_obj(pdf_font_get_resource(font));
   }
+  if (font->subtype == PDF_FONT_FONTTYPE_TYPE0) {
+    if (!pdf_lookup_dict(font->resource, "DescendantFonts")) {
+      pdf_obj  *array;
+
+      array = pdf_new_array();
+      pdf_add_array(array, pdf_get_font_reference(font->type0.descendant));
+      pdf_add_dict(font->resource, pdf_new_name("DescendantFonts"), array);
+    }
+  }
 
   return pdf_link_obj(font->reference);
 }
