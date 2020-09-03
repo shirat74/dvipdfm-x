@@ -49,7 +49,6 @@
 
 #include "type0.h"
 #include "tt_cmap.h"
-#include "cidtype0.h"
 
 #include "pdffont.h"
 
