@@ -47,6 +47,7 @@
 
 #include "pkfont.h"
 
+#include "cidtype0.h"
 #include "type0.h"
 #include "tt_cmap.h"
 

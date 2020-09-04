@@ -232,7 +232,7 @@ pdf_font_load_cidfont (pdf_font *font)
 #include "cid_basefont.h"
 
 static int
-CIDFont_base_open (pdf_font *font, const char *name, CIDSysInfo *cmap_csi, cid_opt *opt)
+CIDFont_base_open (pdf_font *font, const char *name, cid_opt *opt)
 {
   pdf_obj *fontdict, *descriptor;
   char    *fontname = NULL;
@@ -486,7 +486,7 @@ pdf_font_open_cidfont (pdf_font *font, const char *map_name, CIDSysInfo *cmap_cs
     }
   }
 
-  return error;
+  return 0;
 }
 
 

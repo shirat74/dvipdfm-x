@@ -802,10 +802,8 @@ CIDFont_type0_open_from_t1 (pdf_font *font, const char *name, int index, cid_opt
 {
   CIDSysInfo  csi;
   char       *fontname;
-  sfnt       *sfont = NULL;
   cff_font   *cffont;
   FILE       *fp = NULL;
-  ULONG       offset = 0;
 
   ASSERT(font);
 
@@ -827,7 +825,7 @@ CIDFont_type0_open_from_t1 (pdf_font *font, const char *name, int index, cid_opt
     if (!shortname) {
       WARN("No valid FontName found: %s", name);
       cff_close(cffont);
-      DOXFCLOSE(fp);
+      DPXFCLOSE(fp);
     }  
     /*
      * Mangled name requires more 7 bytes.
@@ -844,9 +842,8 @@ CIDFont_type0_open_from_t1 (pdf_font *font, const char *name, int index, cid_opt
   strcpy(csi.ordering, "Identity");
   csi.supplement = 0;
   if (opt->style != FONT_STYLE_NONE) {
-      WARN(",Bold, ,Italic, ... not supported for this type of font...");
-      opt->style = FONT_STYLE_NONE;
-    }
+    WARN(",Bold, ,Italic, ... not supported for this type of font...");
+    opt->style = FONT_STYLE_NONE;
   }
 
   font->fontname = fontname;
@@ -1133,7 +1130,7 @@ CIDFont_type0_open_from_t1c (pdf_font *font, const char *name, int index, cid_op
     sfnt_close(sfont);
     DPXFCLOSE(fp);
     return -1;
-  } else if (!opt.embed) {
+  } else if (!opt->embed) {
     WARN("Can’t embed font due to font license: %s", name);
     RELEASE(fontname);
     RELEASE(csi.registry);
