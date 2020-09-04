@@ -23,7 +23,7 @@
 
 #include "pdffont.h"
 
-extern int  CIDFont_type2_open   (pdf_font *font, const char *name, int index, CIDSysInfo *cmap_csi, cid_opt *opt);
+extern int  CIDFont_type2_open   (pdf_font *font, const char *name, int index, cid_opt *opt);
 extern void CIDFont_type2_dofont (pdf_font *font);
 
 #endif /* _CIDTYPE2_H_ */
