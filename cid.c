@@ -229,13 +229,6 @@ pdf_font_load_cidfont (pdf_font *font)
   return;
 }
 
-int
-CIDFont_is_BaseFont (pdf_font *font)
-{
-  ASSERT(font);
-  return (font->flags & PDF_FONT_FLAG_BASEFONT) ? 1 : 0;
-}
-
 #include "pdfparse.h"
 #include "cid_basefont.h"
 
@@ -420,7 +413,7 @@ pdf_font_cidfont_lookup_cache (pdf_font *fonts, int count, const char *map_name,
               MAX(opt.csi.supplement, font->cid.csi.supplement); /* FIXME: font modified */
           break;
         }
-      } else if (CIDFont_is_BaseFont(font)) {
+      } else if (font->flags & PDF_FONT_FLAG_BASEFONT) {
         break;
       }
     }
