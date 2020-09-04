@@ -451,12 +451,10 @@ pdf_font_open_cidfont (pdf_font *font, const char *map_name, CIDSysInfo *cmap_cs
     has_csi = 1;
   }
 
-  if (CIDFont_type0_open(font, map_name, fmap_opt->index, cmap_csi, &opt, 0) < 0 &&
-      CIDFont_type2_open(font, map_name, fmap_opt->index, cmap_csi, &opt)    < 0 &&
-      CIDFont_type0_open(font, map_name, fmap_opt->index, cmap_csi, &opt,
-                         CIDFONT_FLAG_TYPE1)               < 0 &&
-      CIDFont_type0_open(font, map_name, fmap_opt->index, cmap_csi, &opt,
-                         CIDFONT_FLAG_TYPE1C)              < 0 &&
+  if (CIDFont_type0_open(font, map_name, fmap_opt->index, &opt) < 0 &&
+      CIDFont_type2_open(font, map_name, fmap_opt->index, cmap_csi, &opt) < 0 &&
+      CIDFont_type0_open_from_t1 (font, map_name, fmap_opt->index, &opt) < 0 &&
+      CIDFont_type0_open_from_t1c(font, map_name, fmap_opt->index, &opt) < 0 &&
       CIDFont_base_open (font, map_name, cmap_csi, &opt)    < 0) {
     release_opt(&opt);
     error = -1;
