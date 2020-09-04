@@ -23,11 +23,13 @@
 
 #include "pdffont.h"
 
-extern int  CIDFont_type0_open   (pdf_font *font, const char *name, int index, CIDSysInfo *cmap_csi, cid_opt *opt, int expected_flag);
+extern int  CIDFont_type0_open   (pdf_font *font, const char *name, int index, cid_opt *opt);
 extern void CIDFont_type0_dofont (pdf_font *font);
 
 /* Type1 --> CFF CIDFont */
 extern int  t1_load_UnicodeCMap  (const char *font_name, const char *otl_tags, int wmode);
+extern int  CIDFont_type0_open_from_t1  (pdf_font *font, const char *name, int index, cid_opt *opt);
+extern int  CIDFont_type0_open_from_t1c (pdf_font *font, const char *name, int index, cid_opt *opt);
 extern void CIDFont_type0_t1dofont  (pdf_font *font);
 extern void CIDFont_type0_t1cdofont (pdf_font *font);
 
