@@ -608,9 +608,9 @@ CIDFont_type0_dofont (pdf_font *font)
                pdf_new_name("FontDescriptor"),
                pdf_ref_obj (font->descriptor));
 
-  if (CIDFont_is_BaseFont(font))
+  if (font->flags & PDF_FONT_FLAG_BASEFONT) {
     return;
-  else if (!font->cid.options.embed &&
+  } else if (!font->cid.options.embed &&
            (opt_flags_cidfont & CIDFONT_FORCE_FIXEDPITCH)) {
     /* No metrics needed. */
     pdf_add_dict(font->resource,
