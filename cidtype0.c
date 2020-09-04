@@ -582,19 +582,19 @@ CIDFont_type0_add_CIDSet (pdf_font *font, char *used_chars, card16 last_cid) {
 void
 CIDFont_type0_dofont (pdf_font *font)
 {
-  cff_font *cffont;
-  cff_index    *charstrings, *idx;
-  cff_charsets *charset = NULL;
-  cff_fdselect *fdselect = NULL;
-  int    charstring_len, max_len;
-  int    destlen = 0;
-  int    size, offset = 0;
-  card8 *data;
-  card16 num_glyphs = 0, gid;
-  int    cid;
-  card16 cs_count, last_cid = 0;
-  int    fd, prev_fd;
-  char  *used_chars;
+  cff_font      *cffont;
+  cff_index     *charstrings, *idx;
+  cff_charsets  *charset  = NULL;
+  cff_fdselect  *fdselect = NULL;
+  int            charstring_len, max_len;
+  int            destlen = 0;
+  int            size, offset = 0;
+  card8         *data;
+  card16         num_glyphs = 0, gid;
+  int            cid;
+  card16         cs_count, last_cid = 0;
+  int            fd, prev_fd;
+  char          *used_chars;
   unsigned char *CIDToGIDMap = NULL;
   CIDType0Error error;
   CIDType0Info info;
@@ -797,9 +797,7 @@ CIDFont_type0_dofont (pdf_font *font)
 }
 
 int
-CIDFont_type0_open_from_t1 (pdf_font *font, const char *name, int index,
-                            CIDSysInfo *cmap_csi, cid_opt *opt,
-                            int expected_flag)
+CIDFont_type0_open_from_t1 (pdf_font *font, const char *name, int index, cid_opt *opt)
 {
   CIDSysInfo  csi;
   char       *fontname;
@@ -892,8 +890,7 @@ CIDFont_type0_open_from_t1 (pdf_font *font, const char *name, int index,
 }
 
 int
-CIDFont_type0_open (pdf_font *font, const char *name, int index,
-                    CIDSysInfo *cmap_csi, cid_opt *opt)
+CIDFont_type0_open (pdf_font *font, const char *name, int index, cid_opt *opt)
 {
   CIDSysInfo  csi;
   char       *fontname;
@@ -1047,8 +1044,7 @@ CIDFont_type0_open (pdf_font *font, const char *name, int index,
 }
 
 int
-CIDFont_type0_open_from_t1c (pdf_font *font, const char *name, int index,
-                             CIDSysInfo *cmap_csi, cid_opt *opt)
+CIDFont_type0_open_from_t1c (pdf_font *font, const char *name, int index, cid_opt *opt)
 {
   CIDSysInfo  csi;
   char       *fontname;
