@@ -34,7 +34,6 @@ extern void CIDFont_set_flags       (int flags);
 extern char       *CIDFont_get_usedchars   (pdf_font *font);
 extern char       *CIDFont_get_usedchars_v (pdf_font *font);
 
-extern int         CIDFont_is_BaseFont (pdf_font *font);
 extern int         CIDFont_is_ACCFont  (pdf_font *font);
 extern int         CIDFont_is_UCSFont  (pdf_font *font);
 
