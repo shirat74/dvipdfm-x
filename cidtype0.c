@@ -797,9 +797,9 @@ CIDFont_type0_dofont (pdf_font *font)
 }
 
 int
-CIDFont_type0_open (pdf_font *font, const char *name, int index,
-                    CIDSysInfo *cmap_csi, cid_opt *opt,
-                    int expected_flag)
+CIDFont_type0_open_from_t1 (pdf_font *font, const char *name, int index,
+                            CIDSysInfo *cmap_csi, cid_opt *opt,
+                            int expected_flag)
 {
   CIDSysInfo  csi;
   char       *fontname;
@@ -807,97 +807,17 @@ CIDFont_type0_open (pdf_font *font, const char *name, int index,
   cff_font   *cffont;
   FILE       *fp = NULL;
   ULONG       offset = 0;
-  int         is_cid_font = 0;
-  int         expect_cid_font = expected_flag == 0;
-  int         expect_type1_font = expected_flag & CIDFONT_FLAG_TYPE1;
-  dpx_res_type expect_file_type =
-      expect_type1_font ? DPX_RES_TYPE_T1FONT : DPX_RES_TYPE_OTFONT;
 
   ASSERT(font);
 
-  if (expect_type1_font) {
-    if (cmap_csi &&
-        (strcmp(cmap_csi->registry, "Adobe")    != 0 ||
-         strcmp(cmap_csi->ordering, "Identity") != 0)) {
-      return -1;
-    }
-  }
+  fp = DPXFOPEN(name, DPX_RES_TYPE_T1FONT);
+  if (!fp)
+    return -1;
 
-  fp = DPXFOPEN(name, expect_file_type);
-  if (!expect_type1_font) {
-    if (!fp) {
-      fp = DPXFOPEN(name, DPX_RES_TYPE_TTFONT);
-      if (!fp) return -1;
-    }
-
-    sfont = sfnt_open(fp);
-    if (!sfont) {
-      ERROR("Not a CFF/OpenType font: %s", name);
-    }
-
-    if (sfont->type == SFNT_TYPE_TTC)
-      offset = ttc_read_offset(sfont, index);
-
-    if ((sfont->type != SFNT_TYPE_TTC && sfont->type != SFNT_TYPE_POSTSCRIPT) ||
-        sfnt_read_table_directory(sfont, offset) < 0 ||
-        (offset = sfnt_find_table_pos(sfont, "CFF ")) == 0) {
-      sfnt_close(sfont);
-      if (fp)
-        DPXFCLOSE(fp);
-      return -1;
-    }
-
-    cffont = cff_open(sfont->stream, offset, 0);
-    if (!cffont) {
-      ERROR("Cannot read CFF font data");
-    }
-
-    is_cid_font = cffont->flag & FONTTYPE_CIDFONT;
-    if (expect_cid_font != is_cid_font) {
-      cff_close(cffont);
-      sfnt_close(sfont);
-      if (fp)
-        DPXFCLOSE(fp);
-      return -1;
-    }
-  } else {
-    if (!fp)
-      return -1;
-
-    cffont = t1_load_font(NULL, 1, fp);
-    if (!cffont) {
-      DPXFCLOSE(fp);
-      return -1;
-    }
+  cffont = t1_load_font(NULL, 1, fp);
+  if (!cffont) {
     DPXFCLOSE(fp);
-  }
-
-  if (is_cid_font) {
-    csi.registry =
-      cff_get_string(cffont, (s_SID)cff_dict_get(cffont->topdict, "ROS", 0));
-    csi.ordering =
-      cff_get_string(cffont, (s_SID)cff_dict_get(cffont->topdict, "ROS", 1));
-    csi.supplement = (int)cff_dict_get(cffont->topdict, "ROS", 2);
-  } else {
-    csi.registry   = NEW(strlen("Adobe") + 1, char);
-    strcpy(csi.registry, "Adobe");
-    csi.ordering   = NEW(strlen("Identity") + 1, char);
-    strcpy(csi.ordering, "Identity");
-    csi.supplement = 0;
-  }
-
-  if (!expect_type1_font && cmap_csi) {
-    if (strcmp(csi.registry, cmap_csi->registry) != 0 ||
-        strcmp(csi.ordering, cmap_csi->ordering) != 0) {
-      MESG("\nCharacter collection mismatched:\n");
-      MESG("\tFont: %s-%s-%d\n", csi.registry, csi.ordering, csi.supplement);
-      MESG("\tCMap: %s-%s-%d\n", cmap_csi->registry, cmap_csi->ordering, cmap_csi->supplement);
-      ERROR("Inconsistent CMap specified for this font.");
-    }
-    if (csi.supplement < cmap_csi->supplement) {
-      WARN("CMap have higher supplement number.");
-      WARN("Some characters may not be displayed or printed.");
-    }
+    return -1;
   }
 
   {
@@ -905,50 +825,35 @@ CIDFont_type0_open (pdf_font *font, const char *name, int index,
     int fontname_len = 8;
 
     shortname = cff_get_name(cffont);
-    if (!shortname)
-      ERROR("No valid FontName found.");
+    if (!shortname) {
+      WARN("No valid FontName found: %s", name);
+      cff_close(cffont);
+      DOXFCLOSE(fp);
+    }  
     /*
      * Mangled name requires more 7 bytes.
-     * Style requires more 11 bytes.
      */
-     if (is_cid_font)
-      fontname_len += 11;
     fontname = NEW(strlen(shortname) + fontname_len, char);
     memset(fontname, 0, strlen(shortname) + fontname_len);
     strcpy(fontname, shortname);
     RELEASE(shortname);
   }
-  cff_close(cffont);
 
-  if (is_cid_font) {
-    if (opt->embed && opt->style != FONT_STYLE_NONE) {
-      WARN("Embedding disabled due to style option for %s.", name);
-      opt->embed = 0;
-    }
-    switch (opt->style) {
-    case FONT_STYLE_BOLD:
-      strcat(fontname, ",Bold");
-      break;
-    case FONT_STYLE_ITALIC:
-      strcat(fontname, ",Italic");
-      break;
-    case FONT_STYLE_BOLDITALIC:
-      strcat(fontname, ",BoldItalic");
-      break;
-    }
-  } else if (expect_type1_font) {
-    if (opt->style != FONT_STYLE_NONE) {
+  csi.registry   = NEW(strlen("Adobe") + 1, char);
+  strcpy(csi.registry, "Adobe");
+  csi.ordering   = NEW(strlen("Identity") + 1, char);
+  strcpy(csi.ordering, "Identity");
+  csi.supplement = 0;
+  if (opt->style != FONT_STYLE_NONE) {
       WARN(",Bold, ,Italic, ... not supported for this type of font...");
       opt->style = FONT_STYLE_NONE;
     }
-  } else {
-    opt->embed = 1;
   }
 
   font->fontname = fontname;
   font->subtype  = PDF_FONT_FONTTYPE_CIDTYPE0;
   font->cid.csi  = csi;
-  font->flags   |= expected_flag;
+  font->flags   |= CIDFONT_FLAG_TYPE1;
 
   font->resource = pdf_new_dict();
   pdf_add_dict(font->resource,
@@ -958,21 +863,11 @@ CIDFont_type0_open (pdf_font *font, const char *name, int index,
                pdf_new_name("Subtype"),
                pdf_new_name("CIDFontType0"));
 
-  if (expect_type1_font || opt->embed) {
-    memmove(fontname + 7, fontname, strlen(fontname) + 1);
-    pdf_font_make_uniqueTag(fontname); 
-    fontname[6] = '+';
-  }
+  memmove(fontname + 7, fontname, strlen(fontname) + 1);
+  pdf_font_make_uniqueTag(fontname); 
+  fontname[6] = '+';
 
-  if (expect_type1_font) {
-    font->descriptor = pdf_new_dict();
-  } else {
-    /* getting font info. from TrueType tables */
-    if ((font->descriptor
-         = tt_get_fontdesc(sfont, &(opt->embed), opt->stemv, 0, name)) == NULL)
-      ERROR("Could not obtain necessary font info.");
-  }
-
+  font->descriptor = pdf_new_dict();
   pdf_add_dict(font->descriptor,
                pdf_new_name("FontName"),
                pdf_new_name(fontname));
@@ -992,22 +887,10 @@ CIDFont_type0_open (pdf_font *font, const char *name, int index,
                  pdf_new_number(csi.supplement));
     pdf_add_dict(font->resource, pdf_new_name("CIDSystemInfo"), csi_dict);
   }
-  if (is_cid_font) {
-    pdf_add_dict(font->resource,
-                 pdf_new_name("DW"),
-                 pdf_new_number(1000)); /* not sure */
-  }
-
-  if (!expect_type1_font) {
-    sfnt_close(sfont);
-    if (fp)
-      DPXFCLOSE(fp);
-  }
 
   return 0;
 }
 
-#if 0
 int
 CIDFont_type0_open (pdf_font *font, const char *name, int index,
                     CIDSysInfo *cmap_csi, cid_opt *opt)
@@ -1164,8 +1047,8 @@ CIDFont_type0_open (pdf_font *font, const char *name, int index,
 }
 
 int
-CIDFont_type0_open_from_t1 (pdf_font *font, const char *name, int index,
-                            CIDSysInfo *cmap_csi, cid_opt *opt)
+CIDFont_type0_open_from_t1c (pdf_font *font, const char *name, int index,
+                             CIDSysInfo *cmap_csi, cid_opt *opt)
 {
   CIDSysInfo  csi;
   char       *fontname;
@@ -1299,21 +1182,20 @@ CIDFont_type0_open_from_t1 (pdf_font *font, const char *name, int index,
 
   return 0;
 }
-#endif
 
 void
 CIDFont_type0_t1cdofont (pdf_font *font)
 {
   cff_font  *cffont;
   cff_index *charstrings, *idx;
-  int    charstring_len, max_len;
-  int    destlen = 0;
-  int    size, offset = 0;
-  card8 *data;
-  card16 num_glyphs, gid, last_cid;
-  int    i, cid;
-  char  *used_chars;
-  double default_width, nominal_width;
+  int        charstring_len, max_len;
+  int        destlen = 0;
+  int        size, offset = 0;
+  card8     *data;
+  card16     num_glyphs, gid, last_cid;
+  int        i, cid;
+  char      *used_chars;
+  double     default_width, nominal_width;
   CIDType0Error error;
   CIDType0Info info;
 
@@ -1535,10 +1417,10 @@ CIDFont_type0_t1cdofont (pdf_font *font)
 static int
 load_base_CMap (const char *font_name, int wmode, cff_font *cffont)
 {
-  int       cmap_id = -1;
-  CMap     *cmap;
-  char     *cmap_name;
-  card16    gid;
+  int           cmap_id = -1;
+  CMap         *cmap;
+  char         *cmap_name;
+  card16        gid;
   unsigned char range_min[4] = {0x00, 0x00, 0x00, 0x00};
   unsigned char range_max[4] = {0x7f, 0xff, 0xff, 0xff};
 
@@ -1670,15 +1552,15 @@ static pdf_obj *
 create_ToUnicode_stream (cff_font *cffont,
                          const char *font_name, const char *used_glyphs)
 {
-  pdf_obj *stream = NULL;
-  CMap    *cmap;
-  CID      cid;
-  card16   gid;
-  int      glyph_count, total_fail_count;
-  char    *cmap_name;
+  pdf_obj            *stream = NULL;
+  CMap               *cmap;
+  CID                 cid;
+  card16              gid;
+  int                 glyph_count, total_fail_count;
+  char               *cmap_name;
 #define WBUF_SIZE 1024
-  unsigned char  wbuf[WBUF_SIZE];
-  unsigned char *p, *endptr;
+  unsigned char       wbuf[WBUF_SIZE];
+  unsigned char       *p, *endptr;
   static unsigned char range_min[2] = {0x00, 0x00};
   static unsigned char range_max[2] = {0xff, 0xff};
 
@@ -1983,13 +1865,13 @@ add_metrics (pdf_font *font, cff_font *cffont,
 void
 CIDFont_type0_t1dofont (pdf_font *font)
 {
-  cff_font *cffont;
-  double    defaultwidth, nominalwidth;
-  int       num_glyphs = 0;
-  FILE     *fp;
-  int       i, offset;
-  char     *used_chars = NULL;
-  card16    last_cid, gid, cid;
+  cff_font      *cffont;
+  double         defaultwidth, nominalwidth;
+  int            num_glyphs = 0;
+  FILE          *fp;
+  int            i, offset;
+  char          *used_chars = NULL;
+  card16         last_cid, gid, cid;
   unsigned char *CIDToGIDMap;
 
   ASSERT(font);
