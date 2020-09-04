@@ -907,7 +907,7 @@ CIDFont_type2_dofont (pdf_font *font)
 }
 
 int
-CIDFont_type2_open (pdf_font *font, const char *name, int index, CIDSysInfo *cmap_csi, cid_opt *opt)
+CIDFont_type2_open (pdf_font *font, const char *name, int index, cid_opt *opt)
 {
   char    *fontname;
   sfnt    *sfont;
@@ -1005,37 +1005,11 @@ CIDFont_type2_open (pdf_font *font, const char *name, int index, CIDSysInfo *cma
   font->fontname = fontname;
   font->subtype  = PDF_FONT_FONTTYPE_CIDTYPE2;
   if (opt->csi.registry && opt->csi.ordering) {
-    if (cmap_csi) {
-      if (strcmp(opt->csi.registry, cmap_csi->registry) ||
-          strcmp(opt->csi.ordering, cmap_csi->ordering)) {
-        WARN("CID character collection mismatched:\n");
-        MESG("\tFont: %s-%s-%d\n", opt->csi.registry, opt->csi.ordering, opt->csi.supplement);
-        MESG("\tCMap: %s-%s-%d\n", cmap_csi->registry, cmap_csi->ordering, cmap_csi->supplement);
-        ERROR("Incompatible CMap specified for this font.");
-      }
-      if (opt->csi.supplement < cmap_csi->supplement) {
-        WARN("Supplement value in CIDSystemInfo increased.");
-        WARN("Some characters may not shown.");
-        opt->csi.supplement = cmap_csi->supplement;
-      }
-    }
     font->cid.csi.registry   = NEW(strlen(opt->csi.registry)+1, char);
     strcpy(font->cid.csi.registry, opt->csi.registry);
     font->cid.csi.ordering   = NEW(strlen(opt->csi.ordering)+1, char);
     strcpy(font->cid.csi.ordering, opt->csi.ordering);
     font->cid.csi.supplement = opt->csi.supplement;
-  } else if (cmap_csi) {
-    font->cid.csi.registry   = NEW(strlen(cmap_csi->registry)+1, char);
-    strcpy(font->cid.csi.registry, cmap_csi->registry);
-    font->cid.csi.ordering   = NEW(strlen(cmap_csi->ordering)+1, char);
-    strcpy(font->cid.csi.ordering, cmap_csi->ordering);
-    font->cid.csi.supplement = cmap_csi->supplement;
-  } else { /* This means font's internal glyph ordering. */
-    font->cid.csi.registry   = NEW(strlen("Adobe")+1, char);
-    strcpy(font->cid.csi.registry, "Adobe");
-    font->cid.csi.ordering   = NEW(strlen("Identity")+1, char);
-    strcpy(font->cid.csi.ordering, "Identity");
-    font->cid.csi.supplement = 0;
   }
 
   font->resource = pdf_new_dict();
