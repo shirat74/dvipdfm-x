@@ -78,16 +78,17 @@
 #endif
 
 static void
-add_CIDHMetrics (pdf_obj *fontdict,
+add_CIDHMetrics (sfnt *sfont, pdf_obj *fontdict,
                  unsigned char *CIDToGIDMap, unsigned short last_cid,
                  struct tt_maxp_table *maxp,
                  struct tt_head_table *head, struct tt_longMetrics *hmtx)
 {
   pdf_obj *w_array, *an_array = NULL;
-  int    cid, start = 0, prev = 0;
-  double defaultAdvanceWidth;
-  int    empty = 1;
+  int      cid, start = 0, prev = 0;
+  double   defaultAdvanceWidth;
+  int      empty = 1;
 
+  (void) sfont; /* unsed */
   defaultAdvanceWidth = PDFUNIT(hmtx[0].advance);
   /*
    * We alway use format:
@@ -155,15 +156,15 @@ add_CIDVMetrics (sfnt *sfont, pdf_obj *fontdict,
                  struct tt_head_table *head, struct tt_longMetrics *hmtx)
 {
   pdf_obj *w2_array, *an_array = NULL;
-  int    cid;
+  int      cid;
 #if 0
-  int    prev = 0, start = 0;
+  int      prev = 0, start = 0;
 #endif
   struct tt_VORG_table *vorg;
   struct tt_vhea_table *vhea  = NULL;
   struct tt_longMetrics *vmtx = NULL;
-  double defaultAdvanceHeight, defaultVertOriginY;
-  int    empty = 1;
+  double   defaultAdvanceHeight, defaultVertOriginY;
+  int      empty = 1;
 
   /*
    * No accurate vertical metrics can be obtained by simple way if the
@@ -314,7 +315,7 @@ add_CIDMetrics (sfnt *sfont, pdf_obj *fontdict,
   sfnt_locate_table(sfont, "hmtx");
   hmtx = tt_read_longMetrics(sfont, maxp->numGlyphs, hhea->numOfLongHorMetrics, hhea->numOfExSideBearings);
 
-  add_CIDHMetrics(fontdict, CIDToGIDMap, last_cid, maxp, head, hmtx);
+  add_CIDHMetrics(sfont, fontdict, CIDToGIDMap, last_cid, maxp, head, hmtx);
   if (need_vmetrics)
     add_CIDVMetrics(sfont, fontdict, CIDToGIDMap, last_cid, maxp, head, hmtx);
 
