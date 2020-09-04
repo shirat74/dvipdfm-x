@@ -295,16 +295,7 @@ CIDFont_base_open (pdf_font *font, const char *name, CIDSysInfo *cmap_csi, cid_o
     registry   = pdf_string_value(pdf_lookup_dict(tmp, "Registry"));
     ordering   = pdf_string_value(pdf_lookup_dict(tmp, "Ordering"));
     supplement = pdf_number_value(pdf_lookup_dict(tmp, "Supplement"));
-    if (cmap_csi) { /* NULL for accept any */
-      if (strcmp(registry, cmap_csi->registry) ||
-          strcmp(ordering, cmap_csi->ordering))
-        ERROR("Inconsistent CMap used for CID-keyed font %s.",
-              cid_basefont[idx].fontname);
-      else if (supplement < cmap_csi->supplement) {
-        WARN("CMap has higher supplement number than CIDFont: %s", fontname);
-        WARN("Some chracters may not be displayed or printed.");
-      }
-    }
+   
     font->cid.csi.registry = NEW(strlen(registry)+1, char);
     font->cid.csi.ordering = NEW(strlen(ordering)+1, char);
     strcpy(font->cid.csi.registry, registry);
@@ -453,7 +444,7 @@ pdf_font_open_cidfont (pdf_font *font, const char *map_name, CIDSysInfo *cmap_cs
       CIDFont_type2_open(font, map_name, fmap_opt->index, &opt) < 0 &&
       CIDFont_type0_open_from_t1 (font, map_name, fmap_opt->index, &opt) < 0 &&
       CIDFont_type0_open_from_t1c(font, map_name, fmap_opt->index, &opt) < 0 &&
-      CIDFont_base_open (font, map_name, cmap_csi, &opt) < 0) {
+      CIDFont_base_open (font, map_name, &opt) < 0) {
     release_opt(&opt);
     return -1;
   }
