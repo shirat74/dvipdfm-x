@@ -425,9 +425,8 @@ pdf_font_cidfont_lookup_cache (pdf_font *fonts, int count, const char *map_name,
 int
 pdf_font_open_cidfont (pdf_font *font, const char *map_name, CIDSysInfo *cmap_csi, fontmap_opt *fmap_opt)
 {
-  int      error = 0;
-  cid_opt  opt;
-  int      has_csi;
+  cid_opt opt;
+  int     has_csi;
 
   opt.style = fmap_opt->style;
   opt.embed = (fmap_opt->flags & FONTMAP_OPT_NOEMBED) ? 0 : 1;
@@ -451,23 +450,49 @@ pdf_font_open_cidfont (pdf_font *font, const char *map_name, CIDSysInfo *cmap_cs
   }
 
   if (CIDFont_type0_open(font, map_name, fmap_opt->index, &opt) < 0 &&
-      CIDFont_type2_open(font, map_name, fmap_opt->index, cmap_csi, &opt) < 0 &&
+      CIDFont_type2_open(font, map_name, fmap_opt->index, &opt) < 0 &&
       CIDFont_type0_open_from_t1 (font, map_name, fmap_opt->index, &opt) < 0 &&
       CIDFont_type0_open_from_t1c(font, map_name, fmap_opt->index, &opt) < 0 &&
-      CIDFont_base_open (font, map_name, cmap_csi, &opt)    < 0) {
+      CIDFont_base_open (font, map_name, cmap_csi, &opt) < 0) {
     release_opt(&opt);
-    error = -1;
+    return -1;
+  }
+
+  font->filename    = NEW(strlen(map_name)+1, char);
+  strcpy(font->filename,  map_name);
+  font->ident       = NEW(strlen(map_name)+1, char);
+  strcpy(font->ident, map_name);
+  font->index       = fmap_opt->index;
+  font->cid.options = opt;
+ 
+  if (font->cid.csi.registry && font->cid.csi.ordering) {
+    if (cmap_csi) {
+      if (strcmp(font->cid.csi.registry, cmap_csi->registry) ||
+          strcmp(font->cid.csi.ordering, cmap_csi->ordering)) {
+        WARN("Inconsistent ROS found:\n");
+        MESG("\tFont: %s-%s-%d\n", font->cid.csi.registry, font->cid.csi.ordering, font->cid.csi.supplement);
+        MESG("\tCMap: %s-%s-%d\n", cmap_csi->registry, cmap_csi->ordering, cmap_csi->supplement);
+        ERROR("Incompatible CMap specified for this font.");
+      }
+      if (font->cid.csi.supplement < cmap_csi->supplement) {
+        font->cid.csi.supplement = cmap_csi->supplement;
+      }
+    }
   } else {
-    font->filename = NEW(strlen(map_name)+1, char);
-    strcpy(font->filename,  map_name);
-    font->ident    = NEW(strlen(map_name)+1, char);
-    strcpy(font->ident, map_name);
-    font->index    = fmap_opt->index;
-    font->cid.options.embed = opt.embed;
-    font->cid.options.stemv = opt.stemv;
-    font->cid.options.style = opt.style;
-    font->cid.options.csi   = opt.csi;
-    error = 0;
+    ASSERT(font->subtype == PDF_FONT_FONTTYPE_CIDTYPE2);
+    if (cmap_csi) {
+      font->cid.csi.registry   = NEW(strlen(cmap_csi->registry)+1, char);
+      strcpy(font->cid.csi.registry, cmap_csi->registry);
+      font->cid.csi.ordering   = NEW(strlen(cmap_csi->ordering)+1, char);
+      strcpy(font->cid.csi.ordering, cmap_csi->ordering);
+      font->cid.csi.supplement = cmap_csi->supplement;
+    } else { /* This means font's internal glyph ordering. */
+      font->cid.csi.registry   = NEW(strlen("Adobe")+1, char);
+      strcpy(font->cid.csi.registry, "Adobe");
+      font->cid.csi.ordering   = NEW(strlen("Identity")+1, char);
+      strcpy(font->cid.csi.ordering, "Identity");
+      font->cid.csi.supplement = 0;
+    }
   }
 
   return error;
