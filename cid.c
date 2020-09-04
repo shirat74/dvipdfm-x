@@ -40,7 +40,6 @@
 
 #include "cidtype0.h"
 #include "cidtype2.h"
-#include "cid_p.h"
 #include "cid.h"
 
 #define PDF_CID_SUPPORT_MIN 2
