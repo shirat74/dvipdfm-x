@@ -474,18 +474,18 @@ cid_to_code (CMap *cmap, CID cid)
 void
 CIDFont_type2_dofont (pdf_font *font)
 {
-  pdf_obj *fontfile;
-  sfnt    *sfont;
-  char    *h_used_chars, *v_used_chars, *used_chars;
+  pdf_obj          *fontfile;
+  sfnt             *sfont;
+  char             *h_used_chars, *v_used_chars, *used_chars;
   struct tt_glyphs *glyphs;
-  CMap    *cmap = NULL;
-  tt_cmap *ttcmap = NULL;
-  ULONG    offset = 0;
-  CID      cid, last_cid;
-  unsigned char *cidtogidmap;
-  USHORT   num_glyphs;
-  int      i, glyph_ordering = 0, unicode_cmap = 0;
-  FILE    *fp = NULL;
+  CMap             *cmap = NULL;
+  tt_cmap          *ttcmap = NULL;
+  ULONG             offset = 0;
+  CID               cid, last_cid;
+  unsigned char    *cidtogidmap;
+  USHORT            num_glyphs;
+  int               i, glyph_ordering = 0, unicode_cmap = 0;
+  FILE             *fp = NULL;
 
   if (!font->reference)
     return;
@@ -493,7 +493,7 @@ CIDFont_type2_dofont (pdf_font *font)
   pdf_add_dict(font->resource,
                pdf_new_name("FontDescriptor"), pdf_ref_obj(font->descriptor));
 
-  if (CIDFont_is_BaseFont(font))
+  if (font->flags & PDF_FONT_FLAG_BASEFONT)
     return;
 
   /*
