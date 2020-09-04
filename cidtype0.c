@@ -1008,6 +1008,163 @@ CIDFont_type0_open (pdf_font *font, const char *name, int index,
   return 0;
 }
 
+#if 0
+int
+CIDFont_type0_open (pdf_font *font, const char *name, int index,
+                    CIDSysInfo *cmap_csi, cid_opt *opt)
+{
+  CIDSysInfo  csi;
+  char       *fontname;
+  sfnt       *sfont = NULL;
+  cff_font   *cffont;
+  FILE       *fp = NULL;
+  ULONG       offset = 0;
+
+  ASSERT(font);
+
+  fp = DPXFOPEN(name, DPX_RES_TYPE_OTFONT);
+  if (!fp) {
+    fp = DPXFOPEN(name, DPX_RES_TYPE_TTFONT);
+    if (!fp) return -1;
+  }
+
+  sfont = sfnt_open(fp);
+  if (!sfont) {
+    DPXFCLOSE(fp);
+    return -1;
+  }
+
+  if (sfont->type == SFNT_TYPE_TTC)
+    offset = ttc_read_offset(sfont, index);
+
+  if ((sfont->type != SFNT_TYPE_TTC && sfont->type != SFNT_TYPE_POSTSCRIPT) ||
+      sfnt_read_table_directory(sfont, offset) < 0 ||
+      (offset = sfnt_find_table_pos(sfont, "CFF ")) == 0) {
+    sfnt_close(sfont);
+    DPXFCLOSE(fp);
+    return -1;
+  }
+
+  cffont = cff_open(sfont->stream, offset, 0);
+  if (!cffont) {
+    WARN("Cannot read CFF font data");
+    sfnt_close(sfont);
+    DPXFCLOSE(fp);
+    return -1;
+  }
+
+  if (!(cffont->flag & FONTTYPE_CIDFONT)) {
+    cff_close(cffont);
+    sfnt_close(sfont);
+    DPXFCLOSE(fp);
+    return -1;
+  }
+
+  {
+    char *shortname;
+    int fontname_len = 8;
+
+    shortname = cff_get_name(cffont);
+    if (!shortname) {
+      WARN("No valid FontName found.");
+      cff_close(cffont);
+      sfnt_close(sfont);
+      DPXFCLOSE(fp);
+      return -1;
+    }
+    /*
+     * Mangled name requires more 7 bytes.
+     * Style requires more 11 bytes.
+     */
+    fontname_len += 11;
+    fontname = NEW(strlen(shortname) + fontname_len, char);
+    memset(fontname, 0, strlen(shortname) + fontname_len);
+    strcpy(fontname, shortname);
+    RELEASE(shortname);
+  }
+  csi.registry   = cff_get_string(cffont, (s_SID)cff_dict_get(cffont->topdict, "ROS", 0));
+  csi.ordering   = cff_get_string(cffont, (s_SID)cff_dict_get(cffont->topdict, "ROS", 1));
+  csi.supplement = (int)cff_dict_get(cffont->topdict, "ROS", 2);
+
+  cff_close(cffont);
+
+  if (opt->embed && opt->style != FONT_STYLE_NONE) {
+    WARN("Embedding disabled due to style option for %s.", name);
+    opt->embed = 0;
+
+    switch (opt->style) {
+    case FONT_STYLE_BOLD:
+      strcat(fontname, ",Bold");
+      break;
+    case FONT_STYLE_ITALIC:
+      strcat(fontname, ",Italic");
+      break;
+    case FONT_STYLE_BOLDITALIC:
+      strcat(fontname, ",BoldItalic");
+      break;
+    }
+  }
+
+  /* getting font info. from TrueType tables */
+  font->descriptor = tt_get_fontdesc(sfont, &(opt->embed), opt->stemv, 0, name);
+  if (!font->descriptor) { 
+    WARN("Could not obtain necessary font info: %s", name);
+    RELEASE(fontname);
+    RELEASE(csi.registry);
+    RELEASE(csi.ordering);
+    sfnt_close(sfont);
+    DPXFCLOSE(fp);
+    return -1;
+  }
+
+  font->fontname = fontname;
+  font->subtype  = PDF_FONT_FONTTYPE_CIDTYPE0;
+  font->cid.csi  = csi;
+
+  font->resource = pdf_new_dict();
+  pdf_add_dict(font->resource,
+               pdf_new_name("Type"),
+               pdf_new_name("Font"));
+  pdf_add_dict(font->resource,
+               pdf_new_name("Subtype"),
+               pdf_new_name("CIDFontType0"));
+
+  if (opt->embed) {
+    memmove(fontname + 7, fontname, strlen(fontname) + 1);
+    pdf_font_make_uniqueTag(fontname); 
+    fontname[6] = '+';
+  }
+
+  pdf_add_dict(font->descriptor,
+               pdf_new_name("FontName"),
+               pdf_new_name(fontname));
+  pdf_add_dict(font->resource, 
+               pdf_new_name("BaseFont"),
+               pdf_new_name(fontname));
+  {
+    pdf_obj *csi_dict = pdf_new_dict();
+    pdf_add_dict(csi_dict,
+                 pdf_new_name("Registry"),
+                 pdf_new_string(csi.registry, strlen(csi.registry)));
+    pdf_add_dict(csi_dict,
+                 pdf_new_name("Ordering"),
+                 pdf_new_string(csi.ordering, strlen(csi.ordering)));
+    pdf_add_dict(csi_dict,
+                 pdf_new_name("Supplement"),
+                 pdf_new_number(csi.supplement));
+    pdf_add_dict(font->resource, pdf_new_name("CIDSystemInfo"), csi_dict);
+  }
+  pdf_add_dict(font->resource,
+               pdf_new_name("DW"),
+               pdf_new_number(1000)); /* not sure */
+
+  sfnt_close(sfont);
+  DPXFCLOSE(fp);
+
+  return 0;
+}
+#endif
+
 void
 CIDFont_type0_t1cdofont (pdf_font *font)
 {
