@@ -333,10 +333,10 @@ add_CIDMetrics (sfnt *sfont, pdf_obj *fontdict,
 static int
 write_fontfile (pdf_font *font, cff_font *cffont)
 {
-  cff_index *topdict, *fdarray, *private;
+  cff_index     *topdict, *fdarray, *private;
   unsigned char *dest;
-  int destlen = 0, i, size;
-  int offset, topdict_offset, fdarray_offset;
+  int            destlen = 0, i, size;
+  int            offset, topdict_offset, fdarray_offset;
 
   /*  DICT sizes (offset set to long int) */
   topdict = cff_new_index(1);
@@ -459,63 +459,14 @@ write_fontfile (pdf_font *font, cff_font *cffont)
   return destlen;
 }
 
-typedef struct
-{
-  FILE      *fp;
-  sfnt      *sfont;
-  cff_font  *cffont;
-} CIDType0Info;
-
-typedef enum {
-  CID_OPEN_ERROR_NO_ERROR             = 0,
-  CID_OPEN_ERROR_CANNOT_OPEN_FILE     = -1,
-  CID_OPEN_ERROR_NOT_SFNT_FONT        = -2,
-  CID_OPEN_ERROR_NO_CFF_TABLE         = -3,
-  CID_OPEN_ERROR_CANNOT_OPEN_CFF_FONT = -4,
-  CID_OPEN_ERROR_NOT_CIDFONT          = -5,
-  CID_OPEN_ERROR_IS_CIDFONT           = -6,
-} CIDType0Error;
-
-static void
-CIDType0Error_Show (CIDType0Error error, const char *name)
-{
-  switch (error) {
-    case CID_OPEN_ERROR_CANNOT_OPEN_FILE:
-      ERROR("Could not open OpenType font file: %s", name);
-    case CID_OPEN_ERROR_NOT_SFNT_FONT:
-      ERROR("Could not open SFNT font file: %s", name);
-    case CID_OPEN_ERROR_NO_CFF_TABLE:
-      ERROR("Not a CFF/OpenType font: %s", name);
-    case CID_OPEN_ERROR_CANNOT_OPEN_CFF_FONT:
-      ERROR("Could not open CFF font: %s", name);
-    case CID_OPEN_ERROR_NOT_CIDFONT:
-      ERROR("Not a CIDFont: %s", name);
-    case CID_OPEN_ERROR_IS_CIDFONT:
-      ERROR("Should not be a CIDFont: %s", name);
-    default:
-      break;
-  }
-}
-
-static void
-CIDFontInfo_init (CIDType0Info *info)
-{
-  memset(info, 0, sizeof(CIDType0Info));
-}
 
 static void
 CIDFontInfo_close (CIDType0Info *info)
 {
-  if (info->cffont)
-    cff_close(info->cffont);
+    cff_close(cffont);
+    sfnt_close(sfont);
+    DPXFCLOSE(fp);
 
-  if (info->sfont)
-    sfnt_close(info->sfont);
-
-  if (info->fp)
-    DPXFCLOSE(info->fp);
-
-  CIDFontInfo_init(info);
 }
 
 static CIDType0Error
@@ -524,45 +475,45 @@ CIDFont_type0_try_open (const char *name,
                         int required_cid,
                         CIDType0Info *info)
 {
-  ULONG offset = 0;
-  int is_cid;
 
-  CIDFontInfo_init(info);
-
-  info->fp = DPXFOPEN(name, DPX_RES_TYPE_OTFONT);
-  if (!info->fp) {
-    info->fp = DPXFOPEN(name, DPX_RES_TYPE_TTFONT);
-    if (!info->fp)
-      return CID_OPEN_ERROR_CANNOT_OPEN_FILE;
+  fp = DPXFOPEN(name, DPX_RES_TYPE_OTFONT);
+  if (!fp) {
+    fp = DPXFOPEN(name, DPX_RES_TYPE_TTFONT);
+    if (!fp)
+      return -1;
   }
 
-  info->sfont = sfnt_open(info->fp);
-  if (!info->sfont)
-    return CID_OPEN_ERROR_NOT_SFNT_FONT;
+  sfont = sfnt_open(fp);
+  if (!sfont) {
+    DPXFCLOSE(fp);
+    return -1;
+  }
 
-  if (info->sfont->type == SFNT_TYPE_TTC)
+  if (sfont->type == SFNT_TYPE_TTC)
     offset = ttc_read_offset(info->sfont, index);
 
-  if ((info->sfont->type != SFNT_TYPE_TTC &&
-       info->sfont->type != SFNT_TYPE_POSTSCRIPT) ||
-      sfnt_read_table_directory(info->sfont, offset) < 0 ||
-      (offset = sfnt_find_table_pos(info->sfont, "CFF ")) == 0) {
-    CIDFontInfo_close(info);
-    return CID_OPEN_ERROR_NO_CFF_TABLE;
+  if ((sfont->type != SFNT_TYPE_TTC &&
+       sfont->type != SFNT_TYPE_POSTSCRIPT) ||
+      sfnt_read_table_directory(sfont, offset) < 0 ||
+      (offset = sfnt_find_table_pos(sfont, "CFF ")) == 0) {
+    sfnt_close(sfnt);
+    DPXFCLOSE(fp);
+    return -1;
   }
 
-  info->cffont = cff_open(info->sfont->stream, offset, 0);
-  if (!info->cffont)
-    return CID_OPEN_ERROR_CANNOT_OPEN_CFF_FONT;
-
-  is_cid = info->cffont->flag & FONTTYPE_CIDFONT;
-  if (required_cid != is_cid) {
-    CIDFontInfo_close(info);
-    return required_cid ? CID_OPEN_ERROR_NOT_CIDFONT
-                        : CID_OPEN_ERROR_IS_CIDFONT;
+  cffont = cff_open(sfont->stream, offset, 0);
+  if (!cffont) {
+    sfnt_close(sfnt);
+    DPXFCLOSE(fp);
+    return -1;
   }
 
-  return CID_OPEN_ERROR_NO_ERROR;
+  if (!(cffont->flag & FONTTYPE_CIDFONT)) {
+    cff_close(cff);
+    sfnt_close(sfnt);
+    DPXFCLOSE(fp);
+    return -1;
+  }
 }
 
 static void
@@ -612,7 +563,7 @@ CIDFont_type0_dofont (pdf_font *font)
   if (font->flags & PDF_FONT_FLAG_BASEFONT) {
     return;
   } else if (!font->cid.options.embed &&
-           (opt_flags_cidfont & CIDFONT_FORCE_FIXEDPITCH)) {
+             (opt_flags_cidfont & CIDFONT_FORCE_FIXEDPITCH)) {
     /* No metrics needed. */
     pdf_add_dict(font->resource,
                  pdf_new_name("DW"), pdf_new_number(1000.0));
@@ -621,13 +572,44 @@ CIDFont_type0_dofont (pdf_font *font)
 
   used_chars = font->usedchars;
 
-  error = CIDFont_type0_try_open(font->ident, font->index, 1, &info);
-  if (error != CID_OPEN_ERROR_NO_ERROR) {
-    CIDType0Error_Show(error, font->ident);
+  fp = DPXFOPEN(name, DPX_RES_TYPE_OTFONT);
+  if (!fp) {
+    fp = DPXFOPEN(name, DPX_RES_TYPE_TTFONT);
+    if (!fp)
+      return;
+  }
+
+  sfont = sfnt_open(fp);
+  if (!sfont) {
+    DPXFCLOSE(fp);
     return;
   }
 
-  cffont = info.cffont;
+  if (sfont->type == SFNT_TYPE_TTC)
+    offset = ttc_read_offset(info->sfont, index);
+
+  if ((sfont->type != SFNT_TYPE_TTC &&
+       sfont->type != SFNT_TYPE_POSTSCRIPT) ||
+      sfnt_read_table_directory(sfont, offset) < 0 ||
+      (offset = sfnt_find_table_pos(sfont, "CFF ")) == 0) {
+    sfnt_close(sfnt);
+    DPXFCLOSE(fp);
+    return;
+  }
+
+  cffont = cff_open(sfont->stream, offset, 0);
+  if (!cffont) {
+    sfnt_close(sfnt);
+    DPXFCLOSE(fp);
+    return;
+  }
+
+  if (!(cffont->flag & FONTTYPE_CIDFONT)) {
+    cff_close(cff);
+    sfnt_close(sfnt);
+    DPXFCLOSE(fp);
+    return;
+  }
 
   cff_read_charsets(cffont);
 
@@ -667,14 +649,15 @@ CIDFont_type0_dofont (pdf_font *font)
     pdf_add_dict(font->resource,
                  pdf_new_name("DW"), pdf_new_number(1000.0));
   } else {
-    add_CIDMetrics(info.sfont, font->resource, CIDToGIDMap, last_cid,
+    add_CIDMetrics(sfont, font->resource, CIDToGIDMap, last_cid,
                    font->cid.usedchars_v ? 1 : 0);
   }
 
   if (!font->cid.options.embed) {
     RELEASE(CIDToGIDMap);
-    CIDFontInfo_close(&info);
-
+    cff_close(cffont);
+    sfnt_close(sfont);
+    DPXFCLOSE(fp);
     return;
   }
 
@@ -694,7 +677,11 @@ CIDFont_type0_dofont (pdf_font *font)
   offset = cff_tell(cffont);
   
   if ((cs_count = idx->count) < 2) {
-    ERROR("No valid charstring data found.");
+    WARN("No valid charstring data found.");
+    cff_close(cffont);
+    sfnt_close(sfont);
+    DPXFCLOSE(fp);
+    return;
   }
 
   /* New Charsets data */
@@ -728,8 +715,19 @@ CIDFont_type0_dofont (pdf_font *font)
 
     gid_org = (CIDToGIDMap[2*cid] << 8)|(CIDToGIDMap[2*cid+1]);
     if ((size = (idx->offset)[gid_org+1] - (idx->offset)[gid_org])
-        > CS_STR_LEN_MAX)
-      ERROR("Charstring too long: gid=%u", gid_org);
+        > CS_STR_LEN_MAX) {
+      WARN("Charstring too long: gid=%u", gid_org);
+      RELEASE(data);
+      RELEASE(charstrings);
+      RELEASE(fdselect);
+      RELEASE(charset);
+      cff_release_index(idx);
+      RELEASE(CIDToGIDMap);
+      cff_close(cffont);
+      sfnt_close(sfont);
+      DPXFCLOSE(fp);
+      return;
+    }
     if (charstring_len + CS_STR_LEN_MAX >= max_len) {
       max_len = charstring_len + 2 * CS_STR_LEN_MAX;
       charstrings->data = RENEW(charstrings->data, max_len, card8);
@@ -754,8 +752,19 @@ CIDFont_type0_dofont (pdf_font *font)
     }
     gid++;
   }
-  if (gid != num_glyphs)
-    ERROR("Unexpeced error: ?????");
+  if (gid != num_glyphs) {
+    WARN("Unexpeced error: ?????");
+    RELEASE(data);
+    RELEASE(charstrings);
+    RELEASE(fdselect);
+    RELEASE(charset);
+    cff_release_index(idx);
+    RELEASE(CIDToGIDMap);
+    cff_close(cffont);
+    sfnt_close(sfont);
+    DPXFCLOSE(fp);
+    return;
+  }
   RELEASE(data);
   cff_release_index(idx);
 
@@ -789,12 +798,16 @@ CIDFont_type0_dofont (pdf_font *font)
 
   destlen = write_fontfile(font, cffont);
 
-  CIDFontInfo_close(&info);
+  cff_close(cffont);
+  sfnt_close(sfont);
+  DPXFCLOSE(fp);
 
   if (dpx_conf.verbose_level > 1)
     MESG("[%u/%u glyphs][%ld bytes]", num_glyphs, cs_count, destlen);
 
-  CIDFont_type0_add_CIDSet(font, used_chars, last_cid);
+  if (pdf_check_version(2, 0) >= 0) {
+    CIDFont_type0_add_CIDSet(font, used_chars, last_cid);
+  }
 }
 
 int
@@ -1198,8 +1211,6 @@ CIDFont_type0_t1cdofont (pdf_font *font)
   int        i, cid;
   char      *used_chars;
   double     default_width, nominal_width;
-  CIDType0Error error;
-  CIDType0Info info;
 
   ASSERT(font);
 
@@ -1212,13 +1223,44 @@ CIDFont_type0_t1cdofont (pdf_font *font)
 
   used_chars = font->usedchars;
 
-  error = CIDFont_type0_try_open(font->ident, font->index, 0, &info);
-  if (error != CID_OPEN_ERROR_NO_ERROR) {
-    CIDType0Error_Show(error, font->ident);
+  fp = DPXFOPEN(name, DPX_RES_TYPE_OTFONT);
+  if (!fp) {
+    fp = DPXFOPEN(name, DPX_RES_TYPE_TTFONT);
+    if (!fp)
+      return;
+  }
+
+  sfont = sfnt_open(fp);
+  if (!sfont) {
+    DPXFCLOSE(fp);
     return;
   }
 
-  cffont = info.cffont;
+  if (sfont->type == SFNT_TYPE_TTC)
+    offset = ttc_read_offset(info->sfont, index);
+
+  if ((sfont->type != SFNT_TYPE_TTC &&
+       sfont->type != SFNT_TYPE_POSTSCRIPT) ||
+      sfnt_read_table_directory(sfont, offset) < 0 ||
+      (offset = sfnt_find_table_pos(sfont, "CFF ")) == 0) {
+    sfnt_close(sfnt);
+    DPXFCLOSE(fp);
+    return;
+  }
+
+  cffont = cff_open(sfont->stream, offset, 0);
+  if (!cffont) {
+    sfnt_close(sfnt);
+    DPXFCLOSE(fp);
+    return;
+  }
+
+  if (cffont->flag & FONTTYPE_CIDFONT) {
+    cff_close(cff);
+    sfnt_close(sfnt);
+    DPXFCLOSE(fp);
+    return;
+  }
 
   cff_read_private(cffont);
   cff_read_subrs  (cffont);
@@ -1316,8 +1358,14 @@ CIDFont_type0_t1cdofont (pdf_font *font)
   /* offset is now absolute offset ... bad */
   offset = cff_tell(cffont);
 
-  if (idx->count < 2)
-    ERROR("No valid charstring data found.");
+  if (idx->count < 2) {
+    WARN("No valid charstring data found.");
+    cff_release_index(idx);
+    cff_close(cffont);
+    sfnt_close(sfont);
+    DPXFCLOSE(fp);
+    return;
+  }
 
   /* New CharStrings INDEX */
   charstrings = cff_new_index((card16)(num_glyphs+1));
@@ -1332,8 +1380,16 @@ CIDFont_type0_t1cdofont (pdf_font *font)
       continue;
 
     if ((size = (idx->offset)[cid+1] - (idx->offset)[cid])
-        > CS_STR_LEN_MAX)
-      ERROR("Charstring too long: gid=%u", cid);
+        > CS_STR_LEN_MAX) {
+      WARN("Charstring too long: gid=%u", cid);
+      RELEASE(data);
+      cff_release_index(charstrings);
+      cff_release_index(idx);
+      cff_close(cffont);
+      sfnt_close(sfont);
+      DPXFCLOSE(fp);
+      return;
+    }
     if (charstring_len + CS_STR_LEN_MAX >= max_len) {
       max_len = charstring_len + 2 * CS_STR_LEN_MAX;
       charstrings->data = RENEW(charstrings->data, max_len, card8);
@@ -1348,8 +1404,16 @@ CIDFont_type0_t1cdofont (pdf_font *font)
                                          default_width, nominal_width, NULL);
     gid++;
   }
-  if (gid != num_glyphs)
-    ERROR("Unexpeced error: ?????");
+  if (gid != num_glyphs) {
+    WARN("Unexpeced error: ?????");
+    RELEASE(data);
+    cff_release_index(charstrings);
+    cff_release_index(idx);
+    cff_close(cffont);
+    sfnt_close(sfont);
+    DPXFCLOSE(fp);
+    return;
+  }
   RELEASE(data);
   cff_release_index(idx);
 
@@ -1403,17 +1467,21 @@ CIDFont_type0_t1cdofont (pdf_font *font)
         CIDToGIDMap[2*cid+1] = cid & 0xff;
       }
     }
-    add_CIDMetrics(info.sfont, font->resource, CIDToGIDMap, last_cid,
+    add_CIDMetrics(sfont, font->resource, CIDToGIDMap, last_cid,
                    font->cid.usedchars_v ? 1 : 0);
     RELEASE(CIDToGIDMap);
   }
 
-  CIDFontInfo_close(&info);
+  cff_close(cffont);
+  sfnt_close(sfont);
+  DPXFCLOSE(fp);
 
   if (dpx_conf.verbose_level > 1)
     MESG("[%u glyphs][%ld bytes]", num_glyphs, destlen);
 
-  CIDFont_type0_add_CIDSet(font, used_chars, last_cid);
+  if (pdf_check_version(2, 0) >= 0) {
+    CIDFont_type0_add_CIDSet(font, used_chars, last_cid);
+  }
 }
 
 static int
