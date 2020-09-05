@@ -459,63 +459,6 @@ write_fontfile (pdf_font *font, cff_font *cffont)
   return destlen;
 }
 
-
-static void
-CIDFontInfo_close (CIDType0Info *info)
-{
-    cff_close(cffont);
-    sfnt_close(sfont);
-    DPXFCLOSE(fp);
-
-}
-
-static CIDType0Error
-CIDFont_type0_try_open (const char *name,
-                        int index,
-                        int required_cid,
-                        CIDType0Info *info)
-{
-
-  fp = DPXFOPEN(name, DPX_RES_TYPE_OTFONT);
-  if (!fp) {
-    fp = DPXFOPEN(name, DPX_RES_TYPE_TTFONT);
-    if (!fp)
-      return -1;
-  }
-
-  sfont = sfnt_open(fp);
-  if (!sfont) {
-    DPXFCLOSE(fp);
-    return -1;
-  }
-
-  if (sfont->type == SFNT_TYPE_TTC)
-    offset = ttc_read_offset(info->sfont, index);
-
-  if ((sfont->type != SFNT_TYPE_TTC &&
-       sfont->type != SFNT_TYPE_POSTSCRIPT) ||
-      sfnt_read_table_directory(sfont, offset) < 0 ||
-      (offset = sfnt_find_table_pos(sfont, "CFF ")) == 0) {
-    sfnt_close(sfnt);
-    DPXFCLOSE(fp);
-    return -1;
-  }
-
-  cffont = cff_open(sfont->stream, offset, 0);
-  if (!cffont) {
-    sfnt_close(sfnt);
-    DPXFCLOSE(fp);
-    return -1;
-  }
-
-  if (!(cffont->flag & FONTTYPE_CIDFONT)) {
-    cff_close(cff);
-    sfnt_close(sfnt);
-    DPXFCLOSE(fp);
-    return -1;
-  }
-}
-
 static void
 CIDFont_type0_add_CIDSet (pdf_font *font, char *used_chars, card16 last_cid) {
   /*
@@ -548,8 +491,6 @@ CIDFont_type0_dofont (pdf_font *font)
   int            fd, prev_fd;
   char          *used_chars;
   unsigned char *CIDToGIDMap = NULL;
-  CIDType0Error error;
-  CIDType0Info info;
 
   ASSERT(font);
 
