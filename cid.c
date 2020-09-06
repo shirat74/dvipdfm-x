@@ -192,11 +192,13 @@ source_font_type (pdf_font *font)
 void
 pdf_font_load_cidfont (pdf_font *font)
 {
+  int error = 0;
+
   if (!font || !font->reference)
     return;
 
   if (dpx_conf.verbose_level > 0)
-    MESG(":%s", font->ident);
+    MESG(":%s", font->filename);
   if (dpx_conf.verbose_level > 1) {
     if (font->fontname)
       MESG("[%s]", font->fontname);
@@ -208,23 +210,26 @@ pdf_font_load_cidfont (pdf_font *font)
       MESG("[CIDFontType0]");
     switch (source_font_type(font)) {
     case PDF_FONT_FONTTYPE_TYPE1:
-      CIDFont_type0_t1dofont(font);
+      error = CIDFont_type0_t1dofont(font);
       break;
     case PDF_FONT_FONTTYPE_TYPE1C:
-      CIDFont_type0_t1cdofont(font);
+      error = CIDFont_type0_t1cdofont(font);
       break;
     default:
-      CIDFont_type0_dofont(font);
+      error = CIDFont_type0_dofont(font);
       break;
     }
     break;
   case PDF_FONT_FONTTYPE_CIDTYPE2:
     if(dpx_conf.verbose_level > 0)
       MESG("[CIDFontType2]");
-    CIDFont_type2_dofont(font);
+    error = CIDFont_type2_dofont(font);
     break;
   }
 
+  if (error)
+    ERROR("Error occurred while loading font: %s", font->filename);
+  
   return;
 }
 

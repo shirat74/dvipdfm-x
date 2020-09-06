@@ -471,7 +471,7 @@ cid_to_code (CMap *cmap, CID cid)
 
 /* #define NO_GHOSTSCRIPT_BUG 1 */
 
-void
+int
 CIDFont_type2_dofont (pdf_font *font)
 {
   pdf_obj          *fontfile;
@@ -488,13 +488,13 @@ CIDFont_type2_dofont (pdf_font *font)
   FILE             *fp = NULL;
 
   if (!font->reference)
-    return;
+    return 0;
 
   pdf_add_dict(font->resource,
                pdf_new_name("FontDescriptor"), pdf_ref_obj(font->descriptor));
 
   if (font->flags & PDF_FONT_FLAG_BASEFONT)
-    return;
+    return 0;
 
   /*
    * CIDSystemInfo comes here since Supplement can be increased.
@@ -519,43 +519,59 @@ CIDFont_type2_dofont (pdf_font *font)
   if (!font->cid.options.embed &&
       (opt_flags_cidfont & CIDFONT_FORCE_FIXEDPITCH)) {
     pdf_add_dict(font->resource, pdf_new_name("DW"), pdf_new_number(1000.0));
-    return;
+    return 0;
   }
 
-  fp = DPXFOPEN(font->ident, DPX_RES_TYPE_TTFONT);
+  fp = DPXFOPEN(font->filename, DPX_RES_TYPE_TTFONT);
   if (!fp) {
-    fp = DPXFOPEN(font->ident, DPX_RES_TYPE_DFONT);
-    if (!fp) ERROR("Could not open TTF/dfont file: %s", font->ident);
+    fp = DPXFOPEN(font->filename, DPX_RES_TYPE_DFONT);
+    if (!fp) {
+      WARN("Could not open TTF/dfont file: %s", font->filename);
+      return -1;
+    }
     sfont = dfont_open(fp, font->index);
   } else {
     sfont = sfnt_open(fp);
   }
 
   if (!sfont) {
-    ERROR("Could not open TTF file: %s", font->ident);
+    WARN("Could not open TTF file: %s", font->filename);
+    DPXFCLOSE(fp);
+    return -1;
   }
 
   switch (sfont->type) {
   case SFNT_TYPE_TTC:
     offset = ttc_read_offset(sfont, font->index);
-    if (offset == 0)
-      ERROR("Invalid TTC index in %s.", font->ident);
+    if (offset == 0) {
+      WARN("Invalid TTC index in %s.", font->filename);
+      sfnt_close(sfont);
+      DPXFCLOSE(fp);
+      return -1;
+    }
     break;
   case SFNT_TYPE_TRUETYPE:
-    if (font->index > 0)
-      ERROR("Found TrueType font file while expecting TTC file (%s).", font->ident);
+    if (font->index > 0) {
+      WARN("Found TrueType font file while expecting TTC file (%s).", font->filename);
+      sfnt_close(sfont);
+      DPXFCLOSE(fp);
+      return -1;
+    }
     offset = 0;
     break;
   case SFNT_TYPE_DFONT:
     offset = sfont->offset;
     break;
   default:
-    ERROR("Not a TrueType/TTC font (%s)?", font->ident);
+    WARN("Not a TrueType/TTC font (%s)?", font->filename);
+    sfnt_close(sfont);
+    DPXFCLOSE(fp);
+    return -1;
     break;
   }
 
   if (sfnt_read_table_directory(sfont, offset) < 0)
-    ERROR("Could not read TrueType table directory (%s).", font->ident);
+    ERROR("Could not read TrueType table directory (%s).", font->filename);
 
   /*
    * Adobe-Identity means font's internal glyph ordering here.
@@ -586,7 +602,7 @@ CIDFont_type2_dofont (pdf_font *font)
         break;
     }
     if (!ttcmap) {
-      WARN("No usable TrueType cmap table found for font \"%s\".", font->ident);
+      WARN("No usable TrueType cmap table found for font \"%s\".", font->filename);
       WARN("CID character collection for this font is set to \"%s-%s\"",
            font->cid.csi.registry, font->cid.csi.ordering);
       ERROR("Cannot continue without this...");
@@ -612,9 +628,8 @@ CIDFont_type2_dofont (pdf_font *font)
 
     h_used_chars = font->usedchars;
     v_used_chars = font->cid.usedchars_v;
-    
-    if (!h_used_chars && !v_used_chars)
-      ERROR("Unexpected error.");
+ 
+    ASSERT(h_used_chars || v_used_chars);  
 
     /*
      * Quick check of max CID.
@@ -854,7 +869,7 @@ CIDFont_type2_dofont (pdf_font *font)
     if (fp)
       DPXFCLOSE(fp);
 
-    return;
+    return 0;
   }
 
   /* Create font file */
@@ -876,7 +891,7 @@ CIDFont_type2_dofont (pdf_font *font)
     DPXFCLOSE(fp);
 
   if (!fontfile)
-    ERROR("Could not created FontFile stream for \"%s\".", font->ident);
+    ERROR("Could not created FontFile stream for \"%s\".", font->filename);
 
   if (dpx_conf.verbose_level > 1) {
     MESG("[%ld bytes]", pdf_stream_length(fontfile));
@@ -903,7 +918,7 @@ CIDFont_type2_dofont (pdf_font *font)
     RELEASE(cidtogidmap);
   }
   
-  return;
+  return 0;
 }
 
 int
