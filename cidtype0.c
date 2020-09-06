@@ -1855,19 +1855,17 @@ add_metrics (pdf_font *font, cff_font *cffont,
    * much as possible.
    */
   if (!cff_dict_known(cffont->topdict, "FontBBox")) {
-    ERROR("No FontBBox?");
+   WARN("No FontBBox found: %s", font->filename);
+  } else {
+    tmp = pdf_new_array();
+    for (i = 0; i < 4; i++) {
+      val = cff_dict_get(cffont->topdict, "FontBBox", i);
+      pdf_add_array(tmp, pdf_new_number(ROUND(val, 1.0)));
+    }
+    pdf_add_dict(font->descriptor, pdf_new_name("FontBBox"), tmp);
   }
-  tmp = pdf_new_array();
-  for (i = 0; i < 4; i++) {
-    val = cff_dict_get(cffont->topdict, "FontBBox", i);
-    pdf_add_array(tmp, pdf_new_number(ROUND(val, 1.0)));
-  }
-  pdf_add_dict(font->descriptor, pdf_new_name("FontBBox"), tmp);
 
   used_chars = font->usedchars;
-  if (!used_chars) {
-    ERROR("Unexpected error: Font not actually used???");
-  }
 
   /* FIXME:
    * This writes "CID CID width".
