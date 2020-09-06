@@ -1,3 +1,59 @@
+2020-09-06  Shunsaku Hirata  <shunsaku.hirata74@gmail.com>
+
+	* spc_pdfm.c: pdf:bcolor and pdf:scolor now accept new
+	keywords "fill" and "stroke" to indicate either of fill/stroke
+	color is specified.
+	* spc_misc.[ch], specials.[ch]: New special commands for
+	pdfcolorstack are added. This is a compatibility feature to
+	pdfcolorstack in pdftex.
+	* configure.ac: Version 20200906.
+
+2020-09-05  Shunsaku Hirata  <shunsaku.hirata74@gmail.com>
+
+	* spc_pdfm.c: Workaround for an issue that occurs when an
+	indirect object (object reference) is used for a resource
+	dictionary entry in pdf:put command. The content of an already
+	existing resource dictionary is copied to the new dictionary.
+	* pdfobj.c, pdfdoc.c: pdf_indirect stores a pointer to the
+	object itself but there is no way to know if the object is
+	released. This can result in using junk pointers. To resolve
+	this issue, a list is added to record released indirect objects.
+	* configure.ac: Version 20200905.
+
+2020-09-02  Shunsaku Hirata  <shunsaku.hirata74@gmail.com>
+
+	* pdfnames.c: Fix an incompatible behavior introduced by the
+	previous changes on the named object (rev.55887).
+	* configure.ac: Version 20200902.
+
+2020-08-26  Shunsaku Hirata  <shunsaku.hirata74@gmail.com>
+
+	* spc_pdfm.c: Fix a bug exposed by the previous changes on the
+	named object (rev.55887). Remove unnecessary spc_flush_object.
+	* configure.ac: Version 20200826.
+
+2020-08-16  Shunsaku Hirata  <shunsaku.hirata74@gmail.com>
+
+	* dpxutil.[ch]: Add stack operation.
+	* epdf.[ch], pdfdraw.[ch]: Revise Clip path support for PSTricks.
+	Revert changes related to "rectadd" introduced in rev.31262
+	and rev.31302 which cause non-conforming behavior in "clip"
+	operatation.
+	* dvi.[c], mpost.c, pdfdev.[ch], pdfdoc.[ch], pdfdraw.[ch],
+	spc_html.c, spc_misc.c. spc_pdfm.c, spc_xtx.c, specials.[ch]:
+	Revise bcontent support. Try to resolve various inconsistent
+	behaviors when special commnads are used within pdf:bcontent
+	and pdf:econtent. dev_coords and pt_fixee are removed from pdf
+	module and moved to specials.c.
+	* mpost.h, spc_html.h, spc_misc.h, spc_pdfm.h, spc_xtx.h:
+	Update copyright years.
+	* configure.ac: Version 20200816.
+
+2020-08-08  Shunsaku Hirata  <shunsaku.hirata74@gmail.com>
+
+	* fontmap.[ch], pdffont.[ch], tt_aux.[ch], tt_cmap.[ch]:
+	Use uint32_t for TTC index.
+
 2020-07-31  Shunsaku Hirata  <shunsaku.hirata74@gmail.com>
 
 	* cid.c: Avoid accessing array elements exceeding max array index.

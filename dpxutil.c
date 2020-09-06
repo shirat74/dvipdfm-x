@@ -342,6 +342,49 @@ dpx_stack_top (dpx_stack *stack)
   return data;
 }
 
+void *
+dpx_stack_at (dpx_stack *stack, int pos)
+{
+  void       *data = NULL;
+  stack_elem *elem;
+
+  if (stack->size == 0)
+    return NULL;
+
+  elem = stack->top;
+  while (pos > 0) {
+    elem = elem->prev;
+    pos--;
+  }
+  if (elem)
+    data = elem->data;
+  
+  return data;
+}
+
+void
+dpx_stack_roll (dpx_stack *stack, int n, int j)
+{
+  if (n > stack->size)
+    return;
+  if (n == 1)
+    return;
+  j = j % n;
+  while (j-- > 0) {
+    int         m = n;
+    stack_elem *elem, *prev, *top;
+
+    elem = top = stack->top;
+    while (--m > 0) {
+      elem = elem->prev;
+    }
+    prev = elem->prev;
+    stack->top = top->prev;
+    elem->prev = top;
+    top->prev  = prev;
+  }
+}
+
 int
 dpx_stack_depth (dpx_stack *stack)
 {
