@@ -89,7 +89,7 @@ static struct
   {"prep", 0}, {NULL, 0}
 };
 
-static void
+static int
 validate_name (char *fontname, int len)
 {
   int    i, count;
@@ -128,8 +128,11 @@ validate_name (char *fontname, int len)
   }
 
   if (len < 1) {
-    ERROR("No valid character found in fontname string.");
+    WARN("No valid character found in fontname string.");
+    return -1;
   }
+
+  return 0;
 }
 
 /*
@@ -170,12 +173,10 @@ find_tocode_cmap (const char *reg, const char *ord, int select)
   const char *append;
 
   if (!reg || !ord ||
-      select < 0 || select > KNOWN_ENCODINGS_MAX)
-    ERROR("Character set unknown.");
-
-  if (!strcmp(ord, "UCS") &&
-      select <= WIN_UCS_INDEX_MAX)
+      select < 0 || select > KNOWN_ENCODINGS_MAX) {
+    WARN("Character set unknown.");
     return NULL;
+  }
 
   for (i = 0; cmap_id < 0 && i < 5; i++) {
     append = known_encodings[select].pdfnames[i];
@@ -196,7 +197,7 @@ find_tocode_cmap (const char *reg, const char *ord, int select)
       MESG(" %s-%s-%s", reg, ord, append);
     }
     WARN("Please check if this file exists.");
-    ERROR("Cannot continue...");
+    return NULL;
   }
 
   return CMap_cache_get(cmap_id);
@@ -570,8 +571,12 @@ CIDFont_type2_dofont (pdf_font *font)
     break;
   }
 
-  if (sfnt_read_table_directory(sfont, offset) < 0)
-    ERROR("Could not read TrueType table directory (%s).", font->filename);
+  if (sfnt_read_table_directory(sfont, offset) < 0) {
+    WARN("Could not read TrueType table directory (%s).", font->filename);
+    sfnt_close(sfont);
+    DPXFCLOSE(fp);
+    return -1;
+  }
 
   /*
    * Adobe-Identity means font's internal glyph ordering here.
@@ -605,17 +610,26 @@ CIDFont_type2_dofont (pdf_font *font)
       WARN("No usable TrueType cmap table found for font \"%s\".", font->filename);
       WARN("CID character collection for this font is set to \"%s-%s\"",
            font->cid.csi.registry, font->cid.csi.ordering);
-      ERROR("Cannot continue without this...");
+      WARN("Cannot continue without this...");
+      sfnt_close(sfont);
+      DPXFCLOSE(fp);
+      return -1;
     } else if (i <= WIN_UCS_INDEX_MAX) {
       unicode_cmap = 1;
     } else {
       unicode_cmap = 0;
     }
 
-    /*
-     * NULL is returned if CMap is Identity CMap.
-     */
-    cmap = find_tocode_cmap(font->cid.csi.registry, font->cid.csi.ordering, i);
+    if (!strcmp(ord, "UCS") && i <= WIN_UCS_INDEX_MAX) {
+      cmap = NULL;
+    } else {
+      cmap = find_tocode_cmap(font->cid.csi.registry, font->cid.csi.ordering, i);
+      if (!cmap) {
+        sfnt_close(sfont);
+        DPXFCLOSE(fp);
+        return -1; 
+      }
+    }
   }
 
   glyphs = tt_build_init();
@@ -658,9 +672,7 @@ CIDFont_type2_dofont (pdf_font *font)
         last_cid--;
       }
     }
-    if (last_cid >= 0xFFFFu) {
-      ERROR("CID count > 65535");
-    }
+    ASSERT(last_cid < 0xFFFFu);
   }
 
 #ifndef NO_GHOSTSCRIPT_BUG
@@ -813,19 +825,30 @@ CIDFont_type2_dofont (pdf_font *font)
       used_chars = v_used_chars;
   }
 
-  if (!used_chars)
-    ERROR("Unexpected error.");
+  ASSERT(used_chars);
 
   tt_cmap_release(ttcmap);
 
   if (font->cid.options.embed) {
-    if (tt_build_tables(sfont, glyphs) < 0)
-      ERROR("Could not created FontFile stream.");
+    if (tt_build_tables(sfont, glyphs) < 0) {
+      WARN("Could not created FontFile stream.");
+      if (cidtogidmap)
+        RELEASE(cidtogidmap);
+      sfnt_close(sfont);
+      DPXFCLOSE(fp);
+      return -1;
+    }
     if (dpx_conf.verbose_level > 1)
       MESG("[%u glyphs (Max CID: %u)]", glyphs->num_glyphs, last_cid);
   } else {
-    if (tt_get_metrics(sfont, glyphs) < 0)
-      ERROR("Reading glyph metrics failed...");
+    if (tt_get_metrics(sfont, glyphs) < 0) {
+      WARN("Reading glyph metrics failed...");
+      if (cidtogidmap)
+        RELEASE(cidtogidmap);
+      sfnt_close(sfont);
+      DPXFCLOSE(fp);
+      return -1;
+    }
   }
 
   /*
@@ -866,8 +889,7 @@ CIDFont_type2_dofont (pdf_font *font)
     if (cidtogidmap)
       RELEASE(cidtogidmap);
     sfnt_close(sfont);
-    if (fp)
-      DPXFCLOSE(fp);
+    DPXFCLOSE(fp);
 
     return 0;
   }
@@ -877,7 +899,12 @@ CIDFont_type2_dofont (pdf_font *font)
     if (sfnt_require_table(sfont,
 			   required_table[i].name,
 			   required_table[i].must_exist) < 0) {
-      ERROR("Some required TrueType table (%s) does not exist.", required_table[i].name);
+      WARN("Some required TrueType table (%s) does not exist.", required_table[i].name);
+      if (cidtogidmap)
+        RELEASE(cidtogidmap);
+      sfnt_close(sfont);
+      DPXFCLOSE(fp);
+      return -1;
     }
   }
 
@@ -887,12 +914,14 @@ CIDFont_type2_dofont (pdf_font *font)
   fontfile = sfnt_create_FontFile_stream(sfont);
 
   sfnt_close(sfont);
-  if (fp)
-    DPXFCLOSE(fp);
+  DPXFCLOSE(fp);
 
-  if (!fontfile)
-    ERROR("Could not created FontFile stream for \"%s\".", font->filename);
-
+  if (!fontfile) {
+    WARN("Could not created FontFile stream for \"%s\".", font->filename);
+    if (cidtogidmap)
+      RELEASE(cidtogidmap);
+    return -1;
+  }
   if (dpx_conf.verbose_level > 1) {
     MESG("[%ld bytes]", pdf_stream_length(fontfile));
   }
@@ -924,6 +953,7 @@ CIDFont_type2_dofont (pdf_font *font)
 int
 CIDFont_type2_open (pdf_font *font, const char *name, int index, cid_opt *opt)
 {
+  int      error;
   char    *fontname;
   sfnt    *sfont;
   ULONG    offset = 0;
@@ -950,8 +980,12 @@ CIDFont_type2_open (pdf_font *font, const char *name, int index, cid_opt *opt)
     offset = ttc_read_offset(sfont, index);
     break;
   case SFNT_TYPE_TRUETYPE:
-    if (index > 0)
-      ERROR("Invalid TTC index (not TTC font): %s", name);
+    if (index > 0) {
+      WARN("Invalid TTC index (not TTC font): %s", name);
+      sfnt_close(sfont);
+      DPXFCLOSE(fp);
+      return -1;
+    }
     offset = 0;
     break;
   case SFNT_TYPE_DFONT:
@@ -959,20 +993,21 @@ CIDFont_type2_open (pdf_font *font, const char *name, int index, cid_opt *opt)
     break;
   default:
     sfnt_close(sfont);
-    if (fp)
-      DPXFCLOSE(fp);
+    DPXFCLOSE(fp);
     return -1;
   }
 
   if (sfnt_read_table_directory(sfont, offset) < 0) {
-    ERROR("Reading TrueType table directory failed.");
+    WARN("Reading TrueType table directory failed: %s", name);
+    sfnt_close(sfont);
+    DPXFCLOSE(fp);
+    return -1;
   }
 
   /* Ignore TrueType Collection with CFF table. */
   if (sfont->type == SFNT_TYPE_TTC && sfnt_find_table_pos(sfont, "CFF ")) {
     sfnt_close(sfont);
-    if (fp)
-      DPXFCLOSE(fp);
+    DPXFCLOSE(fp);
     return -1;
   }
 
@@ -988,7 +1023,13 @@ CIDFont_type2_open (pdf_font *font, const char *name, int index, cid_opt *opt)
       strncpy(shortname, name, PDF_NAME_LEN_MAX);
       namelen = strlen(shortname);
     }
-    validate_name(shortname, namelen); /* for SJIS, UTF-16, ... string */
+    error = validate_name(shortname, namelen); /* for SJIS, UTF-16, ... string */
+    if (error) {
+      RELEASE(shortname);
+      sfnt_close(sfont);
+      DPXFCLOSE(fp);
+      return -1;
+    } 
     /*
      * Strlen works, after validate_named string.
      * Mangled name requires more 7 bytes.
@@ -1033,7 +1074,10 @@ CIDFont_type2_open (pdf_font *font, const char *name, int index, cid_opt *opt)
 
   font->descriptor = tt_get_fontdesc(sfont, &(opt->embed), opt->stemv, 0, name);
   if (!font->descriptor) {
-    ERROR("Could not obtain necessary font info.");
+    WARN("Could not obtain necessary font info: %s", name);
+    sfnt_close(sfont);
+    DPXFCLOSE(fp);
+    return -1;
   }
 
   if (opt->embed) {
