@@ -933,6 +933,7 @@ static pst_operator operators[] = {
   /* statusdict countdictstack dictstack cleardictstack */
 
   {"string",       mps_op__string},
+  /* anchorsearch search token */
 
   {"length",       mps_op__length},
   {"get",          mps_op__get},
