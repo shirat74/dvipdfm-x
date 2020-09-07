@@ -123,7 +123,7 @@ pst_get_token (unsigned char **inbuf, unsigned char *inbufend)
     break;
 #endif
   case '/':
-    obj = pst_parse_name(inbuf, inbufend);
+    obj = pst_parse_name_literal(inbuf, inbufend);
     break;
   case '[': case '{': /* This is wrong */
     obj = pst_new_mark();
