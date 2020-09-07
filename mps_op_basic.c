@@ -638,7 +638,7 @@ static int mps_op__not (mpsi *p)
   if (dpx_stack_depth(stk) < 1)
     return -1;
   obj = dpx_stack_top(stk);
-  if (!PST_INTEGERTYPE(obj) || !PST_BOOLEANTYPE(obj))
+  if (!PST_INTEGERTYPE(obj) && !PST_BOOLEANTYPE(obj))
     return -1;
   
   obj    = dpx_stack_pop(stk);
