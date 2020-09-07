@@ -860,7 +860,41 @@ static int mps_op__forall (mpsi *p)
   return error;
 }
 
+static int mps_op__systemdict (mpsi *p)
+{
+  int        error = 0;
+  dpx_stack *stk = &p->stack.operand;
+  pst_obj   *obj;
 
+  obj = pst_copy_obj(p->systemdict);
+  dpx_stack_push(stk, obj);
+
+  return error;
+}
+
+static int mps_op__userdict (mpsi *p)
+{
+  int        error = 0;
+  dpx_stack *stk = &p->stack.operand;
+  pst_obj   *obj;
+
+  obj = pst_copy_obj(p->userdict);
+  dpx_stack_push(stk, obj);
+
+  return error;
+}
+
+static int mps_op__globaldict (mpsi *p)
+{
+  int        error = 0;
+  dpx_stack *stk = &p->stack.operand;
+  pst_obj   *obj;
+
+  obj = pst_copy_obj(p->globaldict);
+  dpx_stack_push(stk, obj);
+
+  return error;
+}
 /* Duplicate */
 static int mps_op__mark (mpsi *p)
 {
@@ -883,13 +917,20 @@ static pst_operator operators[] = {
   {"dict",         mps_op__dict},
   {"<<",           mps_op__mark},
   {">>",           mps_op__dict_to_mark},
+  /* maxlength */
   {"begin",        mps_op__begin},
   {"end",          mps_op__end},
   {"def",          mps_op__def},
   {"load",         mps_op__load},
+  /* store */
   {"undef",        mps_op__undef},
   {"known",        mps_op__known},
   {"where",        mps_op__where},
+  {"systemdict",   mps_op__systemdict},
+  /* errordict $error */
+  {"userdict",     mps_op__userdict},
+  {"globaldict",   mps_op__globaldict},
+  /* statusdict countdictstack dictstack cleardictstack */
 
   {"string",       mps_op__string},
 
@@ -898,6 +939,7 @@ static pst_operator operators[] = {
   {"getinterval",  mps_op__getinterval},
   {"put",          mps_op__put},
   {"putinterval",  mps_op__putinterval},
+  /* {"copy",         mps_op__copy}, /*
   {"forall",       mps_op__forall},
 };
 
