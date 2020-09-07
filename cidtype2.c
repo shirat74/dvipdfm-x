@@ -620,7 +620,7 @@ CIDFont_type2_dofont (pdf_font *font)
       unicode_cmap = 0;
     }
 
-    if (!strcmp(ord, "UCS") && i <= WIN_UCS_INDEX_MAX) {
+    if (!strcmp(font->cid.csi.ordering, "UCS") && i <= WIN_UCS_INDEX_MAX) {
       cmap = NULL;
     } else {
       cmap = find_tocode_cmap(font->cid.csi.registry, font->cid.csi.ordering, i);
