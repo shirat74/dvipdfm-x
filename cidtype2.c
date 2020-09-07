@@ -894,7 +894,12 @@ CIDFont_type2_dofont (pdf_font *font)
     if (sfnt_require_table(sfont,
 			   required_table[i].name,
 			   required_table[i].must_exist) < 0) {
-      ERROR("Some required TrueType table (%s) does not exist.", required_table[i].name);
+      WARN("Some required TrueType table (%s) does not exist.", required_table[i].name);
+      if (cidtogidmap)
+        RELEASE(cidtogidmap);
+      sfnt_close(sfont);
+      DPXFCLOSE(fp);
+      return -1;
     }
   }
 
@@ -904,12 +909,14 @@ CIDFont_type2_dofont (pdf_font *font)
   fontfile = sfnt_create_FontFile_stream(sfont);
 
   sfnt_close(sfont);
-  if (fp)
-    DPXFCLOSE(fp);
+  DPXFCLOSE(fp);
 
-  if (!fontfile)
-    ERROR("Could not created FontFile stream for \"%s\".", font->filename);
-
+  if (!fontfile) {
+    WARN("Could not created FontFile stream for \"%s\".", font->filename);
+    if (cidtogidmap)
+      RELEASE(cidtogidmap);
+    return -1;
+  }
   if (dpx_conf.verbose_level > 1) {
     MESG("[%ld bytes]", pdf_stream_length(fontfile));
   }
