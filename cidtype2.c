@@ -624,6 +624,11 @@ CIDFont_type2_dofont (pdf_font *font)
       cmap = NULL;
     } else {
       cmap = find_tocode_cmap(font->cid.csi.registry, font->cid.csi.ordering, i);
+      if (!cmap) {
+        sfnt_close(sfont);
+        DPXFCLOSE(fp);
+        return -1; 
+      }
     }
   }
 
