@@ -89,7 +89,7 @@ static struct
   {"prep", 0}, {NULL, 0}
 };
 
-static void
+static int
 validate_name (char *fontname, int len)
 {
   int    i, count;
@@ -128,8 +128,11 @@ validate_name (char *fontname, int len)
   }
 
   if (len < 1) {
-    ERROR("No valid character found in fontname string.");
+    WARN("No valid character found in fontname string.");
+    return -1;
   }
+
+  return 0;
 }
 
 /*
@@ -924,6 +927,7 @@ CIDFont_type2_dofont (pdf_font *font)
 int
 CIDFont_type2_open (pdf_font *font, const char *name, int index, cid_opt *opt)
 {
+  int      error;
   char    *fontname;
   sfnt    *sfont;
   ULONG    offset = 0;
@@ -950,8 +954,12 @@ CIDFont_type2_open (pdf_font *font, const char *name, int index, cid_opt *opt)
     offset = ttc_read_offset(sfont, index);
     break;
   case SFNT_TYPE_TRUETYPE:
-    if (index > 0)
-      ERROR("Invalid TTC index (not TTC font): %s", name);
+    if (index > 0) {
+      WARN("Invalid TTC index (not TTC font): %s", name);
+      sfnt_close(sfont);
+      DPXFCLOSE(fp);
+      return -1;
+    }
     offset = 0;
     break;
   case SFNT_TYPE_DFONT:
@@ -959,20 +967,21 @@ CIDFont_type2_open (pdf_font *font, const char *name, int index, cid_opt *opt)
     break;
   default:
     sfnt_close(sfont);
-    if (fp)
-      DPXFCLOSE(fp);
+    DPXFCLOSE(fp);
     return -1;
   }
 
   if (sfnt_read_table_directory(sfont, offset) < 0) {
-    ERROR("Reading TrueType table directory failed.");
+    WARN("Reading TrueType table directory failed: %s", name);
+    sfnt_close(sfont);
+    DPXFCLOSE(fp);
+    return -1;
   }
 
   /* Ignore TrueType Collection with CFF table. */
   if (sfont->type == SFNT_TYPE_TTC && sfnt_find_table_pos(sfont, "CFF ")) {
     sfnt_close(sfont);
-    if (fp)
-      DPXFCLOSE(fp);
+    DPXFCLOSE(fp);
     return -1;
   }
 
@@ -988,7 +997,13 @@ CIDFont_type2_open (pdf_font *font, const char *name, int index, cid_opt *opt)
       strncpy(shortname, name, PDF_NAME_LEN_MAX);
       namelen = strlen(shortname);
     }
-    validate_name(shortname, namelen); /* for SJIS, UTF-16, ... string */
+    error = validate_name(shortname, namelen); /* for SJIS, UTF-16, ... string */
+    if (error) {
+      RELEASE(shortname);
+      sfnt_close(sfont);
+      DPXFCLOSE(fp);
+      return -1;
+    } 
     /*
      * Strlen works, after validate_named string.
      * Mangled name requires more 7 bytes.
@@ -1033,7 +1048,10 @@ CIDFont_type2_open (pdf_font *font, const char *name, int index, cid_opt *opt)
 
   font->descriptor = tt_get_fontdesc(sfont, &(opt->embed), opt->stemv, 0, name);
   if (!font->descriptor) {
-    ERROR("Could not obtain necessary font info.");
+    WARN("Could not obtain necessary font info: %s", name);
+    sfnt_close(sfont);
+    DPXFCLOSE(fp);
+    return -1;
   }
 
   if (opt->embed) {
