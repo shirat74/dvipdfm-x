@@ -381,6 +381,7 @@ static struct operators
   /* NYI */
   {"currentflat",  CURRENTFLAT},
   {"setflat",      SETFLAT},
+  {"currentlinewidth",  CURRENTFLAT},
   {"clippath",     CLIPPATH},
 #endif
 };
