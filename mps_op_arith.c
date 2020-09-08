@@ -41,6 +41,8 @@
 #include "dpxutil.h"
 #include "pst.h"
 
+#include "mps_op_arith.h"
+
 
 /* Arithmetic Operator */
 static int typecheck_numbers (dpx_stack *stk, int n)
