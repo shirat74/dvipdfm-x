@@ -54,6 +54,8 @@
 #include "mps_op_graph.h"
 #include "dvipdfmx.h"
 
+#include "mps_op_graph.h"
+
 #if 1
 static int
 pop_get_numbers (mpsi *p, double *values, int n)
