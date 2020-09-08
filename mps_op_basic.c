@@ -37,6 +37,8 @@
 
 #include "mpost.h"
 
+#include "mps_op_basic.h"
+
 static int
 mps_count_to_mark (mpsi *p)
 {
