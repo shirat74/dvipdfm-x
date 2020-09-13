@@ -168,8 +168,8 @@ static int mps_op__index (mpsi *p)
   obj = dpx_stack_pop(stk);
   n   = pst_getIV(obj);
   pst_release_obj(obj);
-  if (n < 0)
-    return -1;
+  if (n < 0 || n >= dpx_stack_depth(stk))
+    return -1; /* rangecheck */
 
   obj = dpx_stack_at(stk, n);
   dpx_stack_push(stk, pst_copy_obj(obj));
@@ -250,7 +250,7 @@ static int mps_op__cleartomark (mpsi *p)
   int        n;
 
   n = mps_count_to_mark(p);
-  while (n-- > 0) {
+  while (n-- >= 0) { /* including mark itself */
     pst_obj *obj = dpx_stack_pop(stk);
     pst_release_obj(obj);
   }
@@ -800,7 +800,7 @@ static int mps_op__for (mpsi *p)
     init2 = pst_new_integer(n + j);
   } else {
     double n = pst_getRV(init);
-    double j = pst_getRV(init);
+    double j = pst_getRV(incr);
     init2 = pst_new_real(n + j);
   }
   dpx_stack_push(&p->stack.exec, init2);
@@ -1275,6 +1275,7 @@ static int mps_op__cvr (mpsi *p)
   if (!PST_NUMBERTYPE(obj) && !PST_STRINGTYPE(obj))
     return -1; /* typecheck */
 
+  obj = dpx_stack_pop(stk);
   val = pst_getRV(obj);
   pst_release_obj(obj);
 
@@ -1283,9 +1284,9 @@ static int mps_op__cvr (mpsi *p)
   return error;
 }
 
-#if 0
+
 /* NYI */
-static int mps_op__cvr (mpsi *p)
+static int mps_op__cvrs (mpsi *p)
 {
   int        error = 0;
   dpx_stack *stk   = &p->stack.operand;
@@ -1299,6 +1300,57 @@ static int mps_op__cvr (mpsi *p)
   if (!PST_NUMBERTYPE(num) || !PST_INTEGERTYPE(rdx) || !PST_STRINGTYPE(str))
     return -1; /* typecheck */
 
+  {
+    int   r   = pst_getIV(rdx);
+    if (r == 10) { /* FIXME */
+      char *val = (char *) pst_getSV(num);
+
+      if (pst_length_of(str) < strlen(val)) {
+        RELEASE(val);
+        return -1; /* rangecheck */
+      }
+      str = dpx_stack_pop(stk);
+      {
+        pst_string *data = str->data;
+        char       *q    = ((char *)data->value) + str->comp.off;
+
+        memcpy(q, val, strlen(val));
+        str->comp.size = strlen(val);
+      }
+      rdx = dpx_stack_pop(stk);
+      pst_release_obj(rdx);
+      num = dpx_stack_pop(stk);
+      pst_release_obj(num);
+      dpx_stack_push(stk, str);
+    } else {
+      int  n = pst_getIV(num);
+      str = dpx_stack_pop(stk);
+      if (r <= 36) {
+        pst_string *data = str->data;
+        char       *q    = ((char *)data->value) + str->comp.off;
+        int         len  = pst_length_of(str);
+        int         i = 0;
+
+        /* FIXME: n < 0 case */
+        while (n != 0 && i < len) {
+          int m = n % r;
+          q[i] = m > 9 ? 'A' + (m - 9) : '0' + m;
+          n /= r;
+          i++;
+        }         
+        str->comp.size = i;
+      } else {
+        error = -1; /* rangecheck */
+      }
+      if (!error) {
+        rdx = dpx_stack_pop(stk);
+        pst_release_obj(rdx);
+        num = dpx_stack_pop(stk);
+        pst_release_obj(num);
+        dpx_stack_push(stk, str);
+      }
+    }
+  }
 
   return error;
 }
@@ -1307,10 +1359,36 @@ static int mps_op__cvs (mpsi *p)
 {
   int        error = 0;
   dpx_stack *stk   = &p->stack.operand;
+  pst_obj   *str, *obj;
+  char      *val;
+
+  if (dpx_stack_depth(stk) < 2)
+    return -1;
+  str = dpx_stack_at(stk, 0);
+  if (!PST_STRINGTYPE(str))
+    return -1; /* typecheck */
+
+  obj = dpx_stack_at(stk, 1);
+  val = (char *) pst_getSV(obj); /* FIXME: null character allowed */
+  if (pst_length_of(str) < strlen(val)) {
+    RELEASE(val);
+    return -1; /* rangecheck */
+  }
+  str = dpx_stack_pop(stk);
+  {
+    pst_string *data = str->data;
+    char       *q    = ((char *)data->value) + str->comp.off;
+
+    memcpy(q, val, strlen(val));
+    str->comp.size = strlen(val);
+  }
+  obj = dpx_stack_pop(stk);
+  pst_release_obj(obj);
+  dpx_stack_push(stk, str);
 
   return error;
 }
-#endif
+
 
 #define NUM_PS_OPERATORS  (sizeof(operators)/sizeof(operators[0]))
 
@@ -1367,10 +1445,8 @@ static pst_operator operators[] = {
   {"cvi",            mps_op__cvi},
   {"cvn",            mps_op__cvn},
   {"cvr",            mps_op__cvr},
-#if 0
-  {"cvrs",           mps_op__cvrs},
+  {"cvrs",           mps_op__cvrs}, /* NYI */
   {"cvs",            mps_op__cvs}
-#endif
 };
 
 

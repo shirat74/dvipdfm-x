@@ -431,7 +431,8 @@ static int mps_op__atan (mpsi *p)
   v1 = pst_getRV(obj1);
   v2 = pst_getRV(obj2);
   if (v1 == 0.0) {
-    error = -1;
+    angle = v2 < 0 ? 270 : 90;
+    dpx_stack_push(stk, pst_new_real(angle));
   } else {
     angle = atan(v2 / v1) * 180.0 / M_PI;
     dpx_stack_push(stk, pst_new_real(angle));

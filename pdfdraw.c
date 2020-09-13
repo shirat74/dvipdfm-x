@@ -63,10 +63,12 @@ inversematrix (pdf_tmatrix *W, const pdf_tmatrix *M)
     return -1; /* result is undefined. */
   }
 
-  W->a =  (M->d) / det;  W->b = -(M->b) / det;
-  W->c = -(M->c) / det;  W->d =  (M->a) / det;
-  W->e =  (M->c) * (M->f) - (M->d) * (M->e);
-  W->f =  (M->b) * (M->e) - (M->a) * (M->f);
+  W->a  =  (M->d) / det;  W->b = -(M->b) / det;
+  W->c  = -(M->c) / det;  W->d =  (M->a) / det;
+  W->e  =  (M->c) * (M->f) - (M->d) * (M->e);
+  W->f  =  (M->b) * (M->e) - (M->a) * (M->f);
+  W->e /= det;
+  W->f /= det;
 
   return 0;
 }

@@ -20,34 +20,38 @@
     Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA.
 */
 
-#ifndef _MPOST_H_
-#define _MPOST_H_
+#ifndef _MPS_MAIN_H_
+#define _MPS_MAIN_H_
 
 #include  "mfileio.h"
-#include  "pdfximage.h"
-#include  "pdfdev.h"
+#include  "dpxutil.h"
+#include  "pst.h"
 
-extern void mps_set_translate_origin (int boolean_value);
+extern int trace_mps;
 
-extern int  mps_scan_bbox    (const char **pp, const char *endptr, pdf_rect *bbox);
+struct mpsi {
+  const char *cur_op;
+  struct {
+    dpx_stack operand;
+    dpx_stack dict;
+    dpx_stack exec;
+  } stack;
+  pst_obj *systemdict;
+  pst_obj *globaldict;
+  pst_obj *userdict;
+  
+  int      rand_seed;
+};
 
-/* returns xobj_id */
-extern int  mps_include_page (const char *ident, FILE *fp);
 
-#if 0
-extern int  mps_exec_inline  (const char **buffer, const char *endptr,
-			      double x_user, double y_user);
-extern int  mps_stack_depth  (void);
-#else
-#include "mps_main.h"
-extern int  mps_init_intrp   (mpsi *p);
-extern int  mps_clean_intrp  (mpsi *p);
-extern int  mps_exec_inline  (mpsi *p, const char **buf, const char *endptr, double x_user, double y_user);
-extern int  mps_stack_depth  (mpsi *p);
-#endif
+typedef struct mpsi mpsi;
+typedef int (*mps_op_fn_ptr) (mpsi *);
+typedef struct {
+  const char    *name;
+  mps_op_fn_ptr  action;
+} pst_operator;
 
-extern void mps_eop_cleanup  (void);
+extern int  mps_add_systemdict (mpsi *p, pst_obj *obj);
+extern pst_obj *pst_new_dict (size_t size);
 
-extern int  mps_do_page      (FILE *fp);
-
-#endif /* _MPOST_H_ */
+#endif /* _MPS_MAIN_H_ */

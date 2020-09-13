@@ -95,6 +95,8 @@ pst_new_array (size_t size)
   pst_array *data;
   int        i;
 
+  if (size < 0)
+    return NULL;
   data = NEW(1, pst_array);
   data->link = 0;
   data->size   = size;
@@ -283,10 +285,12 @@ static int mps_op__dict_to_mark (mpsi *p)
     }
     pst_release_obj(key);
   }
-  mark = dpx_stack_pop(stk); /* mark */
-  pst_release_obj(mark);
+  if (!error) {
+    mark = dpx_stack_pop(stk); /* mark */
+    pst_release_obj(mark);
 
-  dpx_stack_push(stk, obj);
+    dpx_stack_push(stk, obj);
+  }
 
   return error;
 }
@@ -350,6 +354,7 @@ static int mps_op__def (mpsi *p)
     }
     RELEASE(str);
   } else {
+    WARN("non name: %s", pst_getSV(key));
     error = -1;
   }
   pst_release_obj(key);
@@ -647,7 +652,7 @@ static int mps_op__put (mpsi *p)
     return -1;
   val = dpx_stack_at(stk, 0);
   idx = dpx_stack_at(stk, 1);
-  obj = dpx_stack_at(stk, 3);
+  obj = dpx_stack_at(stk, 2);
   if (!(PST_NAMETYPE(idx) && PST_DICTTYPE(obj)) &&
       !(PST_INTEGERTYPE(idx) && PST_ARRAYTYPE(obj)) &&
       !(PST_INTEGERTYPE(val) && PST_INTEGERTYPE(idx) && PST_STRINGTYPE(obj)))
@@ -698,7 +703,7 @@ static int mps_op__put (mpsi *p)
         error = -1; /* rangecheck */
       } else {
         n += obj->comp.off;
-        data->value[n] = (unsigned char) pst_getIV(val);
+        data->value[n] = (unsigned char) v;
       }
     }
     break;   
@@ -758,7 +763,7 @@ static int mps_op__putinterval (mpsi *p)
       unsigned char *src_ptr, *dst_ptr;
 
       src_ptr = pst_data_ptr(src);
-      dst_ptr = pst_data_ptr(dst) + pst_getIV(idx);
+      dst_ptr = ((unsigned char *)pst_data_ptr(dst)) + pst_getIV(idx);
       memcpy(dst_ptr, src_ptr, pst_length_of(src));
     }
     break;
@@ -897,6 +902,7 @@ static int mps_op__globaldict (mpsi *p)
 
   return error;
 }
+
 /* Duplicate */
 static int mps_op__mark (mpsi *p)
 {
@@ -932,7 +938,7 @@ static pst_operator operators[] = {
   /* errordict $error */
   {"userdict",     mps_op__userdict},
   {"globaldict",   mps_op__globaldict},
-  /* statusdict countdictstack dictstack cleardictstack */
+  /* countdictstack dictstack cleardictstack */
 
   {"string",       mps_op__string},
   /* anchorsearch search token */

@@ -62,6 +62,93 @@ static int    position_set  = 0;
 static char** ps_headers = 0;
 static int num_ps_headers = 0;
 
+#include "mps_main.h"
+
+static mpsi mps_intrp;
+static int  tracing = 255;
+
+#if 1
+static int
+load_header (struct spc_env *spe, const char *pro)
+{
+  int   error = 0;
+  char *ps_header;
+
+  ps_header = kpse_find_file(pro, kpse_tex_ps_header_format, 0);
+  if (!ps_header) {
+    spc_warn(spe, "PS header %s not found.", pro);
+    return -1;
+  }
+  if (strcmp(pro, "pst-dots.pro")) /* FIXME */
+  {
+    FILE   *fp = fopen(ps_header, "rb");
+    size_t  size;
+    char   *p, *buf, *endptr;
+
+    fseek(fp, 0, SEEK_END);
+    size = ftell(fp);
+  
+    buf = NEW(size + 1, char);
+    fseek(fp, 0, SEEK_SET);
+    fread(buf, 1, size, fp);
+    p = buf; endptr = p + size;
+    p[size] = '\0';
+    WARN("Parsing header: %s", ps_header); /* DEBUG */
+    if (strcmp(pro, "tex.pro") && strcmp(pro, "texc.pro")) { /* FIXME */
+      const char *pre  = "TeXDict begin";
+      const char *post = "40258437 52099151 1000 600 600 (exa000.dvi) @start end";
+      const char *q;
+      q = pre;
+      error = mps_exec_inline(&mps_intrp, &q, q + strlen(pre), spe->x_user, spe->y_user);
+      error = mps_exec_inline(&mps_intrp, &p, endptr, spe->x_user, spe->y_user);
+      q = post;
+      error = mps_exec_inline(&mps_intrp, &q, q + strlen(post), spe->x_user, spe->y_user);
+    } else {
+      error = mps_exec_inline(&mps_intrp, &p, endptr, spe->x_user, spe->y_user);
+    }
+
+    RELEASE(buf);
+    if (error)
+      WARN("Error occurred while parsing header...: %s", p);
+    else
+      WARN("Load OK"); /* DEBUG */
+  }
+
+  return error;
+}
+
+static int
+spc_handler_ps_header (struct spc_env *spe, struct spc_arg *args)
+{
+  char *pro;
+  int   error = 0;
+  static int first = 1; /* FIXME */
+
+  skip_white(&args->curptr, args->endptr);
+  if (args->curptr + 1 >= args->endptr ||
+      args->curptr[0] != '=') {
+    spc_warn(spe, "No filename specified for PSfile special.");
+    return  -1;
+  }
+  args->curptr++;
+
+  pro = NEW(args->endptr - args->curptr + 1, char);
+  strncpy(pro, args->curptr, args->endptr - args->curptr);
+  pro[args->endptr - args->curptr] = '\0';
+
+  if (first) { /* FIXME */
+    error = load_header(spe, "tex.pro");
+    error = load_header(spe, "special.pro");
+    first = 0;
+  }
+  load_header(spe, pro);
+
+  args->curptr = args->endptr;
+
+
+  return error;
+}
+#else
 static int
 spc_handler_ps_header (struct spc_env *spe, struct spc_arg *args)
 {
@@ -91,6 +178,7 @@ spc_handler_ps_header (struct spc_env *spe, struct spc_arg *args)
   args->curptr = args->endptr;
   return 0;
 }
+#endif
 
 static char *
 parse_filename (const char **pp, const char *endptr)
@@ -260,15 +348,24 @@ spc_handler_ps_literal (struct spc_env *spe, struct spc_arg *args)
 
   skip_white(&args->curptr, args->endptr);
   if (args->curptr < args->endptr) {
-
-    st_depth = mps_stack_depth();
+    st_depth = mps_stack_depth(&mps_intrp);
     gs_depth = pdf_dev_current_depth();
 
-    error = mps_exec_inline(&args->curptr, args->endptr, x_user, y_user);
+    trace_mps = tracing;
+    {
+      const char *p;
+      const char *pre  = "TeXDict begin";
+      const char *post = "end";
+      p = pre;
+      error = mps_exec_inline(&mps_intrp, &p, p + strlen(pre), x_user, y_user);
+      error = mps_exec_inline(&mps_intrp, &args->curptr, args->endptr, x_user, y_user);
+      p = post;
+      error = mps_exec_inline(&mps_intrp, &p, p + strlen(post), x_user, y_user);
+    }
     if (error) {
       spc_warn(spe, "Interpreting PS code failed!!! Output might be broken!!!");
       pdf_dev_grestore_to(gs_depth);
-    } else if (st_depth != mps_stack_depth()) {
+    } else if (st_depth != mps_stack_depth(&mps_intrp)) {
       spc_warn(spe, "Stack not empty after execution of inline PostScript code.");
       spc_warn(spe, ">> Your macro package makes some assumption on internal behaviour of DVI drivers.");
       spc_warn(spe, ">> It may not compatible with dvipdfmx.");
@@ -828,16 +925,17 @@ spc_handler_ps_tricksobj (struct spc_env *spe, struct spc_arg *args)
 static int
 spc_handler_ps_default (struct spc_env *spe, struct spc_arg *args)
 {
-  int  error;
+  int  error = 0;
   int  st_depth, gs_depth;
 
   ASSERT(spe && args);
 
   pdf_dev_gsave();
 
-  st_depth = mps_stack_depth();
+  st_depth = mps_stack_depth(&mps_intrp);
   gs_depth = pdf_dev_current_depth();
 
+  trace_mps = tracing;
   {
     pdf_tmatrix M;
     pdf_coord   cp;
@@ -845,14 +943,25 @@ spc_handler_ps_default (struct spc_env *spe, struct spc_arg *args)
     spc_get_current_point(spe, &cp);
     M.a = M.d = 1.0; M.b = M.c = 0.0; M.e = cp.x; M.f = cp.y;
     pdf_dev_concat(&M);
-    error = mps_exec_inline(&args->curptr, args->endptr, cp.x, cp.y);
+    if (trace_mps)
+      WARN("default: %g %g", cp.x, cp.y);
+    {
+      const char *p;
+      const char *pre  = "TeXDict begin";
+      const char *post = "end";
+      p = pre;
+      error = mps_exec_inline(&mps_intrp, &p, p + strlen(pre), 0.0, 0.0);
+      error = mps_exec_inline(&mps_intrp, &args->curptr, args->endptr, 0.0, 0.0);
+      p = post;
+      error = mps_exec_inline(&mps_intrp, &p, p + strlen(post), 0.0, 0.0);
+    }
     M.e = -cp.x; M.f = -cp.y;
     pdf_dev_concat(&M);
   }
   if (error)
     spc_warn(spe, "Interpreting PS code failed!!! Output might be broken!!!");
   else {
-    if (st_depth != mps_stack_depth()) {
+    if (st_depth != mps_stack_depth(&mps_intrp)) {
       spc_warn(spe, "Stack not empty after execution of inline PostScript code.");
       spc_warn(spe, ">> Your macro package makes some assumption on internal behaviour of DVI drivers.");
       spc_warn(spe, ">> It may not compatible with dvipdfmx.");
@@ -894,6 +1003,8 @@ spc_dvips_at_begin_document (void)
   fprintf(fp, "tx@Dict begin /STV {} def end\n");
   fclose(fp);
 
+  mps_init_intrp(&mps_intrp);
+
   return  0;
 }
 
@@ -908,6 +1019,8 @@ spc_dvips_at_end_document (void)
   }
   dpx_delete_temp_file(global_defs, true);
   dpx_delete_temp_file(page_defs, true);
+
+  mps_clean_intrp(&mps_intrp);
 
   return  0;
 }

@@ -81,14 +81,14 @@ mps_cvr_array (mpsi *p, double *values, int n)
   pst_obj   *obj;
   pst_array *array;
 
-  if (dpx_stack_depth(&p->stack.operand) < n)
+  if (dpx_stack_depth(&p->stack.operand) < 1)
     return -1;
   obj = dpx_stack_pop(&p->stack.operand);
   if (!PST_ARRAYTYPE(obj)) {
     pst_release_obj(obj);
     return -1;
   }
-  if (obj->comp.size != n) {
+  if (pst_length_of(obj) < n) {
     pst_release_obj(obj);
     return -1;
   }
@@ -299,10 +299,13 @@ is_fontname (const char *token)
 #define SETCMYKCOLOR	72
 
 #define CURRENTPOINT    80
-#define IDTRANSFORM	81
-#define DTRANSFORM	82
-#define TRANSFORM 83
-#define ITRANSFORM 84
+#define IDTRANSFORM	     81
+#define DTRANSFORM	     82
+#define TRANSFORM        83
+#define ITRANSFORM       84
+#define CURRENTMATRIX    85
+#define MATRIX           86
+#define SETMATRIX        87
 
 #define FINDFONT        201
 #define SCALEFONT       202
@@ -314,6 +317,8 @@ is_fontname (const char *token)
 #define CURRENTFLAT     900
 #define SETFLAT         901
 #define CLIPPATH        902
+#define CURRENTLINEWIDTH 903
+#define PATHBBOX         904
 
 #define DEF             999
 
@@ -366,12 +371,14 @@ static struct operators
   {"setrgbcolor",  SETRGBCOLOR},
   {"setcmykcolor", SETCMYKCOLOR},
 
-  {"currentpoint", CURRENTPOINT}, /* This is here for rotate support
-				     in graphics package-not MP support */
-  {"dtransform",   DTRANSFORM},
-  {"idtransform",  IDTRANSFORM},
-  {"transform",   TRANSFORM},
-  {"itransform",  ITRANSFORM},
+  {"matrix",        MATRIX},
+  {"setmatrix",     SETMATRIX},
+  {"currentpoint",  CURRENTPOINT},
+  {"currentmatrix", CURRENTMATRIX},
+  {"dtransform",    DTRANSFORM},
+  {"idtransform",   IDTRANSFORM},
+  {"transform",     TRANSFORM},
+  {"itransform",    ITRANSFORM},
 
   {"findfont",     FINDFONT},
   {"scalefont",    SCALEFONT},
@@ -381,10 +388,12 @@ static struct operators
   {"stringwidth",  STRINGWIDTH},
 #if 1
   /* NYI */
-  {"currentflat",  CURRENTFLAT},
-  {"setflat",      SETFLAT},
-  {"currentlinewidth",  CURRENTFLAT},
-  {"clippath",     CLIPPATH},
+  {"currentflat",      CURRENTFLAT},
+  {"setflat",          SETFLAT},
+  {"currentlinewidth", CURRENTFLAT},
+  {"clippath",         CLIPPATH},
+  {"initclip",         CLIPPATH},
+  {"pathbbox",         PATHBBOX},
 #endif
 };
 
@@ -452,9 +461,12 @@ static int
 ps_dev_CTM (pdf_tmatrix *M)
 {
   pdf_dev_currentmatrix(M);
+#if 0
+  /* FIXME Don't know why... */
   M->a *= DEVICE_RESOLUTION; M->b *= DEVICE_RESOLUTION;
   M->c *= DEVICE_RESOLUTION; M->d *= DEVICE_RESOLUTION;
   M->e *= DEVICE_RESOLUTION; M->f *= DEVICE_RESOLUTION;
+#endif
 
   return 0;
 }
@@ -478,6 +490,10 @@ do_operator (mpsi *p, const char *token, double x_user, double y_user)
   switch (opcode) {
 
 #if 1
+  /* NYI */
+  case CURRENTLINEWIDTH:
+    mps_push_stack(p, pst_new_integer(1));
+    break;
   case CURRENTFLAT:
     mps_push_stack(p, pst_new_integer(1));
     break;
@@ -486,8 +502,104 @@ do_operator (mpsi *p, const char *token, double x_user, double y_user)
     break;
   case CLIPPATH:
     break;
+  case PATHBBOX:
+    {
+      int i;
+
+      for (i = 0; i < 4; i++) {
+        dpx_stack_push(&p->stack.operand, pst_new_real(0.0));
+      }
+    }
+    break;
 #endif
 
+  case MATRIX:
+    {
+      pst_obj   *obj;
+      pst_array *data;
+    
+      data = NEW(1, pst_array);
+      data->size = 6;
+      data->link = 0;
+      data->values = NEW(6, pst_obj *);
+      data->values[0] = pst_new_real(1.0);
+      data->values[1] = pst_new_real(0.0);
+      data->values[2] = pst_new_real(0.0);
+      data->values[3] = pst_new_real(1.0);
+      data->values[4] = pst_new_real(0.0);
+      data->values[5] = pst_new_real(0.0);
+      obj = pst_new_obj(PST_TYPE_ARRAY, data);
+      dpx_stack_push(&p->stack.operand, obj);
+    }
+    break;
+  case CURRENTMATRIX:
+    if (dpx_stack_depth(&p->stack.operand) < 1) {
+      error = -1;
+    } else {
+      pst_obj *obj = dpx_stack_top(&p->stack.operand);
+      if (!PST_ARRAYTYPE(obj) || pst_length_of(obj) != 6) {
+        error = -1;
+      } else {
+        pst_array   *array;
+        pdf_tmatrix  M;
+        int          i;
+
+        obj = dpx_stack_pop(&p->stack.operand);
+        array = obj->data;
+        pdf_dev_currentmatrix(&M);
+        for (i = 0; i < 6; i++) {
+          if (array->values[i])
+            pst_release_obj(array->values[i]);
+        }
+        array->values[0] = pst_new_real(M.a);
+        array->values[1] = pst_new_real(M.b);
+        array->values[2] = pst_new_real(M.c);
+        array->values[3] = pst_new_real(M.d);
+        array->values[4] = pst_new_real(M.e);
+        array->values[5] = pst_new_real(M.f);
+      }
+      dpx_stack_push(&p->stack.operand, obj);
+    }
+    break;
+  case SETMATRIX:
+    if (dpx_stack_depth(&p->stack.operand) < 1) {
+      error = -1; /* stackunderflow */
+    } else {
+      pst_obj *obj = dpx_stack_top(&p->stack.operand);
+      if (!PST_ARRAYTYPE(obj)) {
+        error = -1; /* typecheck */
+      } else if (pst_length_of(obj) != 6) {
+        error = -1; /* rangecheck */
+      } else {
+        pst_array *data = obj->data;
+        int        i, n;
+        double     v[6];
+
+        n = obj->comp.off;
+        for (i = 0; i < 6 && !error; i++) {
+          pst_obj *elem = data->values[n+i];
+          if (!elem || !PST_NUMBERTYPE(elem)) {
+            error = -1; /* typecheck */
+          } else {
+            v[i] = pst_getRV(elem);
+          }
+        }
+        if (!error) {
+          /* FIXME */
+          pdf_tmatrix M;
+
+          pdf_setmatrix(&matrix, v[0], v[1], v[2], v[3], v[4], v[5]);
+          pdf_dev_currentmatrix(&M);
+          pdf_invertmatrix(&M);
+          pdf_dev_concat(&M);
+          pdf_dev_concat(&matrix);
+          obj = dpx_stack_pop(&p->stack.operand);
+          pst_release_obj(obj);
+        }
+      }
+    }
+    break;
+  
     /* Path construction */
   case MOVETO:
     error = pop_get_numbers(p, values, 2);
@@ -574,10 +686,7 @@ do_operator (mpsi *p, const char *token, double x_user, double y_user)
     if (error)
       WARN("Missing array before \"concat\".");
     else {
-      pdf_setmatrix(&matrix,
-		    values[0], values[1],
-		    values[2], values[3],
-		    values[4], values[5]);
+      pdf_setmatrix(&matrix, values[0], values[1], values[2], values[3], values[4], values[5]);
       error = pdf_dev_concat(&matrix);
     }
     break;
@@ -587,17 +696,11 @@ do_operator (mpsi *p, const char *token, double x_user, double y_user)
       switch (mp_cmode) {
 #ifndef WITHOUT_ASCII_PTEX
       case MP_CMODE_PTEXVERT:
-	pdf_setmatrix(&matrix,
-		      values[1], 0.0,
-		      0.0      , values[0],
-		      0.0      , 0.0);
+        pdf_setmatrix(&matrix, values[1], 0.0, 0.0, values[0], 0.0, 0.0);
 	break;
 #endif /* !WITHOUT_ASCII_PTEX */
       default:
-	pdf_setmatrix(&matrix,
-		      values[0], 0.0,
-		      0.0      , values[1],
-		      0.0      , 0.0);
+        pdf_setmatrix(&matrix, values[0], 0.0, 0.0, values[1], 0.0, 0.0);
 	break;
       }
 
@@ -616,17 +719,11 @@ do_operator (mpsi *p, const char *token, double x_user, double y_user)
 #ifndef WITHOUT_ASCII_PTEX
       case MP_CMODE_PTEXVERT:
 #endif /* !WITHOUT_ASCII_PTEX */
-	pdf_setmatrix(&matrix,
-		      cos(values[0]), -sin(values[0]),
-		      sin(values[0]),  cos(values[0]),
-		      0.0,             0.0);
-	break;
+        pdf_setmatrix(&matrix, cos(values[0]), -sin(values[0]), sin(values[0]), cos(values[0]), 0.0, 0.0);
+        break;
       default:
-	pdf_setmatrix(&matrix,
-		      cos(values[0]) , sin(values[0]),
-		      -sin(values[0]), cos(values[0]),
-		      0.0,             0.0);
-	break;
+        pdf_setmatrix(&matrix, cos(values[0]), sin(values[0]), -sin(values[0]), cos(values[0]), 0.0, 0.0);
+        break;
       }
       error = pdf_dev_concat(&matrix);
     }
@@ -634,55 +731,45 @@ do_operator (mpsi *p, const char *token, double x_user, double y_user)
   case TRANSLATE:
     error = pop_get_numbers(p, values, 2);
     if (!error) {
-      pdf_setmatrix(&matrix,
-		    1.0,       0.0,
-		    0.0,       1.0,
-		    values[0], values[1]);
+      pdf_setmatrix(&matrix, 1.0, 0.0, 0.0, 1.0, values[0], values[1]);
       error = pdf_dev_concat(&matrix);
     }
     break;
-#if 1
+
   case SETDASH:
     error = pop_get_numbers(p, values, 1);
-#if 0
     if (!error) {
-      pdf_obj *pattern, *dash;
-      int      i, num_dashes;
-      double   dash_values[PDF_DASH_SIZE_MAX];
-      double   offset;
+      pst_obj   *pattern;
+      pst_array *data;
+      int        i, n;
+      double    *dvalues;
+      double     offset;
 
       offset  = values[0];
-      pattern = POP_STACK();
-      if (!PDF_OBJ_ARRAYTYPE(pattern)) {
-	      if (pattern)
-	        pdf_release_obj(pattern);
-	      error = 1;
+      pattern = dpx_stack_top(&p->stack.operand);
+      if (!PST_ARRAYTYPE(pattern)) {
+	      error = -1; /* typecheck */
 	      break;
       }
-      num_dashes = pdf_array_length(pattern);
-      if (num_dashes > PDF_DASH_SIZE_MAX) {
-	WARN("Too many dashes...");
-	pdf_release_obj(pattern);
-	error = 1;
-	break;
+      n       = pst_length_of(pattern);
+      data    = pattern->data;
+      dvalues = NEW(n, double); 
+      for (i = pattern->comp.off; !error && i < pattern->comp.off + pattern->comp.size; i++) {
+        pst_obj *dash = data->values[i];
+        if (!PST_NUMBERTYPE(dash)) {
+          error = -1; /* typecheck */
+        } else {
+          dvalues[i] = pst_getRV(dash);
+        }
       }
-      for (i = 0;
-	   i < num_dashes && !error ; i++) {
-	dash = pdf_get_array(pattern, i);
-	if (!PDF_OBJ_NUMBERTYPE(dash))
-	  error = 1;
-	else {
-	  dash_values[i] = pdf_number_value(dash);
-	}
-      }
-      pdf_release_obj(pattern);
       if (!error) {
-	error = pdf_dev_setdash(num_dashes, dash_values, offset);
+        pst_obj *obj = dpx_stack_pop(&p->stack.operand);
+        pst_release_obj(obj);
+        error = pdf_dev_setdash(n, dvalues, offset);
       }
+      RELEASE(dvalues);
     }
-#endif
     break;
-#endif
   case SETLINECAP:
     error = pop_get_numbers(p, values, 1);
     if (!error)
@@ -708,9 +795,7 @@ do_operator (mpsi *p, const char *token, double x_user, double y_user)
     error = pop_get_numbers(p, values, 4);
     /* Not handled properly */
     if (!error) {
-      pdf_color_cmykcolor(&color,
-			  values[0], values[1],
-			  values[2], values[3]);
+      pdf_color_cmykcolor(&color, values[0], values[1], values[2], values[3]);
       pdf_dev_set_strokingcolor(&color);
       pdf_dev_set_nonstrokingcolor(&color);
     }
@@ -727,8 +812,7 @@ do_operator (mpsi *p, const char *token, double x_user, double y_user)
   case SETRGBCOLOR:
     error = pop_get_numbers(p, values, 3);
     if (!error) {
-      pdf_color_rgbcolor(&color,
-			 values[0], values[1], values[2]);
+      pdf_color_rgbcolor(&color, values[0], values[1], values[2]);
       pdf_dev_set_strokingcolor(&color);
       pdf_dev_set_nonstrokingcolor(&color);
     }
@@ -745,23 +829,69 @@ do_operator (mpsi *p, const char *token, double x_user, double y_user)
     }
     break;
 
-#if 1
+  case DTRANSFORM:
+    {
+      int      has_matrix = 0;
+      pst_obj *obj = dpx_stack_top(&p->stack.operand);
+      if (PST_ARRAYTYPE(obj)) {
+	      error = mps_cvr_array(p, values, 6);
+	      if (error)
+	        break;
+	      pdf_setmatrix(&matrix, values[0], values[1], values[2], values[3],  values[4], values[5]);
+	      has_matrix = 1;
+      }
+      error = pop_get_numbers(p, values, 2);
+      if (error)
+        break;
+      cp.y = values[1];
+      cp.x = values[0];
+
+      if (!has_matrix) {
+      	ps_dev_CTM(&matrix); /* Here, we need real PostScript CTM */
+      }
+      pdf_dev_dtransform(&cp, &matrix);
+      mps_push_stack(p, pst_new_real(cp.x));
+      mps_push_stack(p, pst_new_real(cp.y));
+    }
+    break;
+
+  case IDTRANSFORM:
+    {
+      int      has_matrix = 0;
+      pst_obj *obj = dpx_stack_top(&p->stack.operand);
+      if (PST_ARRAYTYPE(obj)) {
+	      error = mps_cvr_array(p, values, 6);
+	      if (error)
+	        break;
+	      pdf_setmatrix(&matrix, values[0], values[1], values[2], values[3],  values[4], values[5]);
+	      has_matrix = 1;
+      }
+      error = pop_get_numbers(p, values, 2);
+      if (error)
+        break;
+      cp.y = values[1];
+      cp.x = values[0];
+
+      if (!has_matrix) {
+      	ps_dev_CTM(&matrix); /* Here, we need real PostScript CTM */
+      }
+      pdf_dev_idtransform(&cp, &matrix);
+      mps_push_stack(p, pst_new_real(cp.x));
+      mps_push_stack(p, pst_new_real(cp.y));
+    }
+    break;
+
   case TRANSFORM:
     {
-      int  has_matrix = 0;
-
-#if 0
-	    error = mps_cvr_array(p, values, 6);
-	    if (error)
-	      break;
-	    pdf_setmatrix(&matrix,
-		      values[0], values[1],
-		      values[2], values[3],
-		      values[4], values[5]);
-	    has_matrix = 1; /* FIXME */
-#else
-      has_matrix = 0;
-#endif      
+      int      has_matrix = 0;
+      pst_obj *obj = dpx_stack_top(&p->stack.operand);
+      if (PST_ARRAYTYPE(obj)) {
+	      error = mps_cvr_array(p, values, 6);
+	      if (error)
+	        break;
+	      pdf_setmatrix(&matrix, values[0], values[1], values[2], values[3],  values[4], values[5]);
+	      has_matrix = 1;
+      }
       error = pop_get_numbers(p, values, 2);
       if (error)
         break;
@@ -779,20 +909,15 @@ do_operator (mpsi *p, const char *token, double x_user, double y_user)
 
   case ITRANSFORM:
     {
-      int  has_matrix = 0;
-
-#if 0
-	    error = mps_cvr_array(p, values, 6);
-	    if (error)
-	      break;
-	    pdf_setmatrix(&matrix,
-		      values[0], values[1],
-		      values[2], values[3],
-		      values[4], values[5]);
-	    has_matrix = 1; /* FIXME */
-#else
-      has_matrix = 0;
-#endif
+      int      has_matrix = 0;
+      pst_obj *obj = dpx_stack_top(&p->stack.operand);
+      if (PST_ARRAYTYPE(obj)) {
+	      error = mps_cvr_array(p, values, 6);
+	      if (error)
+	        break;
+	      pdf_setmatrix(&matrix, values[0], values[1], values[2], values[3],  values[4], values[5]);
+	      has_matrix = 1;
+      }
       error = pop_get_numbers(p, values, 2);
       if (error)
         break;
@@ -805,11 +930,51 @@ do_operator (mpsi *p, const char *token, double x_user, double y_user)
       pdf_dev_itransform(&cp, &matrix);
       mps_push_stack(p, pst_new_real(cp.x));
       mps_push_stack(p, pst_new_real(cp.y));
-#endif
     }
     break;
 
-#if 0
+#if 1
+  case FINDFONT:
+    {
+      pst_obj *obj = dpx_stack_pop(&p->stack.operand);
+      pst_release_obj(obj);
+      dpx_stack_push(&p->stack.operand, pst_new_null());
+    }
+    break;
+  case SETFONT:
+    {
+      pst_obj *obj = dpx_stack_pop(&p->stack.operand);
+      pst_release_obj(obj);
+    }
+    break;
+  case SCALEFONT:
+    {
+      pst_obj *obj1, *obj2;
+      obj1 = dpx_stack_pop(&p->stack.operand);
+      pst_release_obj(obj1);
+      obj2 = dpx_stack_pop(&p->stack.operand);
+      pst_release_obj(obj2);
+      dpx_stack_push(&p->stack.operand, pst_new_null());
+    }
+    break;
+  case STRINGWIDTH:
+    {
+      pst_obj *obj;
+      obj = dpx_stack_pop(&p->stack.operand);
+      pst_release_obj(obj);
+      dpx_stack_push(&p->stack.operand, pst_new_real(10.0));
+      dpx_stack_push(&p->stack.operand, pst_new_real(10.0));
+    }
+    break;
+  case SHOW:
+    {
+      pst_obj *obj;
+      obj = dpx_stack_pop(&p->stack.operand);
+      pst_release_obj(obj);
+    }
+    break;
+
+#else
   case FINDFONT:
     error = do_findfont();
     break;

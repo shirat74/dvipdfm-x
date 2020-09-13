@@ -69,6 +69,8 @@ xdvipdfmx_SOURCES = \
 	mfileio.h \
 	mpost.c \
 	mpost.h \
+	mps_main.c \
+	mps_main.h \
 	mps_op_arith.c \
 	mps_op_arith.h \
 	mps_op_basic.c \
