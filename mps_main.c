@@ -412,7 +412,6 @@ static pst_operator operators[] = {
   {"restore",      mps_op__pop},
   {"realtime",     mps_op__realtime}, /* pstricks-add.pro requires this */
   {"setglobal",    mps_op__pop}, /* NYI */
-  {"normalscale",  mps_op__noop}, /* NYI */
   {"pdfmark",      mps_op__pop},  /* dummy */
 };
 

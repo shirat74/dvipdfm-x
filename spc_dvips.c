@@ -65,7 +65,8 @@ static int num_ps_headers = 0;
 #include "mps_main.h"
 
 static mpsi mps_intrp;
-static int  tracing = 255;
+static int  tracing = 0;
+static int  first_call = 1;
 
 #if 1
 static int
@@ -93,10 +94,9 @@ load_header (struct spc_env *spe, const char *pro)
     fread(buf, 1, size, fp);
     p = buf; endptr = p + size;
     p[size] = '\0';
-    WARN("Parsing header: %s", ps_header); /* DEBUG */
     if (strcmp(pro, "tex.pro") && strcmp(pro, "texc.pro")) { /* FIXME */
       const char *pre  = "TeXDict begin";
-      const char *post = "40258437 52099151 1000 600 600 (exa000.dvi) @start end";
+      const char *post = "end";
       const char *q;
       q = pre;
       error = mps_exec_inline(&mps_intrp, &q, q + strlen(pre), spe->x_user, spe->y_user);
@@ -110,8 +110,6 @@ load_header (struct spc_env *spe, const char *pro)
     RELEASE(buf);
     if (error)
       WARN("Error occurred while parsing header...: %s", p);
-    else
-      WARN("Load OK"); /* DEBUG */
   }
 
   return error;
@@ -356,11 +354,18 @@ spc_handler_ps_literal (struct spc_env *spe, struct spc_arg *args)
       const char *p;
       const char *pre  = "TeXDict begin";
       const char *post = "end";
+      if (first_call) {
+        /* dvipdfmx specific settings */
+        const char *start = "TeXDict begin 40258437 52099151 1000 72.27 -72.27 (input) @start end";
+        p = start;
+        error = mps_exec_inline(&mps_intrp, &p, p + strlen(start), 0.0, 0.0); 
+        first_call = 0;
+      }
       p = pre;
-      error = mps_exec_inline(&mps_intrp, &p, p + strlen(pre), x_user, y_user);
+      error = mps_exec_inline(&mps_intrp, &p, p + strlen(pre), 0.0, 0.0);
       error = mps_exec_inline(&mps_intrp, &args->curptr, args->endptr, x_user, y_user);
       p = post;
-      error = mps_exec_inline(&mps_intrp, &p, p + strlen(post), x_user, y_user);
+      error = mps_exec_inline(&mps_intrp, &p, p + strlen(post), 0.0, 0.0);
     }
     if (error) {
       spc_warn(spe, "Interpreting PS code failed!!! Output might be broken!!!");
@@ -949,6 +954,12 @@ spc_handler_ps_default (struct spc_env *spe, struct spc_arg *args)
       const char *p;
       const char *pre  = "TeXDict begin";
       const char *post = "end";
+      if (first_call) {
+        const char *start = "TeXDict begin 40258437 52099151 1000 600 600 (exa000.dvi) @start end";
+        p = start;
+        error = mps_exec_inline(&mps_intrp, &p, p + strlen(start), 0.0, 0.0);
+        first_call = 0;
+      }
       p = pre;
       error = mps_exec_inline(&mps_intrp, &p, p + strlen(pre), 0.0, 0.0);
       error = mps_exec_inline(&mps_intrp, &args->curptr, args->endptr, 0.0, 0.0);

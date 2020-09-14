@@ -588,6 +588,7 @@ do_operator (mpsi *p, const char *token, double x_user, double y_user)
           /* FIXME */
           pdf_tmatrix M;
 
+          /* NYI: should implement pdf_dev_setmatrix */
           pdf_setmatrix(&matrix, v[0], v[1], v[2], v[3], v[4], v[5]);
           pdf_dev_currentmatrix(&M);
           pdf_invertmatrix(&M);

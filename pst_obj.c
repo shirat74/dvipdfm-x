@@ -118,6 +118,8 @@ pst_new_obj (pst_type type, void *data)
     obj->comp.iter = NULL;
   }
 
+  obj->free_flag = 0;
+
   return obj;
 }
 
@@ -237,8 +239,12 @@ pst_copy_obj (pst_obj *src)
 }
 
 void
-pst_release_obj (pst_obj *obj)
+pst_release_obj_ (pst_obj *obj, const char *function, int line)
 {
+  if (obj->free_flag)
+    ERROR("Double free detected: %s %d", function, line);
+  if (!obj || obj->type < -1 || obj->type > 10)
+    WARN("release called against a NULL obj: %s %d", function, line);
   ASSERT(obj);
 
   switch (obj->type) {
@@ -305,6 +311,8 @@ pst_release_obj (pst_obj *obj)
   default:
     ERROR("Unrecognized object type: %d", obj->type);
   }
+  obj->free_flag = 1;
+
   RELEASE(obj);
 }
 
@@ -432,6 +440,7 @@ pst_getSV (pst_obj *obj)
     {
       pst_string *data = obj->data;
 
+      ASSERT(obj->comp.size >= 0);
       sv = NEW(obj->comp.size + 1, unsigned char);
       memcpy(sv, data->value + obj->comp.off, obj->comp.size);
       sv[obj->comp.size] = '\0';
@@ -441,11 +450,9 @@ pst_getSV (pst_obj *obj)
     /* NYI */
     /* operator name should be returned... */
   default:
-    {
-      sv = NEW(strlen("--nonstringval--") + 1, unsigned char);
-      strcpy((char *)sv, "--nonstringval--");
-      break;
-    }
+    sv = NEW(strlen("--nonstringval--") + 1, unsigned char);
+    strcpy((char *)sv, "--nonstringval--");
+    break;
   }
 
   return sv;
@@ -685,13 +692,13 @@ pst_real_SV (pst_real *obj)
 {
   char *value;
   int   len;
-  char  fmt_buf[PST_MAX_DIGITS+5];
+  char  fmt_buf[256];
 
   ASSERT(obj);
 
-  len = sprintf(fmt_buf, "%.5g", obj->value);
+  len = sprintf(fmt_buf, "%g", obj->value);
 
-  value = NEW(len, char);
+  value = NEW(len + 1, char);
   strcpy(value, fmt_buf);
 
   return (unsigned char *) value;
@@ -860,6 +867,18 @@ getxpair (unsigned char **s)
   return ((hi << 4)| lo);
 }
 
+static int isxpair (const unsigned char *p, const unsigned char *endptr)
+{
+  if (p + 2 < endptr) {
+    char c1, c2;
+    c1 = (char) *p;
+    c2 = (char) *(p+1);
+    if (isxdigit(c1) && isxdigit(c2))
+      return 1;
+  }
+  return 0;
+}
+
 pst_obj *
 pst_parse_name (unsigned char **inbuf, unsigned char *inbufend)
 {
@@ -870,18 +889,18 @@ pst_parse_name (unsigned char **inbuf, unsigned char *inbufend)
 
   while (!PST_TOKEN_END(cur, inbufend)) {
     c = *cur++;
-    if (c == '#') {
+    if (c == '#' && isxpair(cur, inbufend)) {
       int val;
       if (cur + 2 >= inbufend) {
-	WARN("Premature end of input name string.");
-	break;
+        WARN("Premature end of input name string.");
+        break;
       }
       val = getxpair(&cur);
       if (val <= 0) {
-	WARN("Invalid char for name object. (ignored)");
-	continue;
+        WARN("Invalid char for name object. (ignored)");
+        continue;
       } else
-	c = (unsigned char) val;
+      c = (unsigned char) val;
     }
     if (len < PST_NAME_LEN_MAX)
       *p++ = c;
@@ -889,6 +908,8 @@ pst_parse_name (unsigned char **inbuf, unsigned char *inbufend)
   }
   *p = '\0';
 
+  if (len == 0)
+    ERROR("name length== 0: %s", cur);
   if (len > PST_NAME_LEN_MAX)
     WARN("String too long for name object. Output will be truncated.");
 

@@ -34,7 +34,6 @@
 #include "pst_obj.h"
 #include "pst.h"
 
-
 #define TYPE_CHECK(o, t) do { \
                              if ((o) == NULL || pst_type_of((o)) != (t)) \
                                   ERROR("typecheck: object %p not of type %d.", (o), (t)); \
@@ -201,6 +200,7 @@ pst_scan_proc (unsigned char **pp, unsigned char *endptr)
   dpx_stack_init(&stack);
   (*pp)++;
   skip_white_spaces(pp, endptr);
+  skip_comments(pp, endptr);
   while (!obj && *pp < endptr && !error) {
     if (**pp == '}') {
       pst_array *data;
@@ -209,6 +209,7 @@ pst_scan_proc (unsigned char **pp, unsigned char *endptr)
       count = dpx_stack_depth(&stack);
       data  = NEW(1, pst_array);
       data->size   = count;
+      data->link   = 0;
       data->values = NEW(count, pst_obj *);
       while (!error && count-- > 0) {
         pst_obj *elem = dpx_stack_pop(&stack);
@@ -218,6 +219,7 @@ pst_scan_proc (unsigned char **pp, unsigned char *endptr)
           error = -1;
         }
       }
+      /* NYI error cleanup */
       if (!error) {
         obj = pst_new_obj(PST_TYPE_ARRAY, data);
         obj->attr.is_exec = 1;
@@ -232,6 +234,7 @@ pst_scan_proc (unsigned char **pp, unsigned char *endptr)
       }
     }
     skip_white_spaces(pp, endptr);
+    skip_comments(pp, endptr);
   }
   {
     pst_obj *elem;

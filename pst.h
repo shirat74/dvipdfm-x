@@ -60,6 +60,7 @@ struct pst_obj {
     struct ht_iter *iter; /* for forall */
   } comp;
   void    *data;
+  int      free_flag;
 };
 typedef struct pst_obj pst_obj;
 
@@ -93,7 +94,8 @@ extern pst_obj *pst_get_token (unsigned char **inbuf, unsigned char *inbufend);
 extern pst_obj *pst_scan_token (unsigned char **inbuf, unsigned char *inbufend);
 
 extern pst_obj *pst_new_obj    (pst_type type, void *data);
-extern void     pst_release_obj(pst_obj *obj);
+extern void     pst_release_obj_(pst_obj *obj, const char *func, int line);
+#define pst_release_obj(o) pst_release_obj_((o),__FUNCTION__, __LINE__)
 extern pst_obj *pst_new_mark   (void);
 extern pst_obj *pst_new_boolean (int v);
 extern pst_obj *pst_new_integer (int v);

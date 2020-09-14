@@ -426,19 +426,24 @@ static int mps_op__atan (mpsi *p)
   if (error < 0)
     return error;
 
-  obj1 = dpx_stack_pop(stk);
-  obj2 = dpx_stack_pop(stk);
+  obj1 = dpx_stack_at(stk, 0);
+  obj2 = dpx_stack_at(stk, 1);
   v1 = pst_getRV(obj1);
   v2 = pst_getRV(obj2);
-  if (v1 == 0.0) {
-    angle = v2 < 0 ? 270 : 90;
-    dpx_stack_push(stk, pst_new_real(angle));
+  if (v1 == 0.0 && v2 == 0.0) {
+    error = -1; /* rangecheck */
   } else {
-    angle = atan(v2 / v1) * 180.0 / M_PI;
+    /* FIXME: Don't know why but seem to be "minus" required... */
+    angle = -atan2(v2, v1) * 180.0 / M_PI;
+    angle = angle < 0 ? 360 + angle : angle;
+  }
+  if (!error) {
+    obj1 = dpx_stack_pop(stk);
+    obj2 = dpx_stack_pop(stk);
+    pst_release_obj(obj1);
+    pst_release_obj(obj2);
     dpx_stack_push(stk, pst_new_real(angle));
   }
-  pst_release_obj(obj1);
-  pst_release_obj(obj2);
 
   return error;
 }
