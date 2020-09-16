@@ -149,12 +149,6 @@ clear_mp_font_struct (struct mp_font *font)
   font->pt_size    = 0.0;
 }
 
-/* Compatibility */
-#define MP_CMODE_MPOST    0
-#define MP_CMODE_DVIPSK   1
-#define MP_CMODE_PTEXVERT 2
-static int mp_cmode = MP_CMODE_MPOST;
-
 static int
 mp_setfont (const char *font_name, double pt_size)
 {
@@ -504,10 +498,14 @@ do_operator (mpsi *p, const char *token, double x_user, double y_user)
     break;
   case PATHBBOX:
     {
-      int i;
+      pdf_rect r;
 
-      for (i = 0; i < 4; i++) {
-        dpx_stack_push(&p->stack.operand, pst_new_real(0.0));
+      error = pdf_dev_pathbbox(&r);
+      if (!error) {
+        dpx_stack_push(&p->stack.operand, pst_new_real(r.llx));
+        dpx_stack_push(&p->stack.operand, pst_new_real(r.lly));
+        dpx_stack_push(&p->stack.operand, pst_new_real(r.urx));
+        dpx_stack_push(&p->stack.operand, pst_new_real(r.ury));
       }
     }
     break;
@@ -694,7 +692,7 @@ do_operator (mpsi *p, const char *token, double x_user, double y_user)
   case SCALE:
     error = pop_get_numbers(p, values, 2);
     if (!error) {
-      switch (mp_cmode) {
+      switch (p->compat_mode) {
 #ifndef WITHOUT_ASCII_PTEX
       case MP_CMODE_PTEXVERT:
         pdf_setmatrix(&matrix, values[1], 0.0, 0.0, values[0], 0.0, 0.0);
@@ -714,7 +712,7 @@ do_operator (mpsi *p, const char *token, double x_user, double y_user)
     if (!error) {
       values[0] = values[0] * M_PI / 180;
 
-      switch (mp_cmode) {
+      switch (p->compat_mode) {
       case MP_CMODE_DVIPSK:
       case MP_CMODE_MPOST: /* Really? */
 #ifndef WITHOUT_ASCII_PTEX
@@ -955,6 +953,11 @@ do_operator (mpsi *p, const char *token, double x_user, double y_user)
       pst_release_obj(obj1);
       obj2 = dpx_stack_pop(&p->stack.operand);
       pst_release_obj(obj2);
+      dpx_stack_push(&p->stack.operand, pst_new_null());
+    }
+    break;
+  case CURRENTFONT:
+    {
       dpx_stack_push(&p->stack.operand, pst_new_null());
     }
     break;

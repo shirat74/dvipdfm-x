@@ -491,6 +491,7 @@ mps_init_intrp (mpsi *p)
   dpx_stack_init(&p->stack.exec);
 
   p->rand_seed = 0;
+  p->compat_mode = MP_CMODE_NATIVE;
 
   return 0;
 }

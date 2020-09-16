@@ -1318,7 +1318,7 @@ pdf_dev_currentpoint (pdf_coord *p)
 
   p->x = cpt->x; p->y = cpt->y;
 
-  return 0;
+  return gs->flags & GS_FLAG_CURRENTPOINT_SET ? 0 : -1;
 }
 
 int
@@ -1885,4 +1885,185 @@ pdf_dev_rectclip (double x, double y,
   r.ury = y + h;
   
   return  pdf_dev__rectshape(&r, NULL, 'W');
+}
+
+/* Bezier curve utilities */
+
+static double min2 (double v1, double v2)
+{
+  return (v1 < v2) ? v1 : v2;
+}
+
+static double max2 (double v1, double v2)
+{
+  return (v1 > v2) ? v1 : v2;
+}
+
+static double
+bezier_value_at (double p0, double p1, double p2, double p3, double t)
+{
+  double t1 = 1.0 - t;
+
+  return p0*t1*t1*t1 + 3.0*p1*t*t1*t1 + 3.0*p2*t*t*t1 + p3*t*t*t;
+}
+
+static void
+bezier_evaluate_edge (double *p_min, double *p_max, double p0, double p1, double p2, double p3)
+{
+  double a, b, c;
+
+  *p_min = min2(p0, p3);
+  *p_max = max2(p0, p3);
+
+  a = 3.0*p3 - 9.0*p2 + 9.0*p1 - 3.0*p0;
+  b = 6.0*p2 - 12.0*p1 + 6.0*p0;
+  c = 3.0*p1 - 3.0*p0;
+
+  if (a == 0.0) {
+    if (b != 0.0) {
+      double t = -c/b;
+      if (t > 0.0 && t < 1.0) {
+        double p = bezier_value_at(p0, p1, p2, p3, t);
+        *p_min = min2(p, *p_min);
+        *p_max = max2(p, *p_max);
+      }
+    }
+  } else {
+    double p, t, disc = b*b - 4.0*a*c;
+    if (disc == 0.0) {
+      t = -b/(2.0*a);
+      if (t > 0.0 && t < 1.0) {
+        p = bezier_value_at(p0, p1, p2, p3, t);
+        *p_min = min2(p, *p_min);
+        *p_max = max2(p, *p_max);
+      }
+    } else {
+      t = (-b + sqrt(disc))/(2.0*a);
+      if (t > 0.0 && t < 1.0) {
+        p = bezier_value_at(p0, p1, p2, p3, t);
+        *p_min = min2(p, *p_min);
+        *p_max = max2(p, *p_max);
+      }
+      t = (-b - sqrt(disc))/(2.0*a);
+      if (t > 0.0 && t< 1.0) {
+        p = bezier_value_at(p0, p1, p2, p3, t);
+        *p_min = min2(p, *p_min);
+        *p_max = max2(p, *p_max);
+      }
+    }
+  }
+  
+  return;
+}
+
+static void
+bezier_bbox (pdf_rect *bbox, pdf_coord *cp)
+{
+  bezier_evaluate_edge(&bbox->llx, &bbox->urx, cp[0].x, cp[1].x, cp[2].x, cp[3].x);
+  bezier_evaluate_edge(&bbox->lly, &bbox->ury, cp[0].y, cp[1].y, cp[2].y, cp[3].y);
+}
+
+int
+pdf_dev_pathbbox (pdf_rect *bbox)
+{
+  dpx_stack  *gss = &gs_stack;
+  pdf_gstate *gs;
+  pdf_path   *pa;
+  int         i, first = 1;
+  double      x_min = 0.0, x_max = 0.0, y_min = 0.0, y_max = 0.0;
+  pdf_coord   cp;
+
+  gs = dpx_stack_top(gss);
+  pa = &gs->path;
+
+  for (i = 0; i < pa->num_paths; i++) {
+    pa_elem *pe = &pa->path[i];
+    switch (pe->type) {
+    case PE_TYPE__MOVETO:
+      if (first) {
+        x_min = cp.x;
+        x_max = cp.x;
+        y_min = cp.y;
+        y_max = cp.y;
+      }
+      cp.x = pe->p[0].x;
+      cp.y = pe->p[0].y;
+      first = 0;
+      break;
+    case PE_TYPE__LINETO:
+      x_min = min2(x_min, pe->p[0].x);
+      x_max = max2(x_max, pe->p[0].x);
+      y_min = min2(y_min, pe->p[0].y);
+      y_max = max2(y_max, pe->p[0].y);
+      cp.x = pe->p[0].x;
+      cp.y = pe->p[0].y;
+      first = 0;
+      break;
+    case PE_TYPE__CURVETO_V:
+      {
+        pdf_rect  r;
+        pdf_coord pt[4];
+
+        pt[0] = cp;
+        pt[1] = cp;
+        pt[2] = pe->p[0];
+        pt[3] = pe->p[1];
+        bezier_bbox(&r, pt);
+        x_min = min2(x_min, r.llx);
+        x_max = max2(x_max, r.urx);
+        y_min = min2(y_min, r.lly);
+        y_max = max2(y_max, r.ury);
+        cp.x  = pe->p[1].x;
+        cp.y  = pe->p[1].y;
+        first = 0;
+      }
+      break;
+    case PE_TYPE__CURVETO_Y:
+      {
+        pdf_rect  r;
+        pdf_coord pt[4];
+
+        pt[0] = cp;
+        pt[1] = pe->p[0];
+        pt[2] = pe->p[1];
+        pt[3] = pe->p[1];
+        bezier_bbox(&r, pt);
+        x_min = min2(x_min, r.llx);
+        x_max = max2(x_max, r.urx);
+        y_min = min2(y_min, r.lly);
+        y_max = max2(y_max, r.ury);
+        cp.x  = pe->p[1].x;
+        cp.y  = pe->p[1].y;
+        first = 0;
+      }
+      break;
+    case PE_TYPE__CURVETO:
+      {
+        pdf_rect  r;
+        pdf_coord pt[4];
+
+        pt[0] = cp;
+        pt[1] = pe->p[0];
+        pt[2] = pe->p[1];
+        pt[3] = pe->p[2];
+        bezier_bbox(&r, pt);
+        x_min = min2(x_min, r.llx);
+        x_max = max2(x_max, r.urx);
+        y_min = min2(y_min, r.lly);
+        y_max = max2(y_max, r.ury);
+        cp.x  = pe->p[2].x;
+        cp.y  = pe->p[2].y;
+        first = 0;
+      }
+      break;
+    }
+  }
+
+  if (first)
+    return -1;
+  bbox->llx = x_min;
+  bbox->urx = x_max;
+  bbox->lly = y_min;
+  bbox->ury = y_max;
+  return 0;
 }

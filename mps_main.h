@@ -41,8 +41,14 @@ struct mpsi {
   pst_obj *userdict;
   
   int      rand_seed;
+  int      compat_mode;
 };
 
+/* Compatibility */
+#define MP_CMODE_MPOST    0
+#define MP_CMODE_DVIPSK   1
+#define MP_CMODE_PTEXVERT 2
+#define MP_CMODE_NATIVE   3
 
 typedef struct mpsi mpsi;
 typedef int (*mps_op_fn_ptr) (mpsi *);

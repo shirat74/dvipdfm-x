@@ -90,7 +90,9 @@ extern int    pdf_dev_arc           (double c_x, double c_y, double r,
                                      double a_0, double a_1);
 extern int    pdf_dev_arcn          (double c_x, double c_y, double r,
                                      double a_0, double a_1);
-  
+
+extern int    pdf_dev_pathbbox      (pdf_rect *bbox);
+
 #define PDF_FILL_RULE_NONZERO 0
 #define PDF_FILL_RULE_EVENODD 1
 

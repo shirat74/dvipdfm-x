@@ -433,8 +433,7 @@ static int mps_op__atan (mpsi *p)
   if (v1 == 0.0 && v2 == 0.0) {
     error = -1; /* rangecheck */
   } else {
-    /* FIXME: Don't know why but seem to be "minus" required... */
-    angle = -atan2(v2, v1) * 180.0 / M_PI;
+    angle = atan2(v2, v1) * 180 / M_PI;
     angle = angle < 0 ? 360 + angle : angle;
   }
   if (!error) {
