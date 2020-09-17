@@ -58,17 +58,52 @@
 
 #if 1
 static int
-pop_get_numbers (mpsi *p, double *values, int n)
+get_numbers (mpsi *p, double *values, int n)
 {
+  int error = 0, i;
+
   if (dpx_stack_depth(&p->stack.operand) < n)
     return -1;
-  while (n-- > 0) {
-    pst_obj *obj = dpx_stack_pop(&p->stack.operand);
+  for (i = 0; !error && i < n; i++) {
+    pst_obj *obj = dpx_stack_at(&p->stack.operand, i);
     if (!PST_NUMBERTYPE(obj)) {
-      pst_release_obj(obj);
-      return -1;
+      error = -1;
+      break;
     }
-    values[n] = pst_getRV(obj);
+    values[n-i-1] = pst_getRV(obj);
+  }
+
+  return 0;
+}
+
+static int
+get_numbers_2 (mpsi *p, double *values, int n)
+{
+  int error = 0, i;
+
+  if (dpx_stack_depth(&p->stack.operand) < n + 1)
+    return -1;
+  for (i = 1; !error && i < n + 1; i++) {
+    pst_obj *obj = dpx_stack_at(&p->stack.operand, i);
+    if (!PST_NUMBERTYPE(obj)) {
+      error = -1;
+      break;
+    }
+    values[n-i] = pst_getRV(obj);
+  }
+
+  return 0;
+}
+
+static int
+pop_numbers (mpsi *p, int n)
+{
+  int i;
+
+  if (dpx_stack_depth(&p->stack.operand) < n)
+    return -1;
+  for (i = 0; i < n; i++) {
+    pst_obj *obj = dpx_stack_pop(&p->stack.operand);
     pst_release_obj(obj);
   }
 
@@ -83,13 +118,11 @@ mps_cvr_array (mpsi *p, double *values, int n)
 
   if (dpx_stack_depth(&p->stack.operand) < 1)
     return -1;
-  obj = dpx_stack_pop(&p->stack.operand);
+  obj = dpx_stack_top(&p->stack.operand);
   if (!PST_ARRAYTYPE(obj)) {
-    pst_release_obj(obj);
     return -1;
   }
   if (pst_length_of(obj) < n) {
-    pst_release_obj(obj);
     return -1;
   }
   array = obj->data;
@@ -100,7 +133,6 @@ mps_cvr_array (mpsi *p, double *values, int n)
     }
     values[n] = pst_getRV(elem);
   }
-  pst_release_obj(obj);
 
   return 0;
 }
@@ -492,7 +524,7 @@ do_operator (mpsi *p, const char *token, double x_user, double y_user)
     mps_push_stack(p, pst_new_integer(1));
     break;
   case SETFLAT:
-    error = pop_get_numbers(p, values, 1);
+    error = pop_numbers(p, 1);
     break;
   case CLIPPATH:
     break;
@@ -601,55 +633,67 @@ do_operator (mpsi *p, const char *token, double x_user, double y_user)
   
     /* Path construction */
   case MOVETO:
-    error = pop_get_numbers(p, values, 2);
+    error = get_numbers(p, values, 2);
     if (!error)
       error = pdf_dev_moveto(values[0], values[1]);
+    if (!error)
+      error = pop_numbers(p, 2);
     break;
   case RMOVETO:
-    error = pop_get_numbers(p, values, 2);
+    error = get_numbers(p, values, 2);
     if (!error)
       error = pdf_dev_rmoveto(values[0], values[1]);
+    if (!error)
+      error = pop_numbers(p, 2);
     break;
   case LINETO:
-    error = pop_get_numbers(p, values, 2);
+    error = get_numbers(p, values, 2);
     if (!error)
       error = pdf_dev_lineto(values[0], values[1]);
+    if (!error)
+      error = pop_numbers(p, 2);
     break;
   case RLINETO:
-    error = pop_get_numbers(p, values, 2);
+    error = get_numbers(p, values, 2);
     if (!error)
       error = pdf_dev_rlineto(values[0], values[1]);
+    if (!error)
+      error = pop_numbers(p, 2);
     break;
   case CURVETO:
-    error = pop_get_numbers(p, values, 6);
+    error = get_numbers(p, values, 6);
     if (!error)
-      error = pdf_dev_curveto(values[0], values[1],
-			      values[2], values[3],
-			      values[4], values[5]);
+      error = pdf_dev_curveto(values[0], values[1], values[2], values[3], values[4], values[5]);
+    if (!error)
+      error = pop_numbers(p, 6);
     break;
   case RCURVETO:
-    error = pop_get_numbers(p, values, 6);
+    error = get_numbers(p, values, 6);
     if (!error)
-      error = pdf_dev_rcurveto(values[0], values[1],
-			                         values[2], values[3],
-                               values[4], values[5]);
+      error = pdf_dev_rcurveto(values[0], values[1], values[2], values[3], values[4], values[5]);
+    if (!error)
+      error = pop_numbers(p, 6);
     break;
   case CLOSEPATH:
     error = pdf_dev_closepath();
     break;
   case ARC:
-    error = pop_get_numbers(p, values, 5);
+    error = get_numbers(p, values, 5);
     if (!error)
       error = pdf_dev_arc(values[0], values[1],
 			                    values[2], /* rad */
 			                    values[3], values[4]);
+    if (!error)
+      error = pop_numbers(p, 5);
     break;
   case ARCN:
-    error = pop_get_numbers(p, values, 5);
+    error = get_numbers(p, values, 5);
     if (!error)
       error = pdf_dev_arcn(values[0], values[1],
 			                     values[2], /* rad */
 			                     values[3], values[4]);
+    if (!error)
+      error = pop_numbers(p, 5);
     break;
     
   case NEWPATH:
@@ -681,16 +725,18 @@ do_operator (mpsi *p, const char *token, double x_user, double y_user)
     break;
 
   case CONCAT:
-    error = mps_cvr_array(p, values, 6); /* This does pdf_release_obj() */
+    error = mps_cvr_array(p, values, 6);
     if (error)
       WARN("Missing array before \"concat\".");
     else {
       pdf_setmatrix(&matrix, values[0], values[1], values[2], values[3], values[4], values[5]);
       error = pdf_dev_concat(&matrix);
     }
+    if (!error)
+      pop_numbers(p, 1); /* not a number */
     break;
   case SCALE:
-    error = pop_get_numbers(p, values, 2);
+    error = get_numbers(p, values, 2);
     if (!error) {
       switch (p->compat_mode) {
 #ifndef WITHOUT_ASCII_PTEX
@@ -700,15 +746,16 @@ do_operator (mpsi *p, const char *token, double x_user, double y_user)
 #endif /* !WITHOUT_ASCII_PTEX */
       default:
         pdf_setmatrix(&matrix, values[0], 0.0, 0.0, values[1], 0.0, 0.0);
-	break;
+        break;
       }
-
       error = pdf_dev_concat(&matrix);
     }
+    if (!error)
+      error = pop_numbers(p, 2);
     break;
     /* Positive angle means clock-wise direction in graphicx-dvips??? */
   case ROTATE:
-    error = pop_get_numbers(p, values, 1);
+    error = get_numbers(p, values, 1);
     if (!error) {
       values[0] = values[0] * M_PI / 180;
 
@@ -726,17 +773,21 @@ do_operator (mpsi *p, const char *token, double x_user, double y_user)
       }
       error = pdf_dev_concat(&matrix);
     }
+    if (!error)
+      error = pop_numbers(p, 1);
     break;
   case TRANSLATE:
-    error = pop_get_numbers(p, values, 2);
+    error = get_numbers(p, values, 2);
     if (!error) {
       pdf_setmatrix(&matrix, 1.0, 0.0, 0.0, 1.0, values[0], values[1]);
       error = pdf_dev_concat(&matrix);
     }
+    if (!error)
+      pop_numbers(p, 2);
     break;
 
   case SETDASH:
-    error = pop_get_numbers(p, values, 1);
+    error = get_numbers(p, values, 1);
     if (!error) {
       pst_obj   *pattern;
       pst_array *data;
@@ -745,7 +796,7 @@ do_operator (mpsi *p, const char *token, double x_user, double y_user)
       double     offset;
 
       offset  = values[0];
-      pattern = dpx_stack_top(&p->stack.operand);
+      pattern = dpx_stack_at(&p->stack.operand, 1);
       if (!PST_ARRAYTYPE(pattern)) {
 	      error = -1; /* typecheck */
 	      break;
@@ -762,59 +813,73 @@ do_operator (mpsi *p, const char *token, double x_user, double y_user)
         }
       }
       if (!error) {
-        pst_obj *obj = dpx_stack_pop(&p->stack.operand);
-        pst_release_obj(obj);
         error = pdf_dev_setdash(n, dvalues, offset);
       }
       RELEASE(dvalues);
     }
+    if (!error)
+      error = pop_numbers(p, 2); /* actually not number */
     break;
   case SETLINECAP:
-    error = pop_get_numbers(p, values, 1);
+    error = get_numbers(p, values, 1);
     if (!error)
       error = pdf_dev_setlinecap((int)values[0]);
+    if (!error)
+      error = pop_numbers(p, 1);
     break;
   case SETLINEJOIN:
-    error = pop_get_numbers(p, values, 1);
+    error = get_numbers(p, values, 1);
     if (!error)
       error = pdf_dev_setlinejoin((int)values[0]);
+    if (!error)
+      error = pop_numbers(p, 1);
     break;
   case SETLINEWIDTH:
-    error = pop_get_numbers(p, values, 1);
+    error = get_numbers(p, values, 1);
     if (!error)
       error = pdf_dev_setlinewidth(values[0]);
+    if (!error)
+      error = pop_numbers(p, 1);
     break;
   case SETMITERLIMIT:
-    error = pop_get_numbers(p, values, 1);
+    error = get_numbers(p, values, 1);
     if (!error)
       error = pdf_dev_setmiterlimit(values[0]);
+    if (!error)
+      error = pop_numbers(p, 1);
     break;
 
   case SETCMYKCOLOR:
-    error = pop_get_numbers(p, values, 4);
+    error = get_numbers(p, values, 4);
     /* Not handled properly */
     if (!error) {
       pdf_color_cmykcolor(&color, values[0], values[1], values[2], values[3]);
       pdf_dev_set_strokingcolor(&color);
       pdf_dev_set_nonstrokingcolor(&color);
     }
+    if (!error)
+      pop_numbers(p, 4);
     break;
   case SETGRAY:
     /* Not handled properly */
-    error = pop_get_numbers(p, values, 1);
+    error = get_numbers(p, values, 1);
     if (!error) {
       pdf_color_graycolor(&color, values[0]);
       pdf_dev_set_strokingcolor(&color);
       pdf_dev_set_nonstrokingcolor(&color);
     }
+    if (!error)
+      pop_numbers(p, 1);
     break;
   case SETRGBCOLOR:
-    error = pop_get_numbers(p, values, 3);
+    error = get_numbers(p, values, 3);
     if (!error) {
       pdf_color_rgbcolor(&color, values[0], values[1], values[2]);
       pdf_dev_set_strokingcolor(&color);
       pdf_dev_set_nonstrokingcolor(&color);
     }
+    if (!error)
+      pop_numbers(p, 3);
     break;
 
   case SHOWPAGE: /* Let's ignore this for now */
@@ -839,7 +904,7 @@ do_operator (mpsi *p, const char *token, double x_user, double y_user)
 	      pdf_setmatrix(&matrix, values[0], values[1], values[2], values[3],  values[4], values[5]);
 	      has_matrix = 1;
       }
-      error = pop_get_numbers(p, values, 2);
+      error = get_numbers_2(p, values, 2);
       if (error)
         break;
       cp.y = values[1];
@@ -851,6 +916,9 @@ do_operator (mpsi *p, const char *token, double x_user, double y_user)
       pdf_dev_dtransform(&cp, &matrix);
       mps_push_stack(p, pst_new_real(cp.x));
       mps_push_stack(p, pst_new_real(cp.y));
+
+      if (!error)
+        pop_numbers(p, has_matrix ? 3 : 2);
     }
     break;
 
@@ -865,7 +933,7 @@ do_operator (mpsi *p, const char *token, double x_user, double y_user)
 	      pdf_setmatrix(&matrix, values[0], values[1], values[2], values[3],  values[4], values[5]);
 	      has_matrix = 1;
       }
-      error = pop_get_numbers(p, values, 2);
+      error = get_numbers_2(p, values, 2);
       if (error)
         break;
       cp.y = values[1];
@@ -877,6 +945,9 @@ do_operator (mpsi *p, const char *token, double x_user, double y_user)
       pdf_dev_idtransform(&cp, &matrix);
       mps_push_stack(p, pst_new_real(cp.x));
       mps_push_stack(p, pst_new_real(cp.y));
+      
+      if (!error)
+        pop_numbers(p, has_matrix ? 3 : 2);
     }
     break;
 
@@ -891,7 +962,7 @@ do_operator (mpsi *p, const char *token, double x_user, double y_user)
 	      pdf_setmatrix(&matrix, values[0], values[1], values[2], values[3],  values[4], values[5]);
 	      has_matrix = 1;
       }
-      error = pop_get_numbers(p, values, 2);
+      error = get_numbers_2(p, values, 2);
       if (error)
         break;
       cp.y = values[1];
@@ -903,6 +974,9 @@ do_operator (mpsi *p, const char *token, double x_user, double y_user)
       pdf_dev_transform(&cp, &matrix);
       mps_push_stack(p, pst_new_real(cp.x));
       mps_push_stack(p, pst_new_real(cp.y));
+      
+      if (!error)
+        pop_numbers(p, has_matrix ? 3 : 2);
     }
     break;
 
@@ -917,7 +991,7 @@ do_operator (mpsi *p, const char *token, double x_user, double y_user)
 	      pdf_setmatrix(&matrix, values[0], values[1], values[2], values[3],  values[4], values[5]);
 	      has_matrix = 1;
       }
-      error = pop_get_numbers(p, values, 2);
+      error = get_numbers_2(p, values, 2);
       if (error)
         break;
       cp.y = values[1];
@@ -929,6 +1003,9 @@ do_operator (mpsi *p, const char *token, double x_user, double y_user)
       pdf_dev_itransform(&cp, &matrix);
       mps_push_stack(p, pst_new_real(cp.x));
       mps_push_stack(p, pst_new_real(cp.y));
+      
+      if (!error)
+        pop_numbers(p, has_matrix ? 3 : 2);
     }
     break;
 

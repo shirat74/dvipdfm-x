@@ -1000,6 +1000,7 @@ copy_a_gstate (pdf_gstate *gs1, pdf_gstate *gs2)
    * copying whole path.
    */
   pdf_path__copypath(&gs1->path, &gs2->path);
+  gs1->flags = gs2->flags;
 
   gs1->linedash.num_dash = gs2->linedash.num_dash;
   for (i = 0; i < gs2->linedash.num_dash; i++) {
@@ -1610,6 +1611,8 @@ pdf_dev_newpath (void)
   /* The following is required for "newpath" operator in mpost.c. */
   pdf_doc_add_page_content(" n", 2);  /* op: n */
 
+  gs->flags &= ~GS_FLAG_CURRENTPOINT_SET;
+
   return 0;
 }
 
@@ -1622,6 +1625,7 @@ pdf_dev_moveto (double x, double y)
   pdf_coord  *cpt = &gs->cp;
   pdf_coord   p;
 
+  gs->flags |= GS_FLAG_CURRENTPOINT_SET;
   p.x = x; p.y = y;
   return pdf_path__moveto(cpa, cpt, &p); /* cpt updated */
 }
@@ -1635,6 +1639,7 @@ pdf_dev_rmoveto (double x, double y)
   pdf_coord  *cpt = &gs->cp;
   pdf_coord   p;
 
+  gs->flags |= GS_FLAG_CURRENTPOINT_SET;
   p.x = cpt->x + x;
   p.y = cpt->y + y;
   return pdf_path__moveto(cpa, cpt, &p); /* cpt updated */
@@ -1649,6 +1654,9 @@ pdf_dev_lineto (double x, double y)
   pdf_coord  *cpt = &gs->cp;
   pdf_coord   p0;
 
+  if (!(gs->flags & GS_FLAG_CURRENTPOINT_SET))
+    return -1;
+
   p0.x = x; p0.y = y;
 
   return pdf_path__lineto(cpa, cpt, &p0);
@@ -1662,6 +1670,9 @@ pdf_dev_rlineto (double x, double y)
   pdf_path   *cpa = &gs->path;
   pdf_coord  *cpt = &gs->cp;
   pdf_coord   p0;
+
+  if (!(gs->flags & GS_FLAG_CURRENTPOINT_SET))
+    return -1;
 
   p0.x = x + cpt->x; p0.y = y + cpt->y;
 
@@ -1678,6 +1689,9 @@ pdf_dev_curveto (double x0, double y0,
   pdf_path   *cpa = &gs->path;
   pdf_coord  *cpt = &gs->cp;
   pdf_coord   p0, p1, p2;
+
+  if (!(gs->flags & GS_FLAG_CURRENTPOINT_SET))
+    return -1;
 
   p0.x = x0; p0.y = y0;
   p1.x = x1; p1.y = y1;
@@ -1697,6 +1711,9 @@ pdf_dev_rcurveto (double x0, double y0,
   pdf_coord  *cpt = &gs->cp;
   pdf_coord   p0, p1, p2;
 
+  if (!(gs->flags & GS_FLAG_CURRENTPOINT_SET))
+    return -1;
+
   p0.x = x0 + cpt->x; p0.y = y0 + cpt->y;
   p1.x = x1 + cpt->x; p1.y = y1 + cpt->y;
   p2.x = x2 + cpt->x; p2.y = y2 + cpt->y;
@@ -1712,6 +1729,9 @@ pdf_dev_closepath (void)
   pdf_gstate *gs  = dpx_stack_top(gss);
   pdf_coord  *cpt = &gs->cp;
   pdf_path   *cpa = &gs->path;
+
+  if (!(gs->flags & GS_FLAG_CURRENTPOINT_SET))
+    return -1;
 
   return pdf_path__closepath(cpa, cpt);
 }
@@ -1832,6 +1852,9 @@ pdf_dev_bspline (double x0, double y0,
   pdf_path   *cpa = &gs->path;
   pdf_coord  *cpt = &gs->cp;  
   pdf_coord   p1, p2, p3;
+
+  if (!(gs->flags & GS_FLAG_CURRENTPOINT_SET))
+    return -1;
 
   p1.x = x0 + 2.0 * (x1 - x0) / 3.0;
   p1.y = y0 + 2.0 * (y1 - y0) / 3.0;

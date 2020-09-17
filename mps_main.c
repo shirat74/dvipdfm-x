@@ -542,7 +542,7 @@ mps_search_dict_stack (mpsi *p, const char *key, pst_obj **where)
   return obj;
 }
 
-#if 0
+#if 1
 static pst_obj *
 mps_search_systemdict (mpsi *p, const char *key)
 {
@@ -555,6 +555,33 @@ mps_search_systemdict (mpsi *p, const char *key)
   return obj;
 }
 #endif
+
+static int
+catch_error (mpsi *p)
+{
+  /* Check if it were executed within stopped context */
+  int stop = 0, i, n;
+  
+  n = dpx_stack_depth(&p->stack.exec);
+  for (i = 0; i < n; i ++) {
+    pst_obj *obj = dpx_stack_at(&p->stack.exec, i);
+    /* a boolean "false" in the exec stack indicates stopped */
+    if (PST_BOOLEANTYPE(obj) && pst_getIV(obj) == 0) {
+      /* stopped */
+      stop = 1;
+      break;
+    }
+  }
+  if (stop) {
+    pst_obj *obj = mps_search_systemdict(p, "stop");
+    dpx_stack_push(&p->stack.exec, pst_copy_obj(obj));
+  } else {
+    WARN("Offending command: %s", p->cur_op ? p->cur_op : "null");
+    ERROR("Cannot continue");
+  }
+
+  return stop ? 0 : -1;
+}
 
 /*
  * The only sections that need to know x_user and y _user are those
@@ -642,12 +669,10 @@ mps_parse_body (mpsi *p, const char **strptr, const char *endptr)
         dpx_stack_push(&p->stack.operand, pst_copy_obj(obj));
       }
       pst_release_obj(obj);
+      if (error)
+        error = catch_error(p);
     }
     skip_white(strptr, endptr);
-  }
-  if (error) {
-    WARN("Offending command: %s", p->cur_op ? p->cur_op : "null");
-    ERROR("Cannot continue");
   }
 
   return error;
