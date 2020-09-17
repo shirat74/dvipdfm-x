@@ -1730,9 +1730,6 @@ pdf_dev_closepath (void)
   pdf_coord  *cpt = &gs->cp;
   pdf_path   *cpa = &gs->path;
 
-  if (!(gs->flags & GS_FLAG_CURRENTPOINT_SET))
-    return -1;
-
   return pdf_path__closepath(cpa, cpt);
 }
 
