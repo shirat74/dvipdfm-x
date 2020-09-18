@@ -69,9 +69,7 @@ extern int    pdf_dev_setlinejoin   (int     style);
 extern int    pdf_dev_setdash       (int     count,
                                      double *pattern,
                                      double  offset);
-#if 0
-extern int    pdf_dev_setflat       (int     flatness);
-#endif
+extern int    pdf_dev_setflat       (double  flatness);
 
 /* Path Construction */
 extern int    pdf_dev_moveto        (double x , double y);
@@ -92,6 +90,7 @@ extern int    pdf_dev_arcn          (double c_x, double c_y, double r,
                                      double a_0, double a_1);
 
 extern int    pdf_dev_pathbbox      (pdf_rect *bbox);
+extern void   pdf_dev_flattenpath   (void);
 
 #define PDF_FILL_RULE_NONZERO 0
 #define PDF_FILL_RULE_EVENODD 1
@@ -141,7 +140,7 @@ extern int    pdf_dev_bspline       (double x0, double y0,
 
  
 extern void   pdf_invertmatrix      (pdf_tmatrix *M);
-  
+
 /* The depth here is the depth of q/Q nesting.
  * We must remember current depth of nesting when starting a page or xform,
  * and must recover until that depth at the end of page/xform.

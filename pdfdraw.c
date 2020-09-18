@@ -931,7 +931,7 @@ typedef struct pdf_gstate_
   int       linejoin;   /* j,  LJ */
   double    miterlimit; /* M,  ML */
 
-  int       flatness;   /* i,  FL, 0 to 100 (0 for use device-default) */
+  double    flatness;   /* i,  FL, 0 to 100 (0 for use device-default) */
 
   /* internal */
   pdf_path  path;
@@ -1535,27 +1535,25 @@ pdf_dev_setdash (int count, double *pattern, double offset)
   return 0;
 }
 
-#if 0
 int
-pdf_dev_setflat (int flatness)
+pdf_dev_setflat (double flatness)
 {
   dpx_stack  *gss = &gs_stack;
   pdf_gstate *gs  = dpx_stack_top(gss);
   int         len = 0;
   char       *buf = fmt_buf;
 
-  if (flatness < 0 || flatness > 100)
+  if (flatness < 0.2 || flatness > 100.0)
     return -1;
 
   if (gs->flatness != flatness) {
     gs->flatness = flatness;
-    len = sprintf(buf, " %d i", flatness);
+    len = sprintf(buf, " %d i", (int) ROUND(flatness, 1));
     pdf_doc_add_page_content(buf, len);  /* op: i */
   }
 
   return 0;
 }
-#endif
 
 /* ZSYUEDVEDEOF */
 int
@@ -2087,3 +2085,393 @@ pdf_dev_pathbbox (pdf_rect *bbox)
   bbox->ury = y_max;
   return 0;
 }
+
+/* Flattening Bezier Curve */
+static void
+vec_at (pdf_coord *pt, pdf_coord p1, pdf_coord p2, double t)
+{
+  pt->x = p1.x + (p2.x - p1.x) * t;
+  pt->y = p1.y + (p2.y - p1.y) * t;
+}
+
+static void
+vec_diff (pdf_coord *pt, pdf_coord p1, pdf_coord p2)
+{
+  pt->x = p1.x - p2.x;
+  pt->y = p1.y - p2.y;
+}
+
+static double
+vec_prod (pdf_coord p1, pdf_coord p2)
+{
+  return (p1.x * p2.y - p1.y * p2.x);
+}
+
+static void
+split_bezier (const pdf_coord *cp, pdf_coord *seg1, pdf_coord *seg2, double t)
+{
+  pdf_coord m1[3], m2[2], m3;
+  
+  vec_at(&m1[0], cp[0], cp[1], t);
+  vec_at(&m1[1], cp[1], cp[2], t);
+  vec_at(&m1[2], cp[2], cp[3], t);
+  vec_at(&m2[0], m1[0], m1[1], t);
+  vec_at(&m2[1], m1[1], m1[2], t);
+  vec_at(&m3, m2[0], m2[1], t);
+
+  seg1[0] = cp[0];
+  seg1[1] = m1[0];
+  seg1[2] = m2[0];
+  seg1[3] = m3;
+
+  seg2[0] = m3;
+  seg2[1] = m2[1];
+  seg2[2] = m1[2];
+  seg2[3] = cp[3];
+
+  return;
+}
+
+static int
+flatten_bezier_segment (pdf_coord *lines, const pdf_coord *cp, double flatness)
+{
+  int       n_seg = 0;
+  double    t     = 0.0;
+  pdf_coord b[4];
+
+  b[0] = cp[0];
+  b[1] = cp[1];
+  b[2] = cp[2];
+  b[3] = cp[3];
+  while (t < 1.0) {
+    pdf_coord p1, p2;
+    double    s2, prod, d;
+
+    vec_diff(&p1, b[1], b[0]);
+    vec_diff(&p2, b[2], b[0]);
+    prod = vec_prod(p2, p1);
+    d    = sqrt(p1.x * p1.x + p1.y * p1.y);
+    if (prod == 0.0 || d == 0.0)
+      break;
+    s2   = prod / d;
+    t    = 2.0 * sqrt(flatness / (3.0 * fabs(s2)));
+    if (t < 1.0) {
+      pdf_coord seg1[4], seg2[4];
+
+      split_bezier(b, seg1, seg2, t);
+      b[0] = seg2[0];
+      b[1] = seg2[1];
+      b[2] = seg2[2];
+      b[3] = seg2[3];
+      lines[n_seg++] = seg2[0];
+    }
+  }
+
+  lines[n_seg++] = b[3];
+
+  return n_seg;
+}
+
+static int
+vec_isnull (pdf_coord v)
+{
+  return v.x == 0.0 && v.y == 0.0 ? 1 : 0;
+}
+
+static void
+inflection_line_segment (const pdf_coord *cp, double *t1, double *t2, double t, double flatness)
+{
+  pdf_coord seg1[4], seg2[4];
+  pdf_coord rx, p1, p2, p3;
+  double    s3, tf;
+
+  /* Split curve at the inflection point */
+  split_bezier(cp, seg1, seg2, t);
+
+  vec_diff(&p1, cp[1], cp[0]);
+  vec_diff(&p2, cp[2], cp[1]);
+  vec_diff(&p3, cp[3], cp[0]);
+
+  if (vec_isnull(p1) && vec_isnull(p2)) {
+    /* straight line */
+#if 1
+    /* TODO: check really so? */
+    s3 = p3.x - p3.y;
+    if (s3 == 0.0) {
+      *t1 = -1.0;
+      *t2 =  2.0;
+    } else {
+      double r = pow(fabs(flatness/s3), 1.0/3.0);
+      *t1 = t - r;
+      *t2 = t + r;
+    }
+    return;
+#else
+    *t1 = -1.0;
+    *t2 =  2.0;
+    return;
+#endif
+  }
+
+  rx = vec_isnull(p1) ? p2 : p1;
+  s3 = vec_prod(p3, rx) / sqrt(rx.x * rx.x + rx.y * rx.y);
+  if (s3 == 0) {
+    *t1 = -1.0;
+    *t2 =  2.0;
+    return;
+  }
+
+  tf = pow(fabs(flatness / s3), 1.0 / 3.0);
+
+  *t1 = t - tf * (1 - t);
+  *t2 = t + tf * (1 - t);
+
+  return;
+}
+
+static int
+find_inflection_points (const pdf_coord *cp, double *t1, double *t2)
+{
+  pdf_coord A, B, C;
+  double    a, b, c;
+
+  A.x = cp[1].x - cp[0].x;
+  A.y = cp[1].y - cp[0].y;
+  B.x = cp[2].x - 2.0 * cp[1].x + cp[0].x;
+  B.y = cp[2].y - 2.0 * cp[1].y + cp[0].y;
+  C.x = cp[3].x - 3.0 * cp[2].x + 3.0 * cp[1].x - cp[0].x;
+  C.y = cp[3].y - 3.0 * cp[2].y + 3.0 * cp[1].y - cp[0].y;
+  a = vec_prod(B, C);
+  b = vec_prod(A, C);
+  c = vec_prod(A, B);
+
+  if (a == 0) {
+    if (b == 0) {
+      if (c == 0) {
+        /* straight line */
+        /* FIXME */
+        return -1;
+      }
+      return 0;
+    }
+    *t1 = -c / b;
+    return 1;
+  } else {
+    double disc = b * b - 4 * a * c;
+
+    if (disc < 0) {
+      return 0;
+    } else if (disc == 0) {
+      *t1 = -b / (2 * a);
+      return 1;
+    } else {
+      double v1, v2;
+      v1 = (-b + sqrt(disc)) / (2.0 * a);
+      v2 = (-b - sqrt(disc)) / (2.0 * a); 
+      *t1 = min2(v1, v2);
+      *t2 = max2(v1, v2);
+      return 2;
+    }
+  }
+  return 0;
+}
+
+static int
+flatten_bezier (pdf_coord *lines, const pdf_coord *cp, double flatness)
+{
+  double t1 = -1.0, t2 = -1.0, t1min, t1max, t2min, t2max;
+  int    n, count; /* number of inflection points */
+
+  count = find_inflection_points(cp, &t1, &t2);
+  if (count < 0) { /* meaning a straight line */
+    lines[0] = cp[3];
+    return 1;
+  } else if (count == 0) { /* no inflection point */
+    return flatten_bezier_segment(lines, cp, flatness);
+  }
+
+  if ((t1 < 0.0 || t1 >= 1.0) && (count == 1 || (t2 < 0.0 || t2 >= 1.0))) {
+    /* not in valid range */
+    return flatten_bezier_segment(lines, cp, flatness);
+  }
+
+  t1min = t1; t1max = t1;
+  t2min = t2; t2max = t2;
+
+  if (count > 0 && t1 >= 0 && t1 < 1.0) {
+    inflection_line_segment(cp, &t1min, &t1max, t1, flatness);
+  }
+  if (count > 1 && t2 >= 0 && t2 < 1.0) {
+    inflection_line_segment(cp, &t2min, &t2max, t2, flatness);
+  }
+
+  if (count == 1 && t1min <= 0 && t1max >= 1.0) {
+    lines[0] = cp[3];
+    return 1;
+  }
+
+  n = 0;
+  if (t1min > 0) {
+    pdf_coord seg1[4], seg2[4];
+    
+    split_bezier(cp, seg1, seg2, t1min);
+    n += flatten_bezier_segment(&lines[n], seg1, flatness);
+  }
+  if (t1max >= 0 && t1max < 1.0 && (count == 1 || t2min > t1max)) {
+    /* Overlapping case */
+    pdf_coord seg1[4], seg2[4];
+
+    split_bezier(cp, seg1, seg2, t1max);
+    lines[n] = seg2[0];
+    n++;
+
+    if (count == 1 || (count > 1 && t2min >= 1.0)) {
+      n += flatten_bezier_segment(&lines[n], seg2, flatness);
+    }
+  } else if (count > 1 && t2min > 1.0) {
+    /* t1max >= 1.0 */
+    lines[n] = cp[4];
+    n++;
+    return n;
+  }
+
+  if (count > 1 && t2min < 1.0 && t2max > 0) {
+    pdf_coord seg1[4], seg2[4], seg3[4];
+
+    if (t2min > 0 && t2min < t1max) {
+      /* Overlapping case */
+      split_bezier(cp, seg1, seg2, t1max);
+      lines[n] = seg2[0];
+      n++;
+    } else if (t2min > 0 && t1max > 0) {
+      split_bezier(cp, seg1, seg2, t1max);
+      {
+        double t2mina = (t2min - t1max) / (1 - t1max);
+        split_bezier(seg2, seg1, seg3, t2mina);
+        n += flatten_bezier_segment(&lines[n], seg1, flatness);
+      }
+    } else if (t2min > 0) {
+      split_bezier(cp, seg1, seg2, t2min);
+      n += flatten_bezier_segment(&lines[n], seg1, flatness);
+    }
+    if (t2max < 1.0) {
+      split_bezier(cp, seg1, seg2, t2max);
+      lines[n] = seg2[0];
+      n++;
+      n += flatten_bezier_segment(&lines[n], seg2, flatness);
+    } else {
+      lines[n] = cp[3];
+      n++;
+    }
+  }
+
+  return n;
+}
+
+/* FIXME: must be in device coord */
+void
+pdf_dev_flattenpath (void)
+{
+  dpx_stack  *gss = &gs_stack;
+  pdf_gstate *gs;
+  pdf_path   *pa, *fl;
+  int         i;
+  double      flatness;
+  pdf_coord   cp;
+
+  gs = dpx_stack_top(gss);
+  pa = &gs->path;
+
+  flatness = gs->flatness;
+
+  fl = NEW(1, pdf_path);
+  init_a_path(fl);
+  for (i = 0; i < pa->num_paths; i++) {
+    pa_elem *pe = &pa->path[i];
+    switch (pe->type) {
+    case PE_TYPE__MOVETO:
+      pdf_path__moveto(fl, &cp, &pe->p[0]);
+      break;
+    case PE_TYPE__LINETO:
+      pdf_path__lineto(fl, &cp, &pe->p[0]);
+      break;
+    case PE_TYPE__CURVETO_V:
+      {
+        pdf_coord lines[256];
+        pdf_coord pt[4];
+        int       j, n;
+
+        pt[0] = cp;
+        pt[1] = cp;
+        pt[2] = pe->p[0];
+        pt[3] = pe->p[1];
+        n = flatten_bezier(lines, pt, flatness);        
+        for (j = 0; j < n; j++) {
+          pdf_path__lineto(fl, &cp, &lines[j]);
+        }
+      }
+      break;
+    case PE_TYPE__CURVETO_Y:
+      {
+        pdf_coord lines[256];
+        pdf_coord pt[4];
+        int       j, n;
+
+        pt[0] = cp;
+        pt[1] = pe->p[0];
+        pt[2] = pe->p[1];
+        pt[3] = pe->p[1];
+        n = flatten_bezier(lines, pt, flatness);
+        for (j = 0; j < n; j++) {
+          pdf_path__lineto(fl, &cp, &lines[j]);
+        }
+      }
+      break;
+    case PE_TYPE__CURVETO:
+      {
+        pdf_coord lines[256];
+        pdf_coord pt[4];
+        int       j, n;
+
+        pt[0] = cp;
+        pt[1] = pe->p[0];
+        pt[2] = pe->p[1];
+        pt[3] = pe->p[2];
+        n = flatten_bezier(lines, pt, flatness);
+        for (j = 0; j < n; j++) {
+          pdf_path__lineto(fl, &cp, &lines[j]);
+        }
+      }
+      break;
+    }
+  }
+
+  pdf_path__copypath(&gs->path, fl);
+  pdf_path__clearpath(fl);
+  RELEASE(fl);
+
+  return;
+}
+
+#if 0
+int main (void)
+{
+  pdf_coord cp[4] = {{0.0, 0.0}, {30.0, 20.0}, {10.0, 40.0}, {0.0, 80.0}};
+  pdf_coord lines[256];
+  int       i, n_seg = 0;
+
+  n_seg = flatten_bezier(lines, cp, 1.0);
+
+  fprintf(stdout, "%g %g moveto\n", cp[0].x, cp[0].y);
+  fprintf(stdout, "%g %g %g %g %g %g curveto stroke\n", cp[1].x, cp[1].y, cp[2].x, cp[2].y, cp[3].x, cp[3].y);
+  fprintf(stdout, "1 0 0 setrgbcolor\n%g %g moveto\n", cp[0].x, cp[0].y);
+  for (i = 0; i < n_seg; i++) {
+    fprintf(stdout, "%g %g lineto\n", lines[i].x, lines[i].y);
+  }
+  fprintf(stdout, "stroke\n");
+  fprintf(stdout, "showpage");
+
+  return 0;
+}
+#endif
+

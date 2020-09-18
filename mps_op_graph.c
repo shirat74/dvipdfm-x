@@ -345,6 +345,7 @@ is_fontname (const char *token)
 #define CLIPPATH        902
 #define CURRENTLINEWIDTH 903
 #define PATHBBOX         904
+#define FLATTENPATH      905
 
 #define DEF             999
 
@@ -412,6 +413,8 @@ static struct operators
   {"currentfont",  CURRENTFONT},
 
   {"stringwidth",  STRINGWIDTH},
+
+  {"flattenpath",  FLATTENPATH},
 #if 1
   /* NYI */
   {"currentflat",      CURRENTFLAT},
@@ -524,10 +527,20 @@ do_operator (mpsi *p, const char *token, double x_user, double y_user)
     mps_push_stack(p, pst_new_integer(1));
     break;
   case SETFLAT:
-    error = pop_numbers(p, 1);
+    error = get_numbers(p, values, 1);
+    if (!error)
+      error = pdf_dev_setflat(values[0]);
+    if (!error)
+      error = pop_numbers(p, 1);
     break;
   case CLIPPATH:
     break;
+#endif
+
+  case FLATTENPATH:
+    pdf_dev_flattenpath();
+    break;
+
   case PATHBBOX:
     {
       pdf_rect r;
@@ -541,7 +554,6 @@ do_operator (mpsi *p, const char *token, double x_user, double y_user)
       }
     }
     break;
-#endif
 
   case MATRIX:
     {
@@ -701,6 +713,7 @@ do_operator (mpsi *p, const char *token, double x_user, double y_user)
     break;
   case STROKE:
     /* fill rule not supported yet */
+    /* pdf_dev_flattenpath(); */
     pdf_dev_flushpath('S', PDF_FILL_RULE_NONZERO);
     break;
   case FILL:
