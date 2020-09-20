@@ -2101,12 +2101,6 @@ vec_diff (pdf_coord *pt, pdf_coord p1, pdf_coord p2)
   pt->y = p1.y - p2.y;
 }
 
-static double
-vec_prod (pdf_coord p1, pdf_coord p2)
-{
-  return (p1.x * p2.y - p1.y * p2.x);
-}
-
 static void
 point_on_bezier (const pdf_coord *cp, pdf_coord *pt, double t)
 {
@@ -2164,7 +2158,7 @@ flatten_bezier_segment (pdf_coord *lines, const pdf_coord *cp, double flatness)
 
     vec_diff(&p1, b[1], b[0]);
     vec_diff(&p2, b[2], b[0]);
-    prod = vec_prod(p2, p1);
+    prod = vecrot(p2, p1);
     d    = sqrt(p1.x * p1.x + p1.y * p1.y);
     if (prod == 0.0 || d == 0.0)
       break;
@@ -2215,7 +2209,7 @@ inflection_line_segment (const pdf_coord *cp, double *t1, double *t2, double t, 
   }
 
   rx = vec_isnull(p1) ? p2 : p1;
-  s3 = vec_prod(p3, rx) / sqrt(rx.x * rx.x + rx.y * rx.y);
+  s3 = vecrot(p3, rx) / sqrt(rx.x * rx.x + rx.y * rx.y);
   if (s3 == 0) {
     *t1 = -1.0;
     *t2 =  2.0;
@@ -2244,9 +2238,9 @@ find_inflection_points (const pdf_coord *cp, double *t1, double *t2, double *t_c
   c.x = -3.0 * cp[0].x + 3.0 * cp[1].x;
   c.y = -3.0 * cp[0].y + 3.0 * cp[1].y;
 
-  ab = vec_prod(a, b);
-  ac = vec_prod(a, c);
-  bc = vec_prod(b, c);
+  ab = vecrot(a, b);
+  ac = vecrot(a, c);
+  bc = vecrot(b, c);
   
   if (ab == 0)
     return 0;
