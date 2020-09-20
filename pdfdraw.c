@@ -2101,6 +2101,18 @@ vec_diff (pdf_coord *pt, pdf_coord p1, pdf_coord p2)
   pt->y = p1.y - p2.y;
 }
 
+static int
+bezier_is_linear (const pdf_coord *cp)
+{
+  pdf_coord p1, p2, p3;
+  
+  vec_diff(&p1, cp[1], cp[0]);
+  vec_diff(&p2, cp[2], cp[0]);
+  vec_diff(&p3, cp[3], cp[0]);
+  
+  return vecrot(p1, p3) == 0.0 && vecrot(p2, p3) == 0.0 ? 1 : 0;
+}
+
 static void
 point_on_bezier (const pdf_coord *cp, pdf_coord *pt, double t)
 {
@@ -2255,12 +2267,29 @@ find_inflection_points (const pdf_coord *cp, double *t1, double *t2, double *t_c
     return 1;
   } else {
     double v1, v2;
-    v1 = tc + sqrt(D);
-    v2 = tc - sqrt(D); 
-    *t1     = min2(v1, v2);
-    *t2     = max2(v1, v2);
+
+    v1      = tc - sqrt(D);
+    v2      = tc + sqrt(D);
     *t_cusp = tc;
-    return 2;
+    if (v1 > 1.0) {
+      return 0;
+    } else if (v1 < 0.0) {
+      if (v2 < 0.0 || v2 > 1.0) {
+        return 0;
+      } else {
+        *t1 = v2;
+        return 1;
+      }
+    } else {
+      if (v2 > 1.0) {
+        *t1 = v1;
+        return 1;
+      } else {
+        *t1 = v1;
+        *t2 = v2;
+        return 2;
+      }
+    }
   }
   return 0;
 }
@@ -2272,77 +2301,90 @@ flatten_bezier (pdf_coord *lines, const pdf_coord *cp, double flatness)
   double t1min, t1max, t2min, t2max;
   int    n, count; /* number of inflection points */
 
-  count = find_inflection_points(cp, &t1, &t2, &t_cusp);
-  if (count < 0) { /* meaning a straight line */
+  if (is_linear(cp)) {
     lines[0] = cp[3];
     return 1;
-  } else if (count == 0) { /* no inflection point */
+  }
+
+  count = find_inflection_points(cp, &t1, &t2, &t_cusp);
+  if (count == 0) { /* no inflection point */
     return flatten_bezier_segment(lines, cp, flatness);
   }
 
-  if ((t1 < 0.0 || t1 >= 1.0) && (count == 1 || (t2 < 0.0 || t2 >= 1.0))) {
-    /* not in valid range */
-    return flatten_bezier_segment(lines, cp, flatness);
-  }
-
+  /* t1 and t2 must be in [0, 1] below */
   t1min = t1; t1max = t1;
   t2min = t2; t2max = t2;
 
-  if (count > 0 && t1 >= 0 && t1 < 1.0) {
-    inflection_line_segment(cp, &t1min, &t1max, t1, flatness);
-  }
-  if (count > 1 && t2 >= 0 && t2 < 1.0) {
+  inflection_line_segment(cp, &t1min, &t1max, t1, flatness);
+  if (count > 1) {
     inflection_line_segment(cp, &t2min, &t2max, t2, flatness);
+    if (t2min > 1.0 || t2max < 0.0) {
+      count = 1;
+    }
+    /* Don't know such case exists but... */
+    if (t2min >= t1min && t2max <= t1max) {
+      count = 1;
+    }
   }
 
-  if (count == 1 && t1min <= 0 && t1max >= 1.0) {
+  if (t1max <= 0.0 || t1min >= 0.0) {
+    if (count == 1) {
+      return flatten_bezier_segment(lines, cp, flatness);
+    } else {
+      t1min = t2min;
+      t1max = t2max;
+      count = 1;
+    }
+  }
+
+  if (t1min <= 0 && t1max >= 1.0) {
     lines[0] = cp[3];
     return 1;
   }
 
   n = 0;
-  if (t1min > 0) {
+  if (t1min <= 0.0) {
+    pdf_coord seg1[4], seg2[4];
+    if (t2min > t1max) {    
+      split_bezier(cp, seg1, seg2, t1max);
+      lines[n] = seg2[0];
+      n++;
+    }
+  } else {
     pdf_coord seg1[4], seg2[4];
     
     split_bezier(cp, seg1, seg2, t1min);
     n += flatten_bezier_segment(&lines[n], seg1, flatness);
   }
-  if (t1max >= 0 && t1max < 1.0 && (count == 1 || t2min > t1max)) {
-    /* Overlapping case */
+  if (count == 1 || t2min > t1max) {
     pdf_coord seg1[4], seg2[4];
 
     split_bezier(cp, seg1, seg2, t1max);
     lines[n] = seg2[0];
     n++;
-
-    if (count == 1 || (count > 1 && t2min >= 1.0)) {
+    if (count == 1) {
       n += flatten_bezier_segment(&lines[n], seg2, flatness);
+      return n;
     }
-  } else if (count > 1 && t2min > 1.0) {
-    /* t1max >= 1.0 */
-    lines[n] = cp[4];
-    n++;
-    return n;
   }
 
-  if (count > 1 && t2min < 1.0 && t2max > 0) {
+  if (count > 1) {
     pdf_coord seg1[4], seg2[4], seg3[4];
 
-    if (t2min > 0 && t2min < t1max) {
+    if (t2min < t1max) {
       /* Overlapping case */
-      split_bezier(cp, seg1, seg2, t1max);
-      lines[n] = seg2[0];
+      pdf_coord pt;
+
+      point_on_bezier(cp, &pt, t_cusp);
+      lines[n] = pt;
       n++;
-    } else if (t2min > 0 && t1max > 0) {
+    } else {
       split_bezier(cp, seg1, seg2, t1max);
       {
         double t2mina = (t2min - t1max) / (1 - t1max);
         split_bezier(seg2, seg1, seg3, t2mina);
         n += flatten_bezier_segment(&lines[n], seg1, flatness);
       }
-    } else if (t2min > 0) {
-      split_bezier(cp, seg1, seg2, t2min);
-      n += flatten_bezier_segment(&lines[n], seg1, flatness);
     }
     if (t2max < 1.0) {
       split_bezier(cp, seg1, seg2, t2max);
@@ -2354,6 +2396,7 @@ flatten_bezier (pdf_coord *lines, const pdf_coord *cp, double flatness)
       n++;
     }
   }
+
 
   return n;
 }
