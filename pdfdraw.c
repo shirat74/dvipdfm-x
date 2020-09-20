@@ -2108,6 +2108,21 @@ vec_prod (pdf_coord p1, pdf_coord p2)
 }
 
 static void
+point_on_bezier (const pdf_coord *cp, pdf_coord *pt, double t)
+{
+  pdf_coord m1[3], m2[2];
+  
+  vec_at(&m1[0], cp[0], cp[1], t);
+  vec_at(&m1[1], cp[1], cp[2], t);
+  vec_at(&m1[2], cp[2], cp[3], t);
+  vec_at(&m2[0], m1[0], m1[1], t);
+  vec_at(&m2[1], m1[1], m1[2], t);
+  vec_at(pt, m2[0], m2[1], t);
+
+  return;
+}
+
+static void
 split_bezier (const pdf_coord *cp, pdf_coord *seg1, pdf_coord *seg2, double t)
 {
   pdf_coord m1[3], m2[2], m3;
@@ -2189,28 +2204,14 @@ inflection_line_segment (const pdf_coord *cp, double *t1, double *t2, double t, 
   split_bezier(cp, seg1, seg2, t);
 
   vec_diff(&p1, cp[1], cp[0]);
-  vec_diff(&p2, cp[2], cp[1]);
+  vec_diff(&p2, cp[2], cp[0]);
   vec_diff(&p3, cp[3], cp[0]);
 
   if (vec_isnull(p1) && vec_isnull(p2)) {
     /* straight line */
-#if 1
-    /* TODO: check really so? */
-    s3 = p3.x - p3.y;
-    if (s3 == 0.0) {
-      *t1 = -1.0;
-      *t2 =  2.0;
-    } else {
-      double r = pow(fabs(flatness/s3), 1.0/3.0);
-      *t1 = t - r;
-      *t2 = t + r;
-    }
-    return;
-#else
     *t1 = -1.0;
     *t2 =  2.0;
     return;
-#endif
   }
 
   rx = vec_isnull(p1) ? p2 : p1;
@@ -2230,48 +2231,42 @@ inflection_line_segment (const pdf_coord *cp, double *t1, double *t2, double t, 
 }
 
 static int
-find_inflection_points (const pdf_coord *cp, double *t1, double *t2)
+find_inflection_points (const pdf_coord *cp, double *t1, double *t2, double *t_cusp)
 {
-  pdf_coord A, B, C;
-  double    a, b, c;
+  pdf_coord a, b, c;
+  double    ab, ac, bc;
+  double    tc, D;
 
-  A.x = cp[1].x - cp[0].x;
-  A.y = cp[1].y - cp[0].y;
-  B.x = cp[2].x - 2.0 * cp[1].x + cp[0].x;
-  B.y = cp[2].y - 2.0 * cp[1].y + cp[0].y;
-  C.x = cp[3].x - 3.0 * cp[2].x + 3.0 * cp[1].x - cp[0].x;
-  C.y = cp[3].y - 3.0 * cp[2].y + 3.0 * cp[1].y - cp[0].y;
-  a = vec_prod(B, C);
-  b = vec_prod(A, C);
-  c = vec_prod(A, B);
+  a.x = -cp[0].x + 3.0 * cp[1].x - 3.0 * cp[2].x + cp[3].x;
+  a.y = -cp[0].y + 3.0 * cp[1].y - 3.0 * cp[2].y + cp[3].y;
+  b.x = 3.0 * cp[0].x - 6.0 * cp[1].x + 3.0 * cp[2].x;
+  b.y = 3.0 * cp[0].y - 6.0 * cp[1].y + 3.0 * cp[2].y; 
+  c.x = -3.0 * cp[0].x + 3.0 * cp[1].x;
+  c.y = -3.0 * cp[0].y + 3.0 * cp[1].y;
 
-  if (a == 0) {
-    if (b == 0) {
-      if (c == 0) {
-        /* straight line */
-        /* FIXME */
-        return -1;
-      }
-      return 0;
-    }
-    *t1 = -c / b;
+  ab = vec_prod(a, b);
+  ac = vec_prod(a, c);
+  bc = vec_prod(b, c);
+  
+  if (ab == 0)
+    return 0;
+
+  tc = -ac / (2.0 * ab);
+  D  = tc * tc - bc / (3.0 * ab);
+  if (D < 0) {
+    return 0;
+  } else if (D == 0) {
+    *t1     = tc;
+    *t_cusp = tc;
     return 1;
   } else {
-    double disc = b * b - 4 * a * c;
-
-    if (disc < 0) {
-      return 0;
-    } else if (disc == 0) {
-      *t1 = -b / (2 * a);
-      return 1;
-    } else {
-      double v1, v2;
-      v1 = (-b + sqrt(disc)) / (2.0 * a);
-      v2 = (-b - sqrt(disc)) / (2.0 * a); 
-      *t1 = min2(v1, v2);
-      *t2 = max2(v1, v2);
-      return 2;
-    }
+    double v1, v2;
+    v1 = tc + sqrt(D);
+    v2 = tc - sqrt(D); 
+    *t1     = min2(v1, v2);
+    *t2     = max2(v1, v2);
+    *t_cusp = tc;
+    return 2;
   }
   return 0;
 }
@@ -2279,10 +2274,11 @@ find_inflection_points (const pdf_coord *cp, double *t1, double *t2)
 static int
 flatten_bezier (pdf_coord *lines, const pdf_coord *cp, double flatness)
 {
-  double t1 = -1.0, t2 = -1.0, t1min, t1max, t2min, t2max;
+  double t1 = -1.0, t2 = -1.0, t_cusp = -1.0;
+  double t1min, t1max, t2min, t2max;
   int    n, count; /* number of inflection points */
 
-  count = find_inflection_points(cp, &t1, &t2);
+  count = find_inflection_points(cp, &t1, &t2, &t_cusp);
   if (count < 0) { /* meaning a straight line */
     lines[0] = cp[3];
     return 1;
@@ -2474,4 +2470,3 @@ int main (void)
   return 0;
 }
 #endif
-
