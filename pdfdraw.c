@@ -2416,7 +2416,6 @@ flatten_bezier (pdf_path *pa, const pdf_coord *cp, double flatness)
   return 0;
 }
 
-/* FIXME: must be in device coord */
 void
 pdf_dev_flattenpath (void)
 {
