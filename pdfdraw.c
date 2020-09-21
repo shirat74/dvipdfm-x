@@ -343,7 +343,7 @@ pdf_path__appendpath (pdf_path *p1, const pdf_path *p0)
   int       i, j;
 
   pdf_path__growpath(p1, PA_LENGTH(p1) + PA_LENGTH(p0));
-  for (i = 0, j = PA_LENGTH(pa1); i < PA_LENGTH(p0); i++) {
+  for (i = 0, j = PA_LENGTH(p1); i < PA_LENGTH(p0); i++, j++) {
     pe1 = &(p1->path[j]);
     pe0 = &(p0->path[i]);
     pe1->type   = pe0->type;
@@ -2175,11 +2175,14 @@ split_bezier (const pdf_coord *cp, pdf_coord *seg1, pdf_coord *seg2, double t)
   return;
 }
 
+/* Straigh line must be checked before this routine is called */
 static int
 flatten_bezier_segment (pdf_path *pa, const pdf_coord *cp, double flatness)
 {
   double    t = 0.0;
-  pdf_coord b[4], cur = cp[0];
+  pdf_coord b[4], cur;
+
+  cur = pa->num_paths > 0 ? pa->path[pa->num_paths-1].p[0] : cp[0];
 
   b[0] = cp[0];
   b[1] = cp[1];
@@ -2195,8 +2198,8 @@ flatten_bezier_segment (pdf_path *pa, const pdf_coord *cp, double flatness)
     d    = sqrt(p1.x * p1.x + p1.y * p1.y);
     if (prod == 0.0 || d == 0.0)
       break;
-    s2   = prod / d;
-    t    = 2.0 * sqrt(flatness / (3.0 * fabs(s2)));
+    s2 = prod / d;
+    t  = 2.0 * sqrt(flatness / (3.0 * fabs(s2)));
     if (t < 1.0) {
       pdf_coord seg1[4], seg2[4];
 
@@ -2318,101 +2321,128 @@ find_inflection_points (const pdf_coord *cp, double *t1, double *t2, double *t_c
 static int
 flatten_bezier (pdf_path *pa, const pdf_coord *cp, double flatness)
 {
-  double    t1 = -1.0, t2 = -1.0, t_cusp = -1.0;
-  double    t1min, t1max, t2min, t2max;
-  int       count; /* number of inflection points */
-  pdf_coord cur = cp[0];
+  double      t1 = -1.0, t2 = -1.0, t_cusp = -1.0;
+  double      t1minus, t1plus, t2minus, t2plus;
+  int         count; /* number of inflection points */
+  pdf_coord   cur = cp[0];
 
-  if (is_linear(cp)) {
+  if (bezier_is_linear(cp)) {
     pdf_path__lineto(pa, &cur, &cp[3]);
     return 0;
   }
 
   count = find_inflection_points(cp, &t1, &t2, &t_cusp);
-  if (count == 0) { /* no inflection point */
+  if (count > 0) {
+    /* t1 and t2 must be in [0, 1] below */
+    t1minus = t1; t1plus = t1;
+    t2minus = t2; t2plus = t2;
+
+    inflection_line_segment(cp, &t1minus, &t1plus, t1, flatness);
+    if (count > 1) {
+      inflection_line_segment(cp, &t2minus, &t2plus, t2, flatness);
+      if (t2minus > 1.0 || t2plus < 0.0) {
+        count = 1;
+      }
+      /* Don't know such case exists but... */
+      if (t2minus >= t1minus && t2plus <= t1plus) {
+        count = 1;
+      }
+    }
+
+    if (t1plus < 0.0 || t1minus > 1.0) {
+      if (count > 1) {
+        t1minus = t2minus;
+        t1plus  = t2plus;
+        count   = 1;
+      } else {
+        count   = 0;
+      }
+    }
+  }
+
+  /* No inflection point or inflection ranges not valid (can happen?) */
+  if (count == 0) {
     return flatten_bezier_segment(pa, cp, flatness);
   }
-
-  /* t1 and t2 must be in [0, 1] below */
-  t1min = t1; t1max = t1;
-  t2min = t2; t2max = t2;
-
-  inflection_line_segment(cp, &t1min, &t1max, t1, flatness);
-  if (count > 1) {
-    inflection_line_segment(cp, &t2min, &t2max, t2, flatness);
-    if (t2min > 1.0 || t2max < 0.0) {
-      count = 1;
-    }
-    /* Don't know such case exists but... */
-    if (t2min >= t1min && t2max <= t1max) {
-      count = 1;
-    }
-  }
-
-  if (t1max <= 0.0 || t1min >= 0.0) {
-    if (count == 1) {
-      return flatten_bezier_segment(pa, cp, flatness);
-    } else {
-      t1min = t2min;
-      t1max = t2max;
-      count = 1;
-    }
-  }
-
-  if (t1min <= 0 && t1max >= 1.0) {
+  if (t1minus <= 0.0 && t1plus >= 1.0) {
     pdf_path__lineto(pa, &cur, &cp[3]);
     return 0;
   }
 
-  if (t1min <= 0.0) {
-    pdf_coord seg1[4], seg2[4];
-    if (t2min > t1max) {    
-      split_bezier(cp, seg1, seg2, t1max);
-      pdf_path__lineto(pa, &cur, &seg2[0]);
-    }
-  } else {
+  if (t1minus > 0.0) {
     pdf_coord seg1[4], seg2[4];
     
-    split_bezier(cp, seg1, seg2, t1min);
+    split_bezier(cp, seg1, seg2, t1minus);
     flatten_bezier_segment(pa, seg1, flatness);
-  }
-  if (count == 1 || t2min > t1max) {
-    pdf_coord seg1[4], seg2[4];
-
-    split_bezier(cp, seg1, seg2, t1max);
-    pdf_path__lineto(pa, &cur, &seg2[0]);
-    if (count == 1) {
-      return flatten_bezier_segment(pa, seg2, flatness);
+    cur = seg1[3];
+  } 
+  if (count == 1 || t2minus > t1plus) { /* no overlappig */
+    if (t1plus < 1.0) {
+      pdf_coord seg1[4], seg2[4];
+ 
+      split_bezier(cp, seg1, seg2, t1plus);
+      /* Why??? */
+      pdf_path__lineto(pa, &cur, &seg2[0]);
+      if (count == 1) {
+        return flatten_bezier_segment(pa, seg2, flatness);
+      }
+    } else {
+      pdf_path__lineto(pa, &cur, &cp[3]);
+      return 0;
     }
   }
 
   if (count > 1) {
     pdf_coord seg1[4], seg2[4], seg3[4];
 
-    if (t2min < t1max) {
-      /* Overlapping case */
+    if (t2minus < t1plus) { /* Overlapping case */
       pdf_coord pt;
 
       point_on_bezier(cp, &pt, t_cusp);
       pdf_path__lineto(pa, &cur, &pt);
     } else {
-      split_bezier(cp, seg1, seg2, t1max);
+      split_bezier(cp, seg1, seg2, t1plus);
       {
-        double t2mina = (t2min - t1max) / (1 - t1max);
-        split_bezier(seg2, seg1, seg3, t2mina);
+        double s2minus = (t2minus - t1plus) / (1 - t1plus);
+
+        split_bezier(seg2, seg1, seg3, s2minus);
         flatten_bezier_segment(pa, seg1, flatness);
+        cur = seg1[3];
       }
     }
-    if (t2max < 1.0) {
-      split_bezier(cp, seg1, seg2, t2max);
+    if (t2plus < 1.0) {
+      split_bezier(cp, seg1, seg2, t2plus);
       pdf_path__lineto(pa, &cur, &seg2[0]);
       flatten_bezier_segment(pa, seg2, flatness);
+      cur = seg2[3];
     } else {
       pdf_path__lineto(pa, &cur, &cp[3]);
     }
   }
 
+  return 0;
+}
 
+static int
+flatten_bezier_transform (pdf_path *pa, const pdf_coord *cp, const pdf_tmatrix *M, double flatness)
+{
+  pdf_path    seg;
+  pdf_tmatrix W;
+  pdf_coord   cur, pt[4];
+  int         i;
+
+  inversematrix(&W, M);
+  for (i = 0; i < 4; i++) {
+    pt[i] = cp[i];
+    pdf_coord__transform(&pt[i], M);
+  }
+  init_a_path(&seg);
+  pdf_path__moveto(&seg, &cur, &pt[0]);
+  flatten_bezier(&seg, pt, flatness);
+  pdf_path__transform(&seg, &W);
+  pdf_path__appendpath(pa, &seg);
+  clear_a_path(&seg);
+  
   return 0;
 }
 
@@ -2421,7 +2451,7 @@ pdf_dev_flattenpath (void)
 {
   dpx_stack   *gss = &gs_stack;
   pdf_gstate  *gs;
-  pdf_tmatrix *M, *W;
+  pdf_tmatrix *M;
   pdf_path    *pa, *fl;
   int          i;
   double       flatness;
@@ -2430,7 +2460,6 @@ pdf_dev_flattenpath (void)
   gs       = dpx_stack_top(gss);
   pa       = &gs->path;
   M        = &gs->matrix;
-  inversematrix(&W, &M);
   flatness = gs->flatness;
 
   fl = NEW(1, pdf_path);
@@ -2447,79 +2476,45 @@ pdf_dev_flattenpath (void)
     case PE_TYPE__CURVETO_V:
       {
         pdf_coord pt[4];
-        pdf_path  seg;
 
         pt[0] = cp;
         pt[1] = cp;
         pt[2] = pe->p[0];
         pt[3] = pe->p[1];
-        pdf_coord__transform(&pt, M);
-        init_a_path(&seg);
-        flatten_bezier(&seg, pt, flatness);
-        pdf_path__transform(&seg, W);
-        pdf_path__appendpath(fl, &seg);
+        flatten_bezier_transform(fl, pt, M, flatness);
+        cp = pe->p[1];
       }
       break;
     case PE_TYPE__CURVETO_Y:
       {
         pdf_coord pt[4];
-        pdf_path  seg;
 
         pt[0] = cp;
         pt[1] = pe->p[0];
         pt[2] = pe->p[1];
         pt[3] = pe->p[1];
-        pdf_coord__transform(&pt, M);
-        init_a_path(&seg);
-        flatten_bezier(&seg, pt, flatness);
-        pdf_path__transform(&seg, W);
-        pdf_path__appendpath(fl, &seg);
+        flatten_bezier_transform(fl, pt, M, flatness);
+        cp = pe->p[1];
       }
       break;
     case PE_TYPE__CURVETO:
       {
         pdf_coord pt[4];
-        pdf_path  seg;
 
         pt[0] = cp;
         pt[1] = pe->p[0];
         pt[2] = pe->p[1];
         pt[3] = pe->p[2];
-        pdf_coord__transform(&pt, M);
-        init_a_path(&seg);
-        flatten_bezier(&seg, pt, flatness);
-        pdf_path__transform(&seg, W);
-        pdf_path__appendpath(fl, &seg);
+        flatten_bezier_transform(fl, pt, M, flatness);
+        cp = pe->p[2];
       }
       break;
     }
   }
 
   pdf_path__copypath(&gs->path, fl);
-  pdf_path__clearpath(fl);
+  clear_a_path(fl);
   RELEASE(fl);
 
   return;
 }
-
-#if 0
-int main (void)
-{
-  pdf_coord cp[4] = {{0.0, 0.0}, {30.0, 20.0}, {10.0, 40.0}, {0.0, 80.0}};
-  pdf_coord lines[256];
-  int       i, n_seg = 0;
-
-  n_seg = flatten_bezier(lines, cp, 1.0);
-
-  fprintf(stdout, "%g %g moveto\n", cp[0].x, cp[0].y);
-  fprintf(stdout, "%g %g %g %g %g %g curveto stroke\n", cp[1].x, cp[1].y, cp[2].x, cp[2].y, cp[3].x, cp[3].y);
-  fprintf(stdout, "1 0 0 setrgbcolor\n%g %g moveto\n", cp[0].x, cp[0].y);
-  for (i = 0; i < n_seg; i++) {
-    fprintf(stdout, "%g %g lineto\n", lines[i].x, lines[i].y);
-  }
-  fprintf(stdout, "stroke\n");
-  fprintf(stdout, "showpage");
-
-  return 0;
-}
-#endif
