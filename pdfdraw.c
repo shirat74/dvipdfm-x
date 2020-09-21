@@ -336,6 +336,28 @@ pdf_path__copypath (pdf_path *p1, const pdf_path *p0)
   return 0;
 }
 
+static int
+pdf_path__appendpath (pdf_path *p1, const pdf_path *p0)
+{
+  pa_elem  *pe0, *pe1;
+  int       i, j;
+
+  pdf_path__growpath(p1, PA_LENGTH(p1) + PA_LENGTH(p0));
+  for (i = 0, j = PA_LENGTH(pa1); i < PA_LENGTH(p0); i++) {
+    pe1 = &(p1->path[j]);
+    pe0 = &(p0->path[i]);
+    pe1->type   = pe0->type;
+    pe1->p[0].x = pe0->p[0].x;
+    pe1->p[0].y = pe0->p[0].y;
+    pe1->p[1].x = pe0->p[1].x;
+    pe1->p[1].y = pe0->p[1].y;
+    pe1->p[2].x = pe0->p[2].x;
+    pe1->p[2].y = pe0->p[2].y;
+  }
+  p1->num_paths += PA_LENGTH(p0);
+
+  return 0;
+}
 
 /* start new subpath */
 static int
@@ -2398,16 +2420,18 @@ flatten_bezier (pdf_path *pa, const pdf_coord *cp, double flatness)
 void
 pdf_dev_flattenpath (void)
 {
-  dpx_stack  *gss = &gs_stack;
-  pdf_gstate *gs;
-  pdf_path   *pa, *fl;
-  int         i;
-  double      flatness;
-  pdf_coord   cp;
+  dpx_stack   *gss = &gs_stack;
+  pdf_gstate  *gs;
+  pdf_tmatrix *M, *W;
+  pdf_path    *pa, *fl;
+  int          i;
+  double       flatness;
+  pdf_coord    cp;
 
-  gs = dpx_stack_top(gss);
-  pa = &gs->path;
-
+  gs       = dpx_stack_top(gss);
+  pa       = &gs->path;
+  M        = &gs->matrix;
+  inversematrix(&W, &M);
   flatness = gs->flatness;
 
   fl = NEW(1, pdf_path);
@@ -2424,34 +2448,49 @@ pdf_dev_flattenpath (void)
     case PE_TYPE__CURVETO_V:
       {
         pdf_coord pt[4];
+        pdf_path  seg;
 
         pt[0] = cp;
         pt[1] = cp;
         pt[2] = pe->p[0];
         pt[3] = pe->p[1];
-        flatten_bezier(fl, pt, flatness);
+        pdf_coord__transform(&pt, M);
+        init_a_path(&seg);
+        flatten_bezier(&seg, pt, flatness);
+        pdf_path__transform(&seg, W);
+        pdf_path__appendpath(fl, &seg);
       }
       break;
     case PE_TYPE__CURVETO_Y:
       {
         pdf_coord pt[4];
+        pdf_path  seg;
 
         pt[0] = cp;
         pt[1] = pe->p[0];
         pt[2] = pe->p[1];
         pt[3] = pe->p[1];
-        flatten_bezier(fl, pt, flatness);
+        pdf_coord__transform(&pt, M);
+        init_a_path(&seg);
+        flatten_bezier(&seg, pt, flatness);
+        pdf_path__transform(&seg, W);
+        pdf_path__appendpath(fl, &seg);
       }
       break;
     case PE_TYPE__CURVETO:
       {
         pdf_coord pt[4];
+        pdf_path  seg;
 
         pt[0] = cp;
         pt[1] = pe->p[0];
         pt[2] = pe->p[1];
         pt[3] = pe->p[2];
-        flatten_bezier(fl, pt, flatness);
+        pdf_coord__transform(&pt, M);
+        init_a_path(&seg);
+        flatten_bezier(&seg, pt, flatness);
+        pdf_path__transform(&seg, W);
+        pdf_path__appendpath(fl, &seg);
       }
       break;
     }
