@@ -769,7 +769,8 @@ static int mps_op__for (mpsi *p)
   limit = dpx_stack_pop(stk);
   incr  = dpx_stack_pop(stk);
   init  = dpx_stack_pop(stk);
-  if (pst_getRV(init) > pst_getRV(limit)) {
+  if ((pst_getRV(incr) > 0.0 && pst_getRV(init) > pst_getRV(limit)) ||
+      (pst_getRV(incr) < 0.0 && pst_getRV(init) < pst_getRV(limit))) {
     pst_release_obj(proc);
     pst_release_obj(limit);
     pst_release_obj(incr);
