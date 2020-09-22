@@ -1814,15 +1814,21 @@ int
 pdf_dev_arc  (double c_x , double c_y, double r,
               double a_0 , double a_1)
 {
-  dpx_stack  *gss = &gs_stack;
-  pdf_gstate *gs  = dpx_stack_top(gss);
-  pdf_path   *cpa = &gs->path;
-  pdf_coord  *cpt = &gs->cp;
+  int         error = 0;
+  dpx_stack  *gss   = &gs_stack;
+  pdf_gstate *gs    = dpx_stack_top(gss);
+  pdf_path   *cpa   = &gs->path;
+  pdf_coord  *cpt   = &gs->cp;
   pdf_coord   c;
 
   c.x = c_x; c.y = c_y;
 
-  return  pdf_path__elliptarc(cpa, cpt, &c, r, r, 0.0, a_0, a_1, +1);
+  error = pdf_path__elliptarc(cpa, cpt, &c, r, r, 0.0, a_0, a_1, +1);
+  if (!error) {
+    gs->flags |= GS_FLAG_CURRENTPOINT_SET;
+  }
+
+  return error;
 }
 
 /* *negative* arc */
@@ -1830,15 +1836,21 @@ int
 pdf_dev_arcn (double c_x , double c_y, double r,
               double a_0 , double a_1)
 {
-  dpx_stack  *gss = &gs_stack;
-  pdf_gstate *gs  = dpx_stack_top(gss);
-  pdf_path   *cpa = &gs->path;
-  pdf_coord  *cpt = &gs->cp;
+  int         error = 0;
+  dpx_stack  *gss   = &gs_stack;
+  pdf_gstate *gs    = dpx_stack_top(gss);
+  pdf_path   *cpa   = &gs->path;
+  pdf_coord  *cpt   = &gs->cp;
   pdf_coord   c;
 
   c.x = c_x; c.y = c_y;
 
-  return  pdf_path__elliptarc(cpa, cpt, &c, r, r, 0.0, a_0, a_1, -1);
+  error = pdf_path__elliptarc(cpa, cpt, &c, r, r, 0.0, a_0, a_1, -1);
+  if (!error) {
+    gs->flags |= GS_FLAG_CURRENTPOINT_SET;
+  }
+
+  return error;
 }
 
 int
@@ -1848,15 +1860,21 @@ pdf_dev_arcx (double c_x , double c_y,
               int    a_d ,
               double xar)
 {
-  dpx_stack  *gss = &gs_stack;
-  pdf_gstate *gs  = dpx_stack_top(gss);
-  pdf_path   *cpa = &gs->path;
-  pdf_coord  *cpt = &gs->cp;
+  int         error = 0;
+  dpx_stack  *gss   = &gs_stack;
+  pdf_gstate *gs    = dpx_stack_top(gss);
+  pdf_path   *cpa   = &gs->path;
+  pdf_coord  *cpt   = &gs->cp;
   pdf_coord   c;
 
   c.x = c_x; c.y = c_y;
 
-  return  pdf_path__elliptarc(cpa, cpt, &c, r_x, r_y, xar, a_0, a_1, a_d);
+  error = pdf_path__elliptarc(cpa, cpt, &c, r_x, r_y, xar, a_0, a_1, a_d);
+  if (!error) {
+    gs->flags |= GS_FLAG_CURRENTPOINT_SET;
+  }
+
+  return error;
 }
 
 /* Required by Tpic */
@@ -1864,10 +1882,11 @@ int
 pdf_dev_bspline (double x0, double y0,
                  double x1, double y1, double x2, double y2)
 {
-  dpx_stack  *gss = &gs_stack;
-  pdf_gstate *gs  = dpx_stack_top(gss);
-  pdf_path   *cpa = &gs->path;
-  pdf_coord  *cpt = &gs->cp;  
+  int         error = 0;
+  dpx_stack  *gss   = &gs_stack;
+  pdf_gstate *gs    = dpx_stack_top(gss);
+  pdf_path   *cpa   = &gs->path;
+  pdf_coord  *cpt   = &gs->cp;  
   pdf_coord   p1, p2, p3;
 
   if (!(gs->flags & GS_FLAG_CURRENTPOINT_SET))
@@ -1880,7 +1899,12 @@ pdf_dev_bspline (double x0, double y0,
   p3.x = x2;
   p3.y = y2;
 
-  return  pdf_path__curveto(cpa, cpt, &p1, &p2, &p3);
+  error = pdf_path__curveto(cpa, cpt, &p1, &p2, &p3);
+  if (!error) {
+    gs->flags |= GS_FLAG_CURRENTPOINT_SET;
+  }
+
+  return error;
 }
 
 int

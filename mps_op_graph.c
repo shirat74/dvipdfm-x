@@ -917,7 +917,11 @@ do_operator (mpsi *p, const char *token, double x_user, double y_user)
 	      pdf_setmatrix(&matrix, values[0], values[1], values[2], values[3],  values[4], values[5]);
 	      has_matrix = 1;
       }
-      error = get_numbers_2(p, values, 2);
+      if (has_matrix) {
+        error = get_numbers_2(p, values, 2);
+      } else {
+        error = get_numbers(p, values, 2);
+      }
       if (error)
         break;
       cp.y = values[1];
@@ -946,7 +950,11 @@ do_operator (mpsi *p, const char *token, double x_user, double y_user)
 	      pdf_setmatrix(&matrix, values[0], values[1], values[2], values[3],  values[4], values[5]);
 	      has_matrix = 1;
       }
-      error = get_numbers_2(p, values, 2);
+      if (has_matrix) {
+        error = get_numbers_2(p, values, 2);
+      } else {
+        error = get_numbers(p, values, 2);
+      }
       if (error)
         break;
       cp.y = values[1];
@@ -975,7 +983,11 @@ do_operator (mpsi *p, const char *token, double x_user, double y_user)
 	      pdf_setmatrix(&matrix, values[0], values[1], values[2], values[3],  values[4], values[5]);
 	      has_matrix = 1;
       }
-      error = get_numbers_2(p, values, 2);
+      if (has_matrix) {
+        error = get_numbers_2(p, values, 2);
+      } else {
+        error = get_numbers(p, values, 2);
+      }
       if (error)
         break;
       cp.y = values[1];
@@ -1004,7 +1016,11 @@ do_operator (mpsi *p, const char *token, double x_user, double y_user)
 	      pdf_setmatrix(&matrix, values[0], values[1], values[2], values[3],  values[4], values[5]);
 	      has_matrix = 1;
       }
-      error = get_numbers_2(p, values, 2);
+      if (has_matrix) {
+        error = get_numbers_2(p, values, 2);
+      } else {
+        error = get_numbers(p, values, 2);
+      }
       if (error)
         break;
       cp.y = values[1];

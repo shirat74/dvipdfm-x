@@ -955,7 +955,7 @@ spc_handler_ps_default (struct spc_env *spe, struct spc_arg *args)
       const char *pre  = "TeXDict begin";
       const char *post = "end";
       if (first_call) {
-        const char *start = "TeXDict begin 40258437 52099151 1000 600 600 (exa000.dvi) @start end";
+        const char *start = "TeXDict begin 40258437 52099151 1000 72.27 -72.27 (input) @start end";
         p = start;
         error = mps_exec_inline(&mps_intrp, &p, p + strlen(start), 0.0, 0.0);
         first_call = 0;
@@ -1001,6 +1001,7 @@ static struct spc_handler dvips_handlers[] = {
 int
 spc_dvips_at_begin_document (void)
 {
+  int   error = 0;
   FILE* fp;
 
   /* This, together with \pscharpath support code, must be moved to xtex.pro header. */
@@ -1016,7 +1017,7 @@ spc_dvips_at_begin_document (void)
 
   mps_init_intrp(&mps_intrp);
 
-  return  0;
+  return error;
 }
 
 int
@@ -1039,14 +1040,16 @@ spc_dvips_at_end_document (void)
 int
 spc_dvips_at_begin_page (void)
 {
+  int error = 0;
+
   if (page_defs) {
     dpx_delete_temp_file(page_defs, true);
     page_defs = 0;
   }
-
+  
   put_stack_depth = -1;
 
-  return  0;
+  return error;
 }
 
 int
