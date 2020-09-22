@@ -176,7 +176,7 @@ struct dev_font {
   /* Needs to be big enough to hold name "Fxxx"
    * where xxx is number of largest font
    */
-  char     short_name[7];      /* Resource name */
+  char     short_name[16];      /* Resource name */
   int      used_on_this_page;
 
   char    *tex_name;  /* String identifier of this font */
@@ -1422,8 +1422,7 @@ pdf_dev_locate_font (const char *font_name, spt_t ptsize)
       return  -1;
   }
 
-  font->short_name[0] = 'F';
-  p_itoa(font->font_id, &font->short_name[1]); /* NULL terminated here */
+  pdf_font_resource_name(font->font_id, font->short_name);
 
   font->used_on_this_page = 0;
 
