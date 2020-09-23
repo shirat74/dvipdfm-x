@@ -152,6 +152,52 @@ mps_push_stack (mpsi *p, pst_obj *obj)
 }
 #endif
 
+static int mps_op__p_pathforall_loop (mpsi *p)
+{
+  int        error = 0;
+  dpx_stack *stk   = &p->stack.operand;
+  pst_obj   *proc[4], *path;
+
+  if (dpx_stack_depth(stk) < 5)
+    return -1;
+  path    = dpx_stack_at(stk, 0);
+  proc[3] = dpx_stack_at(stk, 1);
+  proc[2] = dpx_stack_at(stk, 2);
+  proc[1] = dpx_stack_at(stk, 3);
+  proc[0] = dpx_stack_at(stk, 4);
+  if (!PST_ARRAYTYPE(proc[0]) || !proc[0]->attr.is_exec ||
+      !PST_ARRAYTYPE(proc[1]) || !proc[1]->attr.is_exec ||
+      !PST_ARRAYTYPE(proc[2]) || !proc[2]->attr.is_exec ||
+      !PST_ARRAYTYPE(proc[3]) || !proc[3]->attr.is_exec)
+    return -1;
+
+  proc[3] = dpx_stack_pop(stk);
+  proc[2] = dpx_stack_pop(stk);
+  proc[1] = dpx_stack_pop(stk);
+  proc[0] = dpx_stack_pop(stk);
+
+  {
+    pst_obj *copy, *cvx, *this;
+    int      i;
+    this = mps_search_systemdict(p, "%pathforall_loop");
+    dpx_stack_push(&p->stack.exec, pst_copy_obj(this));
+    cvx  = mps_search_systemdict(p, "cvx");
+    for (i = 0; i < 4; i++) {
+      dpx_stack_push(&p->stack.exec, pst_copy_obj(cvx));
+      copy = pst_copy_obj(proc[i]);
+      copy->attr.is_exec = 0; /* cvlit */
+      dpx_stack_push(&p->stack.exec, copy);
+    }
+  }
+  
+  
+  
+  dpx_stack_push(&p->stack.exec, proc);
+  dpx_stack_push(&p->stack.operand, init);
+
+  return error;
+}
+
 static struct mp_font
 {
   char   *font_name;
