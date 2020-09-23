@@ -2542,3 +2542,68 @@ pdf_dev_flattenpath (void)
 
   return;
 }
+
+/* Required by pathforall */
+int
+pdf_dev_num_path_elem (void)
+{
+  dpx_stack   *gss = &gs_stack;
+  pdf_gstate  *gs;
+  pdf_path    *pa;
+  pdf_coord    cp = {0.0, 0.0};
+
+  gs = dpx_stack_top(gss);
+  pa = &gs->path;
+
+  return pa->num_paths;
+}
+
+int
+pdf_dev_get_path_elem (int idx, pdf_coord *pt, int *op)
+{
+  dpx_stack   *gss = &gs_stack;
+  pdf_gstate  *gs;
+  pdf_path    *pa;
+  pdf_coord    cp = {0.0, 0.0};
+
+  gs = dpx_stack_top(gss);
+  pa = &gs->path;
+
+ if (idx >= 0 && idx < pa->num_paths) {
+    pa_elem *pe = &pa->path[idx];
+    switch (pe->type) {
+    case PE_TYPE__MOVETO:
+      *op = 'm';
+      pt[0] = cp = pe->p[0];
+      break;
+    case PE_TYPE__LINETO:
+      *op = 'l';
+      pt[0] = cp = pe->p[0];
+      break;
+    case PE_TYPE__CURVETO_V:
+      *op = 'c';
+      pt[0] = cp;
+      pt[1] = pe->p[0];
+      pt[2] = cp = pe->p[1];
+      break;
+    case PE_TYPE__CURVETO_Y:
+      *op = 'c';
+      pt[0] = pe->p[0];
+      pt[1] = pe->p[1];
+      pt[2] = cp = pe->p[1];
+      break;
+    case PE_TYPE__CURVETO:
+      *op = 'c';
+      pt[0] = pe->p[0];
+      pt[1] = pe->p[1];
+      pt[2] = cp = pe->p[2];
+      break;
+    case PE_TYPE__CLOSEPATH:
+      *op = 'h';
+      break;
+    }
+    return 0;
+  }
+
+  return -1;
+}
