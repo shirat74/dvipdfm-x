@@ -55,18 +55,6 @@ mps_count_to_mark (mpsi *p)
   return -1;
 }
 
-static pst_obj *
-mps_search_systemdict (mpsi *p, const char *key)
-{
-  pst_obj  *obj;
-  pst_dict *dict;
-
-  dict = p->systemdict->data;
-  obj  = ht_lookup_table(dict->values, key, strlen(key));
-
-  return obj;
-}
-
 /* Stack Operation */
 static int mps_op__pop (mpsi *p)
 {
@@ -888,7 +876,7 @@ static int mps_op__exit (mpsi *p)
     if (PST_OPERATORTYPE(obj)) {
       pst_operator *op = obj->data;
       if (!strcmp(op->name, "cshow") || !strcmp(op->name, "kshow") ||
-          !strcmp(op->name, "pathforall") || !strcmp(op->name, "filenameforall") ||
+          !strcmp(op->name, "%pathforall_loop") || !strcmp(op->name, "filenameforall") ||
           !strcmp(op->name, "resourceforall") || 
           !strcmp(op->name, "for") || !strcmp(op->name, "repeat") ||
           !strcmp(op->name, "loop") || !strcmp(op->name, "forall")) {

@@ -77,18 +77,6 @@ mps_search_dict_stack (mpsi *p, const char *key, pst_obj **where)
 }
 
 static pst_obj *
-mps_search_systemdict (mpsi *p, const char *key)
-{
-  pst_obj  *obj;
-  pst_dict *dict;
-
-  dict = p->systemdict->data;
-  obj  = ht_lookup_table(dict->values, key, strlen(key));
-
-  return obj;
-}
-
-static pst_obj *
 pst_new_array (size_t size)
 {
   pst_obj   *obj;

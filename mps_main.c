@@ -108,7 +108,6 @@ dump_stack (mpsi *p)
 }
 
 static pst_obj *mps_search_dict_stack (mpsi *p, const char *name, pst_obj **where);
-static pst_obj *mps_search_systemdict (mpsi *p, const char *name);
 
 static int mps_eval__name (mpsi *p, pst_obj *obj)
 {
@@ -544,7 +543,7 @@ mps_search_dict_stack (mpsi *p, const char *key, pst_obj **where)
 }
 
 #if 1
-static pst_obj *
+pst_obj *
 mps_search_systemdict (mpsi *p, const char *key)
 {
   pst_obj  *obj;

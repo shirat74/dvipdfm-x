@@ -2550,7 +2550,6 @@ pdf_dev_num_path_elem (void)
   dpx_stack   *gss = &gs_stack;
   pdf_gstate  *gs;
   pdf_path    *pa;
-  pdf_coord    cp = {0.0, 0.0};
 
   gs = dpx_stack_top(gss);
   pa = &gs->path;

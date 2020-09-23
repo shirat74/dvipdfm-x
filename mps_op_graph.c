@@ -157,14 +157,135 @@ static int mps_op__p_pathforall_loop (mpsi *p)
   int        error = 0;
   dpx_stack *stk   = &p->stack.operand;
   pst_obj   *proc[4], *path;
+  pdf_coord  pt[4];
+  int        op, num_coords = 0;
 
   if (dpx_stack_depth(stk) < 5)
     return -1;
   path    = dpx_stack_at(stk, 0);
+  if (!PST_ARRAYTYPE(path))
+    return -1;
   proc[3] = dpx_stack_at(stk, 1);
   proc[2] = dpx_stack_at(stk, 2);
   proc[1] = dpx_stack_at(stk, 3);
   proc[0] = dpx_stack_at(stk, 4);
+  if (!PST_ARRAYTYPE(proc[0]) || !proc[0]->attr.is_exec ||
+      !PST_ARRAYTYPE(proc[1]) || !proc[1]->attr.is_exec ||
+      !PST_ARRAYTYPE(proc[2]) || !proc[2]->attr.is_exec ||
+      !PST_ARRAYTYPE(proc[3]) || !proc[3]->attr.is_exec)
+    return -1;
+
+  if (pst_length_of(path) < 1) {
+    int i;
+    
+    for (i = 0; i < 5; i++) {
+      pst_obj *obj = dpx_stack_pop(stk);
+      pst_release_obj(obj);
+    }
+    return 0;
+  } else if (pst_length_of(path) % 2) {
+    return -1;
+  } else {
+    pst_array *data = path->data;
+    pst_array *vals;
+    pst_obj   *v, *c;
+    int        i;
+
+    v = data->values[path->comp.off];
+    c = data->values[path->comp.off+1];
+    if (!PST_ARRAYTYPE(v) || (pst_length_of(v) % 2) != 0 || !PST_INTEGERTYPE(c))
+      return -1;
+    vals       = v->data;
+    num_coords = pst_length_of(v) / 2;
+    for (i = 0; i < num_coords; i++) {
+      pst_obj *px, *py;
+      
+      px = vals->values[v->comp.off+2*i];
+      py = vals->values[v->comp.off+2*i+1];
+      if (!PST_NUMBERTYPE(px) || !PST_NUMBERTYPE(px))
+        return -1;
+      pt[i].x = pst_getRV(px);
+      pt[i].y = pst_getRV(py);
+    }
+    op = pst_getIV(c);
+    if (op != 'm' && op != 'l' && op != 'c' && op != 'h')
+      return -1;
+  }
+
+  /* OK so far */
+  path = dpx_stack_pop(stk);
+  path->comp.off++;
+  path->comp.size--;
+
+  proc[3] = dpx_stack_pop(stk);
+  proc[2] = dpx_stack_pop(stk);
+  proc[1] = dpx_stack_pop(stk);
+  proc[0] = dpx_stack_pop(stk);
+
+  {
+    pst_obj *copy, *cvx, *this;
+    int      i;
+
+    this = mps_search_systemdict(p, "%pathforall_loop");
+    dpx_stack_push(&p->stack.exec, pst_copy_obj(this));
+    dpx_stack_push(&p->stack.exec, pst_copy_obj(path));
+    cvx  = mps_search_systemdict(p, "cvx");
+    for (i = 0; i < 4; i++) {
+      dpx_stack_push(&p->stack.exec, pst_copy_obj(cvx));
+      copy = pst_copy_obj(proc[i]);
+      copy->attr.is_exec = 0; /* cvlit */
+      dpx_stack_push(&p->stack.exec, copy);
+    }
+  }
+
+  {
+    pst_obj *obj = NULL;
+    int      i;
+
+    switch (op) {
+    case 'm':
+      obj = proc[0];
+      break;
+    case 'l':
+      obj = proc[1];
+      break;
+    case 'c':
+      obj = proc[2];
+      break;
+    case 'h':
+      obj = proc[3];
+      break;
+    }
+  
+    for (i = 0; i < num_coords; i++) {
+      dpx_stack_push(&p->stack.operand, pst_new_real(pt[i].x));
+      dpx_stack_push(&p->stack.operand, pst_new_real(pt[i].y));
+    }
+    dpx_stack_push(&p->stack.exec, pst_copy_obj(obj));
+  }
+
+  pst_release_obj(path);
+  pst_release_obj(proc[0]);
+  pst_release_obj(proc[1]);
+  pst_release_obj(proc[2]);
+  pst_release_obj(proc[3]);
+
+  return error;
+}
+
+static int mps_op__pathforall (mpsi *p)
+{
+  int        error = 0;
+  dpx_stack *stk   = &p->stack.operand;
+  pst_obj   *proc[4], *path;
+  int        num_paths;
+
+  if (dpx_stack_depth(stk) < 4)
+    return -1;
+  proc[3] = dpx_stack_at(stk, 0);
+  proc[2] = dpx_stack_at(stk, 1);
+  proc[1] = dpx_stack_at(stk, 2);
+  proc[0] = dpx_stack_at(stk, 3);
   if (!PST_ARRAYTYPE(proc[0]) || !proc[0]->attr.is_exec ||
       !PST_ARRAYTYPE(proc[1]) || !proc[1]->attr.is_exec ||
       !PST_ARRAYTYPE(proc[2]) || !proc[2]->attr.is_exec ||
@@ -176,24 +297,66 @@ static int mps_op__p_pathforall_loop (mpsi *p)
   proc[1] = dpx_stack_pop(stk);
   proc[0] = dpx_stack_pop(stk);
 
-  {
-    pst_obj *copy, *cvx, *this;
-    int      i;
-    this = mps_search_systemdict(p, "%pathforall_loop");
-    dpx_stack_push(&p->stack.exec, pst_copy_obj(this));
-    cvx  = mps_search_systemdict(p, "cvx");
-    for (i = 0; i < 4; i++) {
-      dpx_stack_push(&p->stack.exec, pst_copy_obj(cvx));
-      copy = pst_copy_obj(proc[i]);
-      copy->attr.is_exec = 0; /* cvlit */
-      dpx_stack_push(&p->stack.exec, copy);
+  num_paths = pdf_dev_num_path_elem();
+  if (num_paths > 0) {
+    int        i;
+    pst_array *data;
+    
+    data = NEW(1, pst_array);
+    data->link   = 0;
+    data->size   = 2 * num_paths;
+    data->values = NEW(2 * num_paths, pst_obj *);
+    for (i = 0; i < num_paths; i++) {
+      pst_array *vals;
+      pdf_coord  pt[4];
+      int        r, op = 0;
+      int        j, num_coords = 0;
+
+      r = pdf_dev_get_path_elem(i, pt, &op);
+      if (r)
+        break;
+      switch (op) {
+      case 'm': case 'l':
+        num_coords = 1;
+        break;
+      case 'c':
+        num_coords = 3;
+        break;
+      default:
+        num_coords = 0;
+      }
+      vals = NEW(1, pst_array);
+      vals->link   = 0;
+      vals->size   = 2 * num_coords;
+      vals->values = NEW(2 * num_coords, pst_obj *);
+      for (j = 0; j < num_coords; j++) {
+        vals->values[2*j]   = pst_new_real(pt[j].x);
+        vals->values[2*j+1] = pst_new_real(pt[j].y);
+      }
+      data->values[2*i]   = pst_new_obj(PST_TYPE_ARRAY, vals);
+      data->values[2*i+1] = pst_new_integer(op);
+    }
+    path = pst_new_obj(PST_TYPE_ARRAY, data);
+    {
+      pst_obj *copy, *cvx, *this;
+
+      this = mps_search_systemdict(p, "%pathforall_loop");
+      dpx_stack_push(&p->stack.exec, pst_copy_obj(this));
+      dpx_stack_push(&p->stack.exec, path);
+      cvx  = mps_search_systemdict(p, "cvx");
+      for (i = 0; i < 4; i++) {
+        dpx_stack_push(&p->stack.exec, pst_copy_obj(cvx));
+        copy = pst_copy_obj(proc[i]);
+        copy->attr.is_exec = 0; /* cvlit */
+        dpx_stack_push(&p->stack.exec, copy);
+      }
     }
   }
-  
-  
-  
-  dpx_stack_push(&p->stack.exec, proc);
-  dpx_stack_push(&p->stack.operand, init);
+
+  pst_release_obj(proc[0]);
+  pst_release_obj(proc[1]);
+  pst_release_obj(proc[2]);
+  pst_release_obj(proc[3]);
 
   return error;
 }
@@ -1220,6 +1383,30 @@ int mps_op_graph_load (mpsi *p)
     }
   }
 #endif
+
+  {
+    pst_obj      *obj;
+    pst_operator *op;
+
+    op = NEW(1, pst_operator);
+    op->name   = "%pathforall_loop";
+    op->action = (mps_op_fn_ptr) mps_op__p_pathforall_loop;
+    obj = pst_new_obj(PST_TYPE_OPERATOR, op);
+    obj->attr.is_exec = 1;
+    mps_add_systemdict(p, obj); 
+  }
+
+  {
+    pst_obj      *obj;
+    pst_operator *op;
+
+    op = NEW(1, pst_operator);
+    op->name   = "pathforall";
+    op->action = (mps_op_fn_ptr) mps_op__pathforall;
+    obj = pst_new_obj(PST_TYPE_OPERATOR, op);
+    obj->attr.is_exec = 1;
+    mps_add_systemdict(p, obj); 
+  }
 
   return 0;
 }
