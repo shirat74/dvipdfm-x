@@ -163,4 +163,6 @@ extern void pdf_dev_xgstate_push  (pdf_obj *object);
 extern void pdf_dev_xgstate_pop   (void);
 extern int  pdf_dev_reset_xgstate (int force);
 
+extern int  pdf_dev_num_path_elem (void);
+extern int  pdf_dev_get_path_elem (int idx, pdf_coord *pt, int *op);
 #endif /* _PDF_DRAW_H_ */
