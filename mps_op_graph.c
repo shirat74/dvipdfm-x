@@ -214,8 +214,8 @@ static int mps_op__p_pathforall_loop (mpsi *p)
 
   /* OK so far */
   path = dpx_stack_pop(stk);
-  path->comp.off++;
-  path->comp.size--;
+  path->comp.off  += 2;
+  path->comp.size -= 2;
 
   proc[3] = dpx_stack_pop(stk);
   proc[2] = dpx_stack_pop(stk);
@@ -244,16 +244,16 @@ static int mps_op__p_pathforall_loop (mpsi *p)
 
     switch (op) {
     case 'm':
-      obj = proc[0];
+      obj = proc[3];
       break;
     case 'l':
-      obj = proc[1];
-      break;
-    case 'c':
       obj = proc[2];
       break;
+    case 'c':
+      obj = proc[1];
+      break;
     case 'h':
-      obj = proc[3];
+      obj = proc[0];
       break;
     }
   
@@ -261,6 +261,7 @@ static int mps_op__p_pathforall_loop (mpsi *p)
       dpx_stack_push(&p->stack.operand, pst_new_real(pt[i].x));
       dpx_stack_push(&p->stack.operand, pst_new_real(pt[i].y));
     }
+    WARN("pathforall_loop: %c", op);
     dpx_stack_push(&p->stack.exec, pst_copy_obj(obj));
   }
 
