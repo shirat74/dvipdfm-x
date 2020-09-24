@@ -2565,24 +2565,21 @@ pdf_dev_pathforall (int (*proc) (pdf_coord *, int, pdf_coord, void *), void *dat
   pdf_gstate  *gs;
   pdf_path    *pa;
   pdf_coord    fp, cp   = {0.0, 0.0};
-  int          i, first = 1;
+  int          i;
 
   gs = dpx_stack_top(gss);
   pa = &gs->path;
   fp = cp;
  for (i = 0; !error && i < pa->num_paths; i++) {
     pa_elem  *pe = &pa->path[i];
-    int       op;
-    pdf_coord pt[4];
+    int       op = 0;
+    pdf_coord pt[4] = {{0.0, 0.0}, {0.0, 0.0}, {0.0, 0.0}, {0.0, 0.0}};
 
     switch (pe->type) {
     case PE_TYPE__MOVETO:
       op    = 'm';
       pt[0] = cp = pe->p[0];
-      if (first) {
-        fp    = cp;
-        first = 0;
-      }
+      fp    = cp;
       break;
     case PE_TYPE__LINETO:
       op    = 'l';

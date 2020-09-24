@@ -825,6 +825,11 @@ void dvi_set_compensation (double x, double y)
   compensation.y = (spt_t) round(y / dvi2pts);
 }
 
+#if 1
+#include "mpost.h"
+#include "spc_dvips.h"
+#endif
+
 static void
 set_string (spt_t       xpos,
             spt_t       ypos,
@@ -836,7 +841,31 @@ set_string (spt_t       xpos,
 {
   xpos -= compensation.x;
   ypos -= compensation.y;
+#if 0
   pdf_dev_set_string(xpos, ypos, instr_ptr, instr_len, width, font_id, ctype);
+#else
+  if (instr_len > 0) {
+    int     i, n;
+    char   *str, *p, *endptr;
+    double  x_user, y_user;
+    const char xchar[] = "0123456789abcdef";
+
+    x_user = xpos * dvi2pts;
+    y_user = ypos * dvi2pts;
+    str = NEW(2*instr_len + strlen("TeXDict begin <> show end") + 1, char);
+    strcpy(str, "TeXDict begin <");
+    n = strlen("TeXDict begin <");
+    for (i = 0; i < instr_len; i++) {
+      str[2*i+n]   = xchar[(((char *)instr_ptr)[i] >> 4) & 0x0f];
+      str[2*i+n+1] = xchar[(((char *)instr_ptr)[i] & 0x0f)];
+    }
+    strcpy(str+n+2*instr_len, "> show end");
+    p = str; endptr = p + 2*instr_len + strlen("TeXDict begin <> show end"); 
+    mps_exec_inline(&mps_intrp, &p, endptr, x_user, y_user);
+    RELEASE(str);
+  }
+#endif
+
 }
 
 static void
@@ -1089,6 +1118,8 @@ dvi_locate_native_font (const char *filename, uint32_t index,
   loaded_fonts[cur_id].font_id = pdf_dev_locate_font(fontmap_key, ptsize);
   loaded_fonts[cur_id].size    = ptsize;
   loaded_fonts[cur_id].type    = NATIVE;
+  loaded_fonts[cur_id].subfont_id = -1;
+  loaded_fonts[cur_id].tfm_id     = -1;
   free(fontmap_key);
 
   if (is_type1) {
@@ -2693,3 +2724,22 @@ dvi_scan_specials (int page_no,
 #if defined(LIBDPX)
 #include "dvi_ng.c"
 #endif /* LIBDPX */
+
+#if 1
+int
+dvi_font (int *font_id, int *tfm_id, int *sfd_id, double *font_scale)
+{
+  struct loaded_font *font;
+
+  if (current_font < 0)
+    return -1;
+
+  font = &loaded_fonts[current_font];
+  *font_id    = font->font_id;
+  *tfm_id     = font->tfm_id;
+  *sfd_id     = font->subfont_id;
+  *font_scale = font->size * dvi2pts;
+
+  return 0;
+}
+#endif

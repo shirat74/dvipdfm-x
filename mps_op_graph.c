@@ -152,6 +152,142 @@ mps_push_stack (mpsi *p, pst_obj *obj)
 }
 #endif
 
+#include "dvi.h"
+static int mps_op__show (mpsi *p)
+{
+  int            error = 0;
+  dpx_stack     *stk   = &p->stack.operand;
+  pst_obj       *str;
+  spt_t          x, y;
+  pdf_coord      cp;
+  int            font_id, tfm_id, sfd_id;
+  double         font_scale, text_width;
+  unsigned char *strptr;
+  int            length;
+
+  if (dpx_stack_depth(stk) < 1)
+    return -1; /* stackunderflow */
+  str = dpx_stack_top(stk);
+  if (!PST_STRINGTYPE(str))
+    return -1; /* typecheck */
+
+  pdf_dev_currentpoint(&cp);
+  x = cp.x * dev_unit_dviunit();
+  y = cp.y * dev_unit_dviunit();
+  {
+    pst_string *data = str->data;
+
+    strptr = ((char *)data->value) + str->comp.off;
+  }
+  length = str->comp.size;
+
+  error = dvi_font(&font_id, &tfm_id, &sfd_id, &font_scale);
+  // WARN("show called: %g %g font_id=%d scale=%g =>%s<=", cp.x, cp.y, font_id, font_scale, strptr);
+
+  text_width = 0.0;
+  if (sfd_id >= 0) {
+    unsigned short  uch;
+    unsigned char  *ustr;
+    int      i;
+
+    ustr = NEW(length * 2, unsigned char);
+    for (i = 0; i < length; i++) {
+      uch = lookup_sfd_record(sfd_id, strptr[i]);
+      ustr[2*i  ] = uch >> 8;
+      ustr[2*i+1] = uch & 0xff;
+      if (tfm_id >= 0) {
+        text_width += tfm_get_width(tfm_id, strptr[i]);
+      }
+    }
+    text_width *= font_scale;
+
+    pdf_dev_set_string(x, y, ustr, length * 2,
+                       (spt_t)(text_width*dev_unit_dviunit()),
+                       font_id, 0);
+    RELEASE(ustr);
+  } else {
+#define FWBASE ((double) (1<<20))
+    if (tfm_id >= 0) {
+      text_width = (double) tfm_string_width(tfm_id, strptr, length)/FWBASE;
+      text_width *= font_scale;
+    }
+    pdf_dev_set_string(x, y, strptr, length,
+                       (spt_t)(text_width*dev_unit_dviunit()),
+                       font_id, 0);
+  }
+
+  if (pdf_dev_get_font_wmode(font_id)) {
+    pdf_dev_rmoveto(0.0, -text_width);
+  } else {
+    pdf_dev_rmoveto(text_width, 0.0);
+  }
+  graphics_mode();
+
+  return error;
+}
+
+static int mps_op__stringwidth (mpsi *p)
+{
+  int            error = 0;
+  dpx_stack     *stk   = &p->stack.operand;
+  pst_obj       *str;
+  int            font_id, tfm_id, sfd_id;
+  double         font_scale, text_width;
+  unsigned char *strptr;
+  int            length;
+
+  if (dpx_stack_depth(stk) < 1)
+    return -1; /* stackunderflow */
+  str = dpx_stack_top(stk);
+  if (!PST_STRINGTYPE(str))
+    return -1; /* typecheck */
+
+  {
+    pst_string *data = str->data;
+
+    strptr = ((char *)data->value) + str->comp.off;
+  }
+  length = str->comp.size;
+
+  error = dvi_font(&font_id, &tfm_id, &sfd_id, &font_scale);
+  // WARN("show called: %g %g font_id=%d scale=%g =>%s<=", cp.x, cp.y, font_id, font_scale, strptr);
+
+  text_width = 0.0;
+  if (sfd_id >= 0) {
+    unsigned short  uch;
+    unsigned char  *ustr;
+    int      i;
+
+    ustr = NEW(length * 2, unsigned char);
+    for (i = 0; i < length; i++) {
+      uch = lookup_sfd_record(sfd_id, strptr[i]);
+      ustr[2*i  ] = uch >> 8;
+      ustr[2*i+1] = uch & 0xff;
+      if (tfm_id >= 0) {
+        text_width += tfm_get_width(tfm_id, strptr[i]);
+      }
+    }
+    text_width *= font_scale;
+    RELEASE(ustr);
+  } else {
+#define FWBASE ((double) (1<<20))
+    if (tfm_id >= 0) {
+      text_width = (double) tfm_string_width(tfm_id, strptr, length)/FWBASE;
+      text_width *= font_scale;
+    }
+  }
+
+  if (pdf_dev_get_font_wmode(font_id)) {
+    dpx_stack_push(stk, pst_new_real(0.0));
+    dpx_stack_push(stk, pst_new_real(text_width));
+  } else {
+    dpx_stack_push(stk, pst_new_real(text_width));
+    dpx_stack_push(stk, pst_new_real(0.0));
+  }
+
+  return error;
+}
+
 static int mps_op__p_pathforall_loop (mpsi *p)
 {
   int        error = 0;
@@ -232,7 +368,7 @@ static int mps_op__p_pathforall_loop (mpsi *p)
     cvx  = mps_search_systemdict(p, "cvx");
     for (i = 0; i < 4; i++) {
       dpx_stack_push(&p->stack.exec, pst_copy_obj(cvx));
-      copy = pst_copy_obj(proc[i]);
+      copy = pst_copy_obj(proc[3-i]);
       copy->attr.is_exec = 0; /* cvlit */
       dpx_stack_push(&p->stack.exec, copy);
     }
@@ -244,16 +380,16 @@ static int mps_op__p_pathforall_loop (mpsi *p)
 
     switch (op) {
     case 'm':
-      obj = proc[3];
+      obj = proc[0];
       break;
     case 'l':
-      obj = proc[2];
-      break;
-    case 'c':
       obj = proc[1];
       break;
+    case 'c':
+      obj = proc[3];
+      break;
     case 'h':
-      obj = proc[0];
+      obj = proc[3];
       break;
     }
   
@@ -261,7 +397,6 @@ static int mps_op__p_pathforall_loop (mpsi *p)
       dpx_stack_push(&p->stack.operand, pst_new_real(pt[i].x));
       dpx_stack_push(&p->stack.operand, pst_new_real(pt[i].y));
     }
-    WARN("pathforall_loop: %c", op);
     dpx_stack_push(&p->stack.exec, pst_copy_obj(obj));
   }
 
@@ -272,6 +407,47 @@ static int mps_op__p_pathforall_loop (mpsi *p)
   pst_release_obj(proc[3]);
 
   return error;
+}
+
+struct path {
+  int      index;
+  pst_obj *path;
+};
+
+static int add_path (pdf_coord *pt, int op, pdf_coord cp, void *dp)
+{
+  struct path *p = (struct path *) dp;
+  pst_array   *vals, *data;
+  int          i, n, n_pts;
+
+  data = p->path->data;
+  n    = p->index;
+  if (n >= pst_length_of(p->path))
+    return -1;
+
+  switch (op) {
+  case 'm': case 'l':
+    n_pts = 1;
+    break;
+  case 'c':
+    n_pts = 3;
+    break;
+  default:
+    n_pts = 0;
+  }
+  vals = NEW(1, pst_array);
+  vals->link   = 0;
+  vals->size   = 2 * n_pts;
+  vals->values = NEW(2 * n_pts, pst_obj *);
+  for (i = 0; i < n_pts; i++) {
+    vals->values[2*i]   = pst_new_real(pt[i].x);
+    vals->values[2*i+1] = pst_new_real(pt[i].y);
+  }
+  data->values[2*n]   = pst_new_obj(PST_TYPE_ARRAY, vals);
+  data->values[2*n+1] = pst_new_integer(op);
+  p->index++;
+
+  return 0;
 }
 
 static int mps_op__pathforall (mpsi *p)
@@ -298,60 +474,35 @@ static int mps_op__pathforall (mpsi *p)
   proc[1] = dpx_stack_pop(stk);
   proc[0] = dpx_stack_pop(stk);
 
-  num_paths = pdf_dev_num_path_elem();
+  num_paths = pdf_dev_path_length();
   if (num_paths > 0) {
-    int        i;
-    pst_array *data;
+    pst_array   *data;
+    struct path  pa;
     
     data = NEW(1, pst_array);
     data->link   = 0;
     data->size   = 2 * num_paths;
     data->values = NEW(2 * num_paths, pst_obj *);
-    for (i = 0; i < num_paths; i++) {
-      pst_array *vals;
-      pdf_coord  pt[4];
-      int        r, op = 0;
-      int        j, num_coords = 0;
-
-      r = pdf_dev_get_path_elem(i, pt, &op);
-      if (r)
-        break;
-      switch (op) {
-      case 'm': case 'l':
-        num_coords = 1;
-        break;
-      case 'c':
-        num_coords = 3;
-        break;
-      default:
-        num_coords = 0;
-      }
-      vals = NEW(1, pst_array);
-      vals->link   = 0;
-      vals->size   = 2 * num_coords;
-      vals->values = NEW(2 * num_coords, pst_obj *);
-      for (j = 0; j < num_coords; j++) {
-        vals->values[2*j]   = pst_new_real(pt[j].x);
-        vals->values[2*j+1] = pst_new_real(pt[j].y);
-      }
-      data->values[2*i]   = pst_new_obj(PST_TYPE_ARRAY, vals);
-      data->values[2*i+1] = pst_new_integer(op);
-    }
-    path = pst_new_obj(PST_TYPE_ARRAY, data);
-    {
+    path         = pst_new_obj(PST_TYPE_ARRAY, data);
+    pa.index     = 0;
+    pa.path      = path;
+    error = pdf_dev_pathforall(add_path, &pa);
+    if (!error) {
       pst_obj *copy, *cvx, *this;
+      int      i;
 
       this = mps_search_systemdict(p, "%pathforall_loop");
       dpx_stack_push(&p->stack.exec, pst_copy_obj(this));
-      dpx_stack_push(&p->stack.exec, path);
+      dpx_stack_push(&p->stack.exec, pst_copy_obj(path));
       cvx  = mps_search_systemdict(p, "cvx");
       for (i = 0; i < 4; i++) {
         dpx_stack_push(&p->stack.exec, pst_copy_obj(cvx));
-        copy = pst_copy_obj(proc[i]);
+        copy = pst_copy_obj(proc[3-i]);
         copy->attr.is_exec = 0; /* cvlit */
         dpx_stack_push(&p->stack.exec, copy);
       }
     }
+    pst_release_obj(path);
   }
 
   pst_release_obj(proc[0]);
@@ -589,7 +740,6 @@ static struct operators
 
   {"stroke",       STROKE},  
   {"fill",         FILL},
-  {"show",         SHOW},
   {"showpage",     SHOWPAGE},
 
   {"gsave",        GSAVE},
@@ -621,8 +771,6 @@ static struct operators
   {"scalefont",    SCALEFONT},
   {"setfont",      SETFONT},
   {"currentfont",  CURRENTFONT},
-
-  {"stringwidth",  STRINGWIDTH},
 
   {"flattenpath",  FLATTENPATH},
 #if 1
@@ -1274,23 +1422,14 @@ do_operator (mpsi *p, const char *token, double x_user, double y_user)
     break;
   case CURRENTFONT:
     {
-      dpx_stack_push(&p->stack.operand, pst_new_null());
-    }
-    break;
-  case STRINGWIDTH:
-    {
       pst_obj *obj;
-      obj = dpx_stack_pop(&p->stack.operand);
-      pst_release_obj(obj);
-      dpx_stack_push(&p->stack.operand, pst_new_real(10.0));
-      dpx_stack_push(&p->stack.operand, pst_new_real(10.0));
-    }
-    break;
-  case SHOW:
-    {
-      pst_obj *obj;
-      obj = dpx_stack_pop(&p->stack.operand);
-      pst_release_obj(obj);
+      pst_dict *data;
+
+      obj  = pst_new_dict(-1);
+      data = obj->data;
+      ht_insert_table(data->values, "FontType", strlen("FontType"), pst_new_integer(1));
+      ht_insert_table(data->values, "FMapType", strlen("FMapType"), pst_new_integer(0));
+      dpx_stack_push(&p->stack.operand, obj);
     }
     break;
 
@@ -1404,6 +1543,30 @@ int mps_op_graph_load (mpsi *p)
     op = NEW(1, pst_operator);
     op->name   = "pathforall";
     op->action = (mps_op_fn_ptr) mps_op__pathforall;
+    obj = pst_new_obj(PST_TYPE_OPERATOR, op);
+    obj->attr.is_exec = 1;
+    mps_add_systemdict(p, obj); 
+  }
+
+  {
+    pst_obj      *obj;
+    pst_operator *op;
+
+    op = NEW(1, pst_operator);
+    op->name   = "show";
+    op->action = (mps_op_fn_ptr) mps_op__show;
+    obj = pst_new_obj(PST_TYPE_OPERATOR, op);
+    obj->attr.is_exec = 1;
+    mps_add_systemdict(p, obj); 
+  }
+
+  {
+    pst_obj      *obj;
+    pst_operator *op;
+
+    op = NEW(1, pst_operator);
+    op->name   = "stringwidth";
+    op->action = (mps_op_fn_ptr) mps_op__stringwidth;
     obj = pst_new_obj(PST_TYPE_OPERATOR, op);
     obj->attr.is_exec = 1;
     mps_add_systemdict(p, obj); 

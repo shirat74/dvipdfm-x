@@ -108,4 +108,5 @@ extern int dvi_is_tracking_boxes(void);
 
 extern void  dvi_set_compensation (double x, double y);
 
+extern int   dvi_font (int *font_id, int *tfm_id, int *sfd_id, double *font_scale);
 #endif /* _DVI_H_ */
