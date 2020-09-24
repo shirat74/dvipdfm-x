@@ -2545,7 +2545,7 @@ pdf_dev_flattenpath (void)
 
 /* Required by pathforall */
 int
-pdf_dev_num_path_elem (void)
+pdf_dev_path_length (void)
 {
   dpx_stack   *gss = &gs_stack;
   pdf_gstate  *gs;
@@ -2558,51 +2558,61 @@ pdf_dev_num_path_elem (void)
 }
 
 int
-pdf_dev_get_path_elem (int idx, pdf_coord *pt, int *op)
+pdf_dev_pathforall (int (*proc) (pdf_coord *, int, pdf_coord, void *), void *data)
 {
-  dpx_stack   *gss = &gs_stack;
+  int          error = 0;
+  dpx_stack   *gss   = &gs_stack;
   pdf_gstate  *gs;
   pdf_path    *pa;
-  pdf_coord    cp = {0.0, 0.0};
+  pdf_coord    fp, cp   = {0.0, 0.0};
+  int          i, first = 1;
 
   gs = dpx_stack_top(gss);
   pa = &gs->path;
+  fp = cp;
+ for (i = 0; !error && i < pa->num_paths; i++) {
+    pa_elem  *pe = &pa->path[i];
+    int       op;
+    pdf_coord pt[4];
 
- if (idx >= 0 && idx < pa->num_paths) {
-    pa_elem *pe = &pa->path[idx];
     switch (pe->type) {
     case PE_TYPE__MOVETO:
-      *op = 'm';
+      op    = 'm';
       pt[0] = cp = pe->p[0];
+      if (first) {
+        fp    = cp;
+        first = 0;
+      }
       break;
     case PE_TYPE__LINETO:
-      *op = 'l';
+      op    = 'l';
       pt[0] = cp = pe->p[0];
       break;
     case PE_TYPE__CURVETO_V:
-      *op = 'c';
+      op    = 'c';
       pt[0] = cp;
       pt[1] = pe->p[0];
       pt[2] = cp = pe->p[1];
       break;
     case PE_TYPE__CURVETO_Y:
-      *op = 'c';
+      op    = 'c';
       pt[0] = pe->p[0];
       pt[1] = pe->p[1];
       pt[2] = cp = pe->p[1];
       break;
     case PE_TYPE__CURVETO:
-      *op = 'c';
+      op    = 'c';
       pt[0] = pe->p[0];
       pt[1] = pe->p[1];
       pt[2] = cp = pe->p[2];
       break;
     case PE_TYPE__CLOSEPATH:
-      *op = 'h';
+      op    = 'h';
+      cp    = fp;
       break;
     }
-    return 0;
+    error = proc(pt, op, cp, data);
   }
 
-  return -1;
+  return error;
 }
