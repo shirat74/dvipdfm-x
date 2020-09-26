@@ -112,29 +112,121 @@ static int mps_op__dup (mpsi *p)
   return error;
 }
 
-static int mps_op__copy (mpsi *p)
+static int
+copy_stack (mpsi *p)
 {
   int        error = 0;
   dpx_stack *stk   = &p->stack.operand;
   pst_obj   *obj;
   int        n, m;
 
-  if (dpx_stack_depth(stk) < 1)
-    return -1;
-  obj = dpx_stack_top(stk);
-  if (!PST_INTEGERTYPE(obj))
-    return -1;
-
   obj = dpx_stack_pop(stk);
   n   = pst_getIV(obj);
   pst_release_obj(obj);
-  if (n < 0)
-    return -1;
-  
+
   m = n - 1;
   while (n-- > 0) {
     obj = dpx_stack_at(stk, m); /* stack grows */
     dpx_stack_push(stk, pst_copy_obj(obj));
+  }
+
+  return error;
+}
+
+static int mps_op__copy (mpsi *p)
+{
+  int        error = 0;
+  dpx_stack *stk   = &p->stack.operand;
+  pst_obj   *obj1, *obj2;
+
+  if (dpx_stack_depth(stk) < 1)
+    return -1;
+  obj1 = dpx_stack_top(stk);
+  switch (obj1->type) {
+  case PST_TYPE_INTEGER:
+    if (pst_getIV(obj1) < 0)
+      return -1; /* rangecheck */
+    error = copy_stack(p);
+    break;
+  case PST_TYPE_STRING:
+    if (dpx_stack_depth(stk) < 2)
+      return -1; /* stackunderflow */
+    obj2 = dpx_stack_at(stk, 1);
+    if (!PST_STRINGTYPE(obj2))
+      return -1; /* typecheck */
+    if (pst_length_of(obj2) > pst_length_of(obj1))
+      return -1; /* rangecheck */
+    obj1 = dpx_stack_pop(stk);
+    obj2 = dpx_stack_pop(stk);
+    {
+      pst_string *src, *dst;
+
+      src = obj2->data;
+      dst = obj1->data;
+      memcpy(dst->value + obj1->comp.off, src->value + obj2->comp.off, obj2->comp.size);
+      obj1->comp.size = obj2->comp.size;
+    }
+    pst_release_obj(obj2);
+    dpx_stack_push(stk, obj1);
+    break;
+  case PST_TYPE_ARRAY:
+    if (dpx_stack_depth(stk) < 2)
+      return -1; /* stackunderflow */
+    obj2 = dpx_stack_at(stk, 1);
+    if (!PST_ARRAYTYPE(obj2))
+      return -1; /* typecheck */
+    if (pst_length_of(obj2) > pst_length_of(obj1))
+      return -1; /* rangecheck */
+    obj1 = dpx_stack_pop(stk);
+    obj2 = dpx_stack_pop(stk);
+    {
+      int        i, j, lim;
+      pst_array *src, *dst;
+
+      src = obj2->data;
+      dst = obj1->data;
+      lim = obj2->comp.off + obj2->comp.size;
+      for (j = obj1->comp.off, i = obj2->comp.off; i < lim; j++, i++) {
+        if (dst->values[j])
+          pst_release_obj(dst->values[j]);
+        dst->values[j] = pst_copy_obj(src->values[i]);
+      }
+      obj1->comp.size = obj2->comp.size;
+    }
+    pst_release_obj(obj2);
+    dpx_stack_push(stk, obj1);
+    break;
+  case PST_TYPE_DICT:
+    if (dpx_stack_depth(stk) < 2)
+      return -1; /* stackunderflow */
+    obj2 = dpx_stack_at(stk, 1);
+    if (!PST_DICTTYPE(obj2))
+      return -1; /* typecheck */
+    if (pst_length_of(obj2) > pst_length_of(obj1))
+      return -1; /* rangecheck */
+    obj1 = dpx_stack_pop(stk);
+    obj2 = dpx_stack_pop(stk);
+    {
+      struct ht_iter  iter;
+      char           *key;
+      int             len;
+      pst_dict       *src, *dst;
+
+      src = obj2->data;
+      dst = obj1->data;
+      ht_set_iter(src->values, &iter);
+      while ((key = ht_iter_getkey(&iter, &len)) != NULL) {
+        pst_obj *val;
+        if (len == 0)
+          continue;
+        val = ht_iter_getval(&iter);
+        ht_insert_table(dst->values, key, len, pst_copy_obj(val));
+        ht_iter_next(&iter);
+      }
+    }
+    pst_release_obj(obj2);
+    dpx_stack_push(stk, obj1);
+    break;
   }
 
   return error;

@@ -647,13 +647,13 @@ mps_parse_body (mpsi *p, const char **strptr, const char *endptr)
       switch (obj->type) {
       case PST_TYPE_OPERATOR:
         error = mps_eval__operator(p, obj);
-        if (error && trace_mps) { /* DEBUG */
+        if (error) { /* DEBUG */
           WARN("eval_op failed: %s", p->cur_op);
         }
         break;
       case PST_TYPE_NAME:
         error = mps_eval__name(p, obj);
-        if (error && trace_mps) { /* DEBUG */
+        if (error) { /* DEBUG */
           char *str = (char *) pst_getSV(obj);
           WARN("eval_name failed: %s", str);
           if (str) RELEASE(str);

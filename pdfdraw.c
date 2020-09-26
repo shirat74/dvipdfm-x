@@ -982,7 +982,7 @@ init_a_gstate (pdf_gstate *gs)
   gs->linewidth  = 1.0;
   gs->miterlimit = 10.0;
 
-  gs->flatness   = 1; /* default to 1 in PDF */
+  gs->flatness   = 1.0;
 
   /* Internal variables */
   gs->flags = 0;
@@ -1454,7 +1454,7 @@ pdf_dev_concat (const pdf_tmatrix *M)
  * num M        ML  miter limit (g.t. 0)
  * array num d  D   line dash
  * int ri       RI  renderint intnet
- * int i        FL  flatness tolerance (0-100)
+ * num i        FL  flatness tolerance (0-100)
  * name gs      --  name: res. name of ExtGState dict.  
  */      
 int
@@ -1565,12 +1565,12 @@ pdf_dev_setflat (double flatness)
   int         len = 0;
   char       *buf = fmt_buf;
 
-  if (flatness < 0.2 || flatness > 100.0)
+  if (flatness < 0.0 || flatness > 100.0)
     return -1;
 
   if (gs->flatness != flatness) {
     gs->flatness = flatness;
-    len = sprintf(buf, " %d i", (int) ROUND(flatness, 1));
+    len = sprintf(buf, " %g i", flatness);
     pdf_doc_add_page_content(buf, len);  /* op: i */
   }
 
@@ -2484,7 +2484,7 @@ pdf_dev_flattenpath (void)
   gs       = dpx_stack_top(gss);
   pa       = &gs->path;
   M        = &gs->matrix;
-  flatness = gs->flatness;
+  flatness = gs->flatness / 20.0; /* Arbitrary: 1440ppi */
 
   fl = NEW(1, pdf_path);
   init_a_path(fl);

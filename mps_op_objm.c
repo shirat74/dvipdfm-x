@@ -469,6 +469,21 @@ static int mps_op__where (mpsi *p)
   return error;
 }
 
+static int mps_op__currentdict (mpsi *p)
+{
+  int        error = 0;
+  dpx_stack *stk   = &p->stack.operand;
+  pst_obj   *dict;
+
+  dict = dpx_stack_top(&p->stack.dict);
+  if (!dict)
+    return -1; /* stackunderflow */
+  
+  dpx_stack_push(stk, pst_copy_obj(dict));
+
+  return error;
+}
+
 static int mps_op__string (mpsi *p)
 {
   int         error = 0;
@@ -510,7 +525,7 @@ static int mps_op__length (mpsi *p)
   if (dpx_stack_depth(stk) < 1)
     return -1;
   obj = dpx_stack_top(stk);
-  if (!PST_DICTTYPE(obj) && !PST_ARRAYTYPE(obj) && !PST_STRINGTYPE(obj))
+  if (!PST_DICTTYPE(obj) && !PST_ARRAYTYPE(obj) && !PST_STRINGTYPE(obj) && !PST_NAMETYPE(obj))
     return -1; /* typecheck */
 
   obj = dpx_stack_pop(stk);
@@ -922,6 +937,7 @@ static pst_operator operators[] = {
   {"undef",        mps_op__undef},
   {"known",        mps_op__known},
   {"where",        mps_op__where},
+  {"currentdict",  mps_op__currentdict},
   {"systemdict",   mps_op__systemdict},
   /* errordict $error */
   {"userdict",     mps_op__userdict},

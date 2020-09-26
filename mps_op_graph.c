@@ -1071,7 +1071,6 @@ do_operator (mpsi *p, const char *token, double x_user, double y_user)
     break;
   case STROKE:
     /* fill rule not supported yet */
-    /* pdf_dev_flattenpath(); */
     pdf_dev_flushpath('S', PDF_FILL_RULE_NONZERO);
     break;
   case FILL:
