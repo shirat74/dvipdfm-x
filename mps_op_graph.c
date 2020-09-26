@@ -1105,23 +1105,45 @@ do_operator (mpsi *p, const char *token, double x_user, double y_user)
     if (!error)
       pop_numbers(p, 1); /* not a number */
     break;
+
   case SCALE:
-    error = get_numbers(p, values, 2);
-    if (!error) {
-      switch (p->compat_mode) {
+    {
+      int      have_matrix = 0;
+      pst_obj *obj;
+ 
+      obj = dpx_stack_top(stk);
+      if (PST_ARRAYTYPE(obj)) {
+        have_matrix = 1;
+        error = get_numbers_2(p, values, 2);
+      } else {
+        have_matrix = 0;   
+        error = get_numbers(p, values, 2);
+      }   
+      if (!error) {
+        switch (p->compat_mode) {
 #ifndef WITHOUT_ASCII_PTEX
-      case MP_CMODE_PTEXVERT:
-        pdf_setmatrix(&matrix, values[1], 0.0, 0.0, values[0], 0.0, 0.0);
-	break;
+        case MP_CMODE_PTEXVERT:
+          pdf_setmatrix(&matrix, values[1], 0.0, 0.0, values[0], 0.0, 0.0);
+	  break;
 #endif /* !WITHOUT_ASCII_PTEX */
-      default:
-        pdf_setmatrix(&matrix, values[0], 0.0, 0.0, values[1], 0.0, 0.0);
-        break;
+        default:
+          pdf_setmatrix(&matrix, values[0], 0.0, 0.0, values[1], 0.0, 0.0);
+          break;
+        }
       }
-      error = pdf_dev_concat(&matrix);
+      if (!error) {
+        if (have_matrix) {
+          obj = dpx_stack_pop(stk);
+        }
+        pop_numbers(p, 2);
+        if (have_matrix) {
+          error = make_matrix(obj, &matrix);
+          dpx_stack_push(stk, obj);
+        } else {
+          error = pdf_dev_concat(&matrix);
+        }
+      }
     }
-    if (!error)
-      error = pop_numbers(p, 2);
     break;
     /* Positive angle means clock-wise direction in graphicx-dvips??? */
   case ROTATE:
