@@ -137,6 +137,28 @@ mps_cvr_array (mpsi *p, double *values, int n)
   return 0;
 }
 
+static void
+matrix_to_array (pst_obj *obj, const pdf_tmatrix *M)
+{
+  pst_array *data;
+  int        i;
+
+  ASSERT(PST_ARRAYTYPE(obj);
+  ASSERT(pst_length_of(obj) >= 6);
+
+  data = obj->data;
+  for (i = 0; i < 6; i++) {
+    if (data->values[i])
+      pst_release_obj(obj);
+  }
+  data->values[0] = pst_new_real(M->a);
+  data->values[1] = pst_new_real(M->b);
+  data->values[2] = pst_new_real(M->c);
+  data->values[3] = pst_new_real(M->d);
+  data->values[4] = pst_new_real(M->e);
+  data->values[5] = pst_new_real(M->f);
+}
+
 static const char *
 mps_current_operator (mpsi *p)
 {
@@ -1137,7 +1159,7 @@ do_operator (mpsi *p, const char *token, double x_user, double y_user)
         }
         pop_numbers(p, 2);
         if (have_matrix) {
-          error = make_matrix(obj, &matrix);
+          matrix_to_array(obj, &matrix);
           dpx_stack_push(stk, obj);
         } else {
           error = pdf_dev_concat(&matrix);
