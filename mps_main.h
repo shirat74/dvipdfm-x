@@ -60,6 +60,7 @@ typedef struct {
 extern int      mps_add_systemdict    (mpsi *p, pst_obj *obj);
 extern pst_obj *mps_search_systemdict (mpsi *p, const char *key);
 
-extern pst_obj *pst_new_dict (size_t size);
+extern pst_obj *pst_new_dict  (size_t size);
+extern pst_obj *pst_new_array (size_t size);
 
 #endif /* _MPS_MAIN_H_ */
