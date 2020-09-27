@@ -172,6 +172,7 @@ matrix_to_array (pst_obj *obj, const pdf_tmatrix *M)
   data->values[n+3] = pst_new_real(M->d);
   data->values[n+4] = pst_new_real(M->e);
   data->values[n+5] = pst_new_real(M->f);
+  obj->comp.size    = 6;
 }
 
 static void
@@ -207,6 +208,84 @@ mps_push_stack (mpsi *p, pst_obj *obj)
   return 0;
 }
 #endif
+
+static int mps_op__matrix (mpsi *p)
+{
+  dpx_stack *stk = &p->stack.operand;
+  pst_obj   *obj;
+  pst_array *data;
+  int        i;
+
+  obj  = pst_new_array(6);  
+  data = obj->data;
+  for (i = 0; i < 6; i++) {
+    pst_obj *val = data->values[i];
+    if (val)
+      pst_release_obj(val);
+  }
+  data->values[0] = pst_new_real(1.0);
+  data->values[1] = pst_new_real(0.0);
+  data->values[2] = pst_new_real(0.0);
+  data->values[3] = pst_new_real(1.0);
+  data->values[4] = pst_new_real(0.0);
+  data->values[5] = pst_new_real(0.0);
+  
+  dpx_stack_push(stk, obj);
+
+  return 0;
+}
+
+static int mps_op__currentmatrix (mpsi *p)
+{
+  dpx_stack   *stk = &p->stack.operand;
+  pst_obj     *obj;
+  pdf_tmatrix  M;
+
+  if (dpx_stack_depth(stk) < 1)
+    return -1; /* stackunderflow */
+
+  obj = dpx_stack_top(stk);
+  if (!PST_ARRAYTYPE(obj))
+    return -1; /* typecheck */
+  if (pst_length_of(obj) < 6)
+    return -1; /* rangecheck */
+
+  obj  = dpx_stack_pop(stk);
+  pdf_dev_currentmatrix(&M);
+  matrix_to_array(obj, &M);
+  dpx_stack_push(stk, obj);
+
+  return 0;
+}
+
+static int mps_op__setmatrix (mpsi *p)
+{
+  int          error = 0;
+  dpx_stack   *stk   = &p->stack.operand;
+  pst_obj     *obj;
+  pdf_tmatrix  M, N;
+
+  if (dpx_stack_depth(stk) < 1)
+    error = -1; /* stackunderflow */
+
+  obj = dpx_stack_top(&p->stack.operand);
+  if (!PST_ARRAYTYPE(obj))
+    return -1; /* typecheck */
+  if (pst_length_of(obj) < 6)
+    return -1; /* rangecheck */
+  error = check_array_matrix_value(obj);
+  if (error)
+    return error;
+  array_to_matrix(&N, obj);
+  /* NYI: should implement pdf_dev_setmatrix */
+  pdf_dev_currentmatrix(&M);
+  pdf_invertmatrix(&M);
+  pdf_dev_concat(&M);
+  pdf_dev_concat(&N);
+  clean_stack(p, 1);
+
+  return error;
+}  
 
 static int mps_op__concatmatrix (mpsi *p)
 {
@@ -911,6 +990,7 @@ clear_fonts (void)
 
 #define CLIP         	44
 #define EOCLIP         	45
+#define EOFILL  46
 
 #define SHOWPAGE	49
 
@@ -987,6 +1067,7 @@ static struct operators
 
   {"stroke",       STROKE},  
   {"fill",         FILL},
+  {"eofill",       EOFILL},
   {"showpage",     SHOWPAGE},
 
   {"gsave",        GSAVE},
@@ -1123,79 +1204,6 @@ do_operator (mpsi *p, const char *token, double x_user, double y_user)
     }
     break;
 
-  case MATRIX:
-    {
-      pst_obj   *obj;
-      pst_array *data;
-    
-      data = NEW(1, pst_array);
-      data->size = 6;
-      data->link = 0;
-      data->values = NEW(6, pst_obj *);
-      data->values[0] = pst_new_real(1.0);
-      data->values[1] = pst_new_real(0.0);
-      data->values[2] = pst_new_real(0.0);
-      data->values[3] = pst_new_real(1.0);
-      data->values[4] = pst_new_real(0.0);
-      data->values[5] = pst_new_real(0.0);
-      obj = pst_new_obj(PST_TYPE_ARRAY, data);
-      dpx_stack_push(&p->stack.operand, obj);
-    }
-    break;
-  case CURRENTMATRIX:
-    if (dpx_stack_depth(&p->stack.operand) < 1) {
-      error = -1;
-    } else {
-      pst_obj *obj = dpx_stack_top(&p->stack.operand);
-      if (!PST_ARRAYTYPE(obj) || pst_length_of(obj) != 6) {
-        error = -1;
-      } else {
-        pst_array   *array;
-        pdf_tmatrix  M;
-        int          i;
-
-        obj = dpx_stack_pop(&p->stack.operand);
-        array = obj->data;
-        pdf_dev_currentmatrix(&M);
-        for (i = 0; i < 6; i++) {
-          if (array->values[i])
-            pst_release_obj(array->values[i]);
-        }
-        array->values[0] = pst_new_real(M.a);
-        array->values[1] = pst_new_real(M.b);
-        array->values[2] = pst_new_real(M.c);
-        array->values[3] = pst_new_real(M.d);
-        array->values[4] = pst_new_real(M.e);
-        array->values[5] = pst_new_real(M.f);
-      }
-      dpx_stack_push(&p->stack.operand, obj);
-    }
-    break;
-  case SETMATRIX:
-    if (dpx_stack_depth(&p->stack.operand) < 1) {
-      error = -1; /* stackunderflow */
-    } else {
-      pst_obj *obj = dpx_stack_top(&p->stack.operand);
-      if (!PST_ARRAYTYPE(obj)) {
-        error = -1; /* typecheck */
-      } else if (pst_length_of(obj) != 6) {
-        error = -1; /* rangecheck */
-      } else {
-        pdf_tmatrix M;
-
-        error = array_to_matrix(&matrix, obj);
-        if (!error) {
-          /* NYI: should implement pdf_dev_setmatrix */
-          pdf_dev_currentmatrix(&M);
-          pdf_invertmatrix(&M);
-          pdf_dev_concat(&M);
-          pdf_dev_concat(&matrix);
-          clean_stack(p, 1);
-        }
-      }
-    }
-    break;
-  
     /* Path construction */
   case MOVETO:
     error = getinterval_number_value(p, values, 0, 2);
@@ -1267,7 +1275,10 @@ do_operator (mpsi *p, const char *token, double x_user, double y_user)
   case FILL:
     pdf_dev_flushpath('f', PDF_FILL_RULE_NONZERO);
     break;
-
+  case EOFILL:
+    pdf_dev_flushpath('f', PDF_FILL_RULE_EVENODD);
+    break;
+  
   case CLIP:
     error = pdf_dev_clip();
     break;
@@ -1299,7 +1310,7 @@ do_operator (mpsi *p, const char *token, double x_user, double y_user)
 
     /* Positive angle means clock-wise direction in graphicx-dvips??? */
   case SETDASH:
-    error = get_numbers(p, values, 1);
+    error = getinterval_number_value(p, values, 0, 1);
     if (!error) {
       pst_obj   *pattern;
       pst_array *data;
@@ -1634,6 +1645,95 @@ do_operator (mpsi *p, const char *token, double x_user, double y_user)
   return error;
 }
 
+static int mps_op__setcachedevice (mpsi *p)
+{
+  int        error = 0;
+  dpx_stack *stk   = &p->stack.operand;
+  double     values[6];
+  int        i;
+
+  if (dpx_stack_depth(stk) < 6)
+    return -1; /* stackunderflow */
+  error = getinterval_number_value(p, values, 0, 6);
+  if (error)
+    return error;
+  for (i = 0; i < 6; i++) {
+    char buf[256];
+    int  len;
+
+    len = sprintf(buf, "%g ", values[i]);
+    pdf_doc_add_page_content(buf, len);
+  }
+  pdf_doc_add_page_content("d1 ", strlen("d1 "));
+  clean_stack(p, 6);
+
+  return error;
+}
+
+static int mps_op__definefont (mpsi *p)
+{
+  int        error = 0;
+  dpx_stack *stk   = &p->stack.operand;
+  pst_obj   *fontdict, *name, *dict, *enc;
+  pst_dict  *data;
+  pst_array *enc_data;
+  int        i;
+  pdf_obj   *charproc;
+
+  if (dpx_stack_depth(stk) < 2)
+    return -1; /* stackunderflow */
+  name = dpx_stack_at(stk, 1);
+  if (!PST_NAMETYPE(name) && !PST_STRINGTYPE(name))
+    return -1; /* typecheck */
+  dict = dpx_stack_at(stk, 0);
+  if (!PST_DICTTYPE(dict))
+    return -1; /* typecheck */
+
+  data = dict->data;
+  enc  = ht_lookup_table(data->values, "Encoding", strlen("Encoding"));
+  if (!enc)
+    return -1; /* undefined */
+  if (!PST_ARRAYTYPE(enc))
+    return -1; /* typecheck */
+  enc_data = enc->data;
+  charproc = pdf_new_dict();
+  for (i = enc->comp.off; i < enc->comp.off + enc->comp.size; i++) {
+    pst_obj *gname = enc_data->values[i];
+    char    *glyph;
+
+    if (!PST_NAMETYPE(gname) && !PST_STRINGTYPE(gname))
+      return -1; /* typecheck */
+    glyph = (char *) pst_getSV(gname);
+    {
+      pdf_obj *content, *resource;
+      char    *str, *ptr, *endptr;
+
+      content  = pdf_new_stream(STREAM_COMPRESS);
+      resource = pdf_new_dict();
+      pdf_doc_begin_capture(content, resource);
+      str      = NEW(strlen("dup begin dup / BuildGlyph end")+strlen(glyph)+1, char);
+      sprintf(str, "dup begin dup /%s BuildGlyph end", glyph);
+      ptr      = str;
+      endptr   = str + strlen(str);
+      error    = mps_exec_inline(p, &ptr, endptr, 0.0, 0.0); 
+      RELEASE(str);
+      pdf_doc_end_capture();
+      pdf_add_dict(charproc, pdf_new_name(glyph), pdf_ref_obj(content));
+      pdf_release_obj(content);
+      pdf_release_obj(resource); /* FIXME */
+    }
+  }
+  fontdict = pst_copy_obj(dict);
+  clean_stack(p, 2);
+
+  pdf_ref_obj(charproc);
+  pdf_release_obj(charproc);
+
+  dpx_stack_push(stk, fontdict);
+
+  return error;
+}
+
 static int mps_op__graphic (mpsi *p)
 {
   return do_operator(p, mps_current_operator(p), 0, 0);
@@ -1646,12 +1746,17 @@ static pst_operator operators[] = {
   {"pathforall",       mps_op__pathforall},
   {"show",             mps_op__show},
   {"stringwidth",      mps_op__stringwidth},
+  {"matrix",           mps_op__matrix},
+  {"setmatrix",        mps_op__setmatrix},
+  {"currentmatrix",    mps_op__currentmatrix},
   {"concatmatrix",     mps_op__concatmatrix},
   {"scale",            mps_op__scale},
   {"rotate",           mps_op__rotate},
   {"translate",        mps_op__translate},
 
   {"makefont",         mps_op__makefont},
+  {"definefont",       mps_op__definefont},
+  {"setcachedevice",   mps_op__setcachedevice},
 };
 
 int mps_op_graph_load (mpsi *p)

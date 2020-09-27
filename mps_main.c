@@ -477,7 +477,7 @@ mps_init_intrp (mpsi *p)
 {
   int       error = 0, i;
   pst_dict *systemdict;
-  pst_dict *statusdict, *errordict;
+  pst_obj  *statusdict, *errordict;
 
   p->cur_op = NULL;
   dpx_stack_init(&p->stack.operand);

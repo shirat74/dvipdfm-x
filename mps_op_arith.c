@@ -491,6 +491,28 @@ static int mps_op__sin (mpsi *p)
   return error;
 }
 
+static int mps_op__tan (mpsi *p)
+{
+  int        error = 0;
+  dpx_stack *stk   = &p->stack.operand;
+  pst_obj   *obj;
+  double     v;
+
+  if (dpx_stack_depth(stk) < 1)
+    return -1;
+  error = typecheck_numbers(stk, 1);
+  if (error < 0)
+    return error;
+
+  obj = dpx_stack_pop(stk);
+  v   = pst_getRV(obj);
+  v   = v * M_PI / 180.0;
+  dpx_stack_push(stk, pst_new_real(tan(v)));
+  pst_release_obj(obj);
+
+  return error;
+}
+
 static int mps_op__exp (mpsi *p)
 {
   int        error = 0;
@@ -621,6 +643,7 @@ static pst_operator operators[] = {
   {"atan",         mps_op__atan},
   {"cos",          mps_op__cos},
   {"sin",          mps_op__sin},
+  {"tan",          mps_op__tan},
   {"exp",          mps_op__exp},
   {"ln",           mps_op__ln},
   {"log",          mps_op__log},

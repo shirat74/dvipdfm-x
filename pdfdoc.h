@@ -171,4 +171,7 @@ extern void pdf_doc_set_bgcolor(const pdf_color *color);
 /* Sorry no appropriate place to put this... */
 extern struct ht_table *global_names;
 
+extern void   pdf_doc_begin_capture (pdf_obj *content, pdf_obj *resource);
+extern void   pdf_doc_end_capture   (void);
+
 #endif /* _PDFDOC_H_ */

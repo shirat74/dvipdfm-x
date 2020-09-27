@@ -2642,6 +2642,59 @@ pdf_doc_make_xform (pdf_obj     *xform,
   return;
 }
 
+void
+pdf_doc_begin_capture (pdf_obj *content, pdf_obj *resource)
+{
+  pdf_doc    *p = &pdoc;
+  pdf_form   *form;
+  struct form_list_node *fnode;
+
+  fnode = NEW(1, struct form_list_node);
+
+  fnode->prev    = p->pending_forms;
+  fnode->q_depth = pdf_dev_current_depth();
+  form           = &fnode->form;
+
+  /* Dummy */
+  form->matrix.a = 1.0; form->matrix.b = 0.0;
+  form->matrix.c = 0.0; form->matrix.d = 1.0;
+  form->matrix.e = 0.0;
+  form->matrix.f = 0.0;
+
+  form->cropbox.llx = 0.0;
+  form->cropbox.lly = 0.0;
+  form->cropbox.urx = 0.0;
+  form->cropbox.ury = 0.0;
+
+  form->contents  = content;
+  form->resources = resource;
+
+  p->pending_forms = fnode;
+
+  return;
+}
+
+void
+pdf_doc_end_capture (void)
+{
+  pdf_doc  *p = &pdoc;
+  struct form_list_node *fnode;
+
+  if (!p->pending_forms) {
+    WARN("Tried to close a nonexistent form XOject.");
+    return;
+  }
+  
+  fnode = p->pending_forms;
+
+  p->pending_forms = fnode->prev;
+
+  RELEASE(fnode);
+
+  return;
+}
+
+
 /*
  * begin_form_xobj creates an xobject with its "origin" at
  * xpos and ypos that is clipped to the specified bbox. Note

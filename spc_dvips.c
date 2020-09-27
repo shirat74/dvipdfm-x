@@ -80,7 +80,9 @@ load_header (struct spc_env *spe, const char *pro)
     spc_warn(spe, "PS header %s not found.", pro);
     return -1;
   }
+#if 0
   if (strcmp(pro, "pst-dots.pro")) /* FIXME */
+#endif
   {
     FILE   *fp = fopen(ps_header, "rb");
     size_t  size;
