@@ -1555,16 +1555,16 @@ do_operator (mpsi *p, const char *token, double x_user, double y_user)
       int      has_matrix = 0;
       pst_obj *obj = dpx_stack_top(&p->stack.operand);
       if (PST_ARRAYTYPE(obj)) {
-	      error = mps_cvr_array(p, values, 6);
-	      if (error)
-	        break;
-	      pdf_setmatrix(&matrix, values[0], values[1], values[2], values[3],  values[4], values[5]);
-	      has_matrix = 1;
+        error = mps_cvr_array(p, values, 6);
+        if (error)
+          break;
+        pdf_setmatrix(&matrix, values[0], values[1], values[2], values[3],  values[4], values[5]);
+        has_matrix = 1;
       }
       if (has_matrix) {
-        error = get_numbers_2(p, values, 2);
+        error = getinterval_number_value(p, values, 1, 2);
       } else {
-        error = get_numbers(p, values, 2);
+        error = getinterval_number_value(p, values, 0, 2);
       }
       if (error)
         break;
@@ -1575,11 +1575,9 @@ do_operator (mpsi *p, const char *token, double x_user, double y_user)
       	ps_dev_CTM(&matrix); /* Here, we need real PostScript CTM */
       }
       pdf_dev_itransform(&cp, &matrix);
+      clean_stack(p, has_matrix ? 3 : 2);
       mps_push_stack(p, pst_new_real(cp.x));
       mps_push_stack(p, pst_new_real(cp.y));
-      
-      if (!error)
-        pop_numbers(p, has_matrix ? 3 : 2);
     }
     break;
 
@@ -1678,31 +1676,9 @@ do_operator (mpsi *p, const char *token, double x_user, double y_user)
       dpx_stack_push(stk, obj);
     }
     break;
-
-#else
-  case FINDFONT:
-    error = do_findfont();
-    break;
-  case SCALEFONT:
-    error = do_scalefont();
-    break;
-  case SETFONT:
-    error = do_setfont();
-    break;
-  case CURRENTFONT:
-    error = do_currentfont();
-    break;
 #endif
 
   default:
-#if 0
-    if (is_fontname(token)) {
-      PUSH(pdf_new_name(token));
-    } else {
-      WARN("Unknown token \"%s\"", token);
-      error = 1;
-    }
-#endif
     ERROR("Unknown operator: %s", token);
     break;
   }
