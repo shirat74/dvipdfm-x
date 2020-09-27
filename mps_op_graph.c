@@ -1699,7 +1699,7 @@ convert_charproc (mpsi *p, const char *glyph, pdf_obj *resource)
 }
 
 static pdf_obj *
-create_type3_encoding (pst_obj *enc, int *first, int *last)
+create_type3_encoding (pst_obj *enc)
 {
   pdf_obj   *encoding;
   pdf_obj   *differences;
@@ -1712,7 +1712,6 @@ create_type3_encoding (pst_obj *enc, int *first, int *last)
   pdf_add_dict(encoding, pdf_new_name("Type"), pdf_new_name("Encoding"));
   differences = pdf_new_array();
   enc_data    = enc->data;
-  *first      = 256;
   for (i = 0, prev = -2; i < enc->comp.size; i++) {
     int      j     = i + enc->comp.off;
     pst_obj *gname = enc_data->values[j];
@@ -1721,17 +1720,14 @@ create_type3_encoding (pst_obj *enc, int *first, int *last)
     glyph = (char *) pst_getSV(gname);
     if (!strcmp(glyph, ".notdef"))
       continue;
-    if (i < *first)
-      *first = i;
     if (i > prev + 1) {
       pdf_add_array(differences, pdf_new_number(i));
     }
     pdf_add_array(differences, pdf_new_name(glyph));
     prev = i;
   }
-  *last = prev;
 
-  if (*first > 255 || *last < *first) {
+  if (prev < 0) {
     pdf_release_obj(differences);
     pdf_release_obj(encoding);
     return NULL;
