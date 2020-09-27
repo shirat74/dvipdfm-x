@@ -1698,6 +1698,28 @@ convert_charproc (mpsi *p, const char *glyph, pdf_obj *resource)
   return content;
 }
 
+static pdf_obj *
+create_type3_encoding (pst_obj *enc)
+{
+  pdf_obj   *encoding;
+  pdf_obj   *differences;
+  int        i;
+  pst_array *enc_data;
+
+  ASSERT(PST_ARRAYTYPE(enc));
+
+  encoding    = pdf_new_dict();
+  pdf_add_dict(encoding, pdf_new_name("Type"), pdf_new_name("Encoding"));
+  differences = pdf_new_array();
+  enc_data    = enc->data;
+  for (i = 0; i < enc->comp.size; i++) {
+    int      j     = i + enc->comp.off;
+    pst_obj *gname = 
+  }
+
+  return encoding;
+}
+
 static int
 create_type3_resource (pst_obj *font)
 {
