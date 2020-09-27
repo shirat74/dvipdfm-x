@@ -416,6 +416,27 @@ static pst_operator operators[] = {
 };
 
 pst_obj *
+pst_new_array (size_t size)
+{
+  pst_obj   *obj;
+  pst_array *data;
+  int        i;
+
+  if (size < 0)
+    return NULL;
+  data = NEW(1, pst_array);
+  data->link = 0;
+  data->size   = size;
+  data->values = NEW(size, pst_obj *);
+  for (i = 0; i < size; i++) {
+    data->values[i] = pst_new_null();
+  }
+  obj = pst_new_obj(PST_TYPE_ARRAY, data);
+
+  return obj;
+}
+
+pst_obj *
 pst_new_dict (size_t size)
 {
   pst_obj  *obj;
