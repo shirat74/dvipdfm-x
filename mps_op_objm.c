@@ -76,27 +76,6 @@ mps_search_dict_stack (mpsi *p, const char *key, pst_obj **where)
   return obj;
 }
 
-static pst_obj *
-pst_new_array (size_t size)
-{
-  pst_obj   *obj;
-  pst_array *data;
-  int        i;
-
-  if (size < 0)
-    return NULL;
-  data = NEW(1, pst_array);
-  data->link = 0;
-  data->size   = size;
-  data->values = NEW(size, pst_obj *);
-  for (i = 0; i < size; i++) {
-    data->values[i] = pst_new_null();
-  }
-  obj = pst_new_obj(PST_TYPE_ARRAY, data);
-
-  return obj;
-}
-
 static int mps_op__array (mpsi *p)
 {
   int        error = 0;
