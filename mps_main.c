@@ -219,7 +219,7 @@ static int mps_eval__array (mpsi *p, pst_obj *obj)
 
   data = obj->data;
   if (data) {
-    if (trace_mps > 5) {
+    if (trace_mps > 254) {
       int i;
       for (i = obj->comp.off; i < obj->comp.off + obj->comp.size; i++) {
         char *str = pst_getSV(data->values[i]);

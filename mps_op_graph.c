@@ -56,6 +56,19 @@
 
 #include "mps_op_graph.h"
 
+struct mp_font
+{
+  char   *font_name;
+  int     font_id;
+  int     tfm_id;     /* Used for text width calculation */
+  int     subfont_id;
+  double  pt_size;
+};
+
+dpx_stack font_stack = {0, NULL, NULL};
+
+#define FONT_DEFINED(f) ((f) && (f)->font_name && ((f)->font_id >= 0))
+
 #if 1
 static int
 get_numbers (mpsi *p, double *values, int n)
@@ -137,26 +150,66 @@ mps_cvr_array (mpsi *p, double *values, int n)
   return 0;
 }
 
+static int
+check_array_matrix_value (pst_obj *obj)
+{
+  int        i;
+  pst_array *data;
+
+  if (!PST_ARRAYTYPE(obj))
+    return -1; /* typecheck */
+  if (pst_length_of(obj) < 6)
+    return -1; /* rangecheck */
+  
+  data = obj->data;
+  for (i = obj->comp.off; i < obj->comp.off + 6; i++) {
+    if (!PST_NUMBERTYPE(data->values[i]))
+      return -1; /* typecheck */
+  }
+
+  return 0;
+}
+
 static void
 matrix_to_array (pst_obj *obj, const pdf_tmatrix *M)
 {
   pst_array *data;
-  int        i;
+  int        i, n;
 
-  ASSERT(PST_ARRAYTYPE(obj);
+  ASSERT(PST_ARRAYTYPE(obj));
   ASSERT(pst_length_of(obj) >= 6);
 
   data = obj->data;
-  for (i = 0; i < 6; i++) {
+  n    = obj->comp.off;
+  for (i = n; i < n + 6; i++) {
     if (data->values[i])
-      pst_release_obj(obj);
+      pst_release_obj(data->values[i]);
   }
-  data->values[0] = pst_new_real(M->a);
-  data->values[1] = pst_new_real(M->b);
-  data->values[2] = pst_new_real(M->c);
-  data->values[3] = pst_new_real(M->d);
-  data->values[4] = pst_new_real(M->e);
-  data->values[5] = pst_new_real(M->f);
+  data->values[n]   = pst_new_real(M->a);
+  data->values[n+1] = pst_new_real(M->b);
+  data->values[n+2] = pst_new_real(M->c);
+  data->values[n+3] = pst_new_real(M->d);
+  data->values[n+4] = pst_new_real(M->e);
+  data->values[n+5] = pst_new_real(M->f);
+}
+
+static void
+array_to_matrix (pdf_tmatrix *M, pst_obj *obj)
+{
+  pst_array *data;
+  int        n;
+
+  ASSERT(PST_ARRAYTYPE(obj));
+  ASSERT(pst_length_of(obj) >= 6);
+
+  data = obj->data;
+  n    = obj->comp.off;
+  M->a = pst_getRV(data->values[n]);
+  M->b = pst_getRV(data->values[n+1]);
+  M->c = pst_getRV(data->values[n+2]);
+  M->d = pst_getRV(data->values[n+3]);
+  M->e = pst_getRV(data->values[n+4]);
+  M->f = pst_getRV(data->values[n+5]);
 }
 
 static const char *
@@ -174,18 +227,198 @@ mps_push_stack (mpsi *p, pst_obj *obj)
 }
 #endif
 
-#include "dvi.h"
+static int mps_op__concatmatrix (mpsi *p)
+{
+  int          error       = 0;
+  dpx_stack   *stk         = &p->stack.operand;
+  pdf_tmatrix  M, N;
+  pst_obj     *obj1, *obj2, *obj3;
+
+  if (dpx_stack_depth(stk) < 3)
+    return -1;
+  
+  obj1 = dpx_stack_at(stk, 0);
+  obj2 = dpx_stack_at(stk, 1);
+  obj3 = dpx_stack_at(stk, 2);
+  if (!PST_ARRAYTYPE(obj1))
+    return -1; /* typecheck */
+  error = check_array_matrix_value(obj2);
+  if (error)
+    return error;
+  error = check_array_matrix_value(obj3);
+  if (error)
+    return error;
+
+  array_to_matrix(&N, obj2);
+  array_to_matrix(&M, obj3);  
+  pdf_concatmatrix(&M, &N);
+  
+  obj1 = dpx_stack_pop(stk);
+  matrix_to_array(obj1, &M);
+
+  pop_numbers(p, 2);
+
+  dpx_stack_push(stk, obj1);
+
+  return error;
+}
+
+static int mps_op__scale (mpsi *p)
+{
+  int          error       = 0;
+  dpx_stack   *stk         = &p->stack.operand;
+  pdf_tmatrix  matrix      = {1.0, 0.0, 0.0, 1.0, 0.0, 0.0};
+  int          have_matrix = 0;
+  pst_obj     *obj;
+  double       values[6] = {1.0, 0.0, 0.0, 1.0, 0.0, 0.0};
+ 
+  if (dpx_stack_depth(stk) < 2)
+    return -1;
+  obj = dpx_stack_top(stk);
+  if (PST_ARRAYTYPE(obj)) {
+    have_matrix = 1;
+    error = get_numbers_2(p, values, 2);
+  } else {
+    have_matrix = 0;   
+    error = get_numbers(p, values, 2);
+  }   
+  if (error)
+    return error;
+  
+  switch (p->compat_mode) {
+#ifndef WITHOUT_ASCII_PTEX
+  case MP_CMODE_PTEXVERT:
+    pdf_setmatrix(&matrix, values[1], 0.0, 0.0, values[0], 0.0, 0.0);
+	  break;
+#endif /* !WITHOUT_ASCII_PTEX */
+  default:
+    pdf_setmatrix(&matrix, values[0], 0.0, 0.0, values[1], 0.0, 0.0);
+    break;
+  }
+  if (!have_matrix) {
+    error = pdf_dev_concat(&matrix);
+    if (error)
+      return error;
+  }
+  
+  if (have_matrix)
+    obj = dpx_stack_pop(stk);
+  pop_numbers(p, 2);
+  if (have_matrix) {
+    matrix_to_array(obj, &matrix);
+    dpx_stack_push(stk, obj);
+  }
+
+  return error;
+}
+
+static int mps_op__rotate (mpsi *p)
+{
+  int          error       = 0;
+  dpx_stack   *stk         = &p->stack.operand;
+  pdf_tmatrix  matrix      = {1.0, 0.0, 0.0, 1.0, 0.0, 0.0};
+  int          have_matrix = 0;
+  pst_obj     *obj;
+  double       values[6]   = {1.0, 0.0, 0.0, 1.0, 0.0, 0.0};
+ 
+  if (dpx_stack_depth(stk) < 1)
+    return -1;
+  obj = dpx_stack_top(stk);
+  if (PST_ARRAYTYPE(obj)) {
+    have_matrix = 1;
+    error = get_numbers_2(p, values, 1);
+  } else {
+    have_matrix = 0;   
+    error = get_numbers(p, values, 1);
+  }   
+  if (error)
+    return error;
+
+  values[0] = values[0] * M_PI / 180;
+
+  switch (p->compat_mode) {
+  case MP_CMODE_DVIPSK:
+  case MP_CMODE_MPOST: /* Really? */
+#ifndef WITHOUT_ASCII_PTEX
+  case MP_CMODE_PTEXVERT:
+#endif /* !WITHOUT_ASCII_PTEX */
+    pdf_setmatrix(&matrix, cos(values[0]), -sin(values[0]), sin(values[0]), cos(values[0]), 0.0, 0.0);
+    break;
+  default:
+    pdf_setmatrix(&matrix, cos(values[0]), sin(values[0]), -sin(values[0]), cos(values[0]), 0.0, 0.0);
+    break;
+  }
+
+  if (!have_matrix) {
+    error = pdf_dev_concat(&matrix);
+    if (error)
+      return error;
+  }
+  
+  if (have_matrix)
+    obj = dpx_stack_pop(stk);
+  pop_numbers(p, 1);
+  if (have_matrix) {
+    matrix_to_array(obj, &matrix);
+    dpx_stack_push(stk, obj);
+  }
+
+  return error;
+}
+
+static int mps_op__translate (mpsi *p)
+{
+  int          error       = 0;
+  dpx_stack   *stk         = &p->stack.operand;
+  pdf_tmatrix  matrix      = {1.0, 0.0, 0.0, 1.0, 0.0, 0.0};
+  int          have_matrix = 0;
+  pst_obj     *obj;
+  double       values[6]   = {1.0, 0.0, 0.0, 1.0, 0.0, 0.0};
+ 
+  if (dpx_stack_depth(stk) < 2)
+    return -1;
+  obj = dpx_stack_top(stk);
+  if (PST_ARRAYTYPE(obj)) {
+    have_matrix = 1;
+    error = get_numbers_2(p, values, 2);
+  } else {
+    have_matrix = 0;   
+    error = get_numbers(p, values, 2);
+  }   
+  if (error)
+    return error;
+
+  pdf_setmatrix(&matrix, 1.0, 0.0, 0.0, 1.0, values[0], values[1]);
+
+  if (!have_matrix) {
+    error = pdf_dev_concat(&matrix);
+    if (error)
+      return error;
+  }
+  
+  if (have_matrix)
+    obj = dpx_stack_pop(stk);
+  pop_numbers(p, 2);
+  if (have_matrix) {
+    matrix_to_array(obj, &matrix);
+    dpx_stack_push(stk, obj);
+  }
+
+  return error;
+}
+
 static int mps_op__show (mpsi *p)
 {
-  int            error = 0;
-  dpx_stack     *stk   = &p->stack.operand;
-  pst_obj       *str;
-  spt_t          x, y;
-  pdf_coord      cp;
-  int            font_id, tfm_id, sfd_id;
-  double         font_scale, text_width;
-  unsigned char *strptr;
-  int            length;
+  int             error = 0;
+  dpx_stack      *stk   = &p->stack.operand;
+  pst_obj        *str;
+  spt_t           x, y;
+  pdf_coord       cp;
+  int             font_id, tfm_id, sfd_id;
+  double          font_scale, text_width;
+  unsigned char  *strptr;
+  int             length;
+  struct mp_font *font;
 
   if (dpx_stack_depth(stk) < 1)
     return -1; /* stackunderflow */
@@ -199,12 +432,17 @@ static int mps_op__show (mpsi *p)
   {
     pst_string *data = str->data;
 
-    strptr = ((char *)data->value) + str->comp.off;
+    strptr = data->value + str->comp.off;
   }
   length = str->comp.size;
 
-  error = dvi_font(&font_id, &tfm_id, &sfd_id, &font_scale);
-  // WARN("show called: %g %g font_id=%d scale=%g =>%s<=", cp.x, cp.y, font_id, font_scale, strptr);
+  font = dpx_stack_top(&font_stack);
+  if (!font)
+    return -1;
+  font_id    = font->font_id;
+  tfm_id     = font->tfm_id;
+  sfd_id     = font->subfont_id;
+  font_scale = font->pt_size;
 
   text_width = 0.0;
   if (sfd_id >= 0) {
@@ -250,13 +488,14 @@ static int mps_op__show (mpsi *p)
 
 static int mps_op__stringwidth (mpsi *p)
 {
-  int            error = 0;
-  dpx_stack     *stk   = &p->stack.operand;
-  pst_obj       *str;
-  int            font_id, tfm_id, sfd_id;
-  double         font_scale, text_width;
-  unsigned char *strptr;
-  int            length;
+  int             error = 0;
+  dpx_stack      *stk   = &p->stack.operand;
+  pst_obj        *str;
+  int             font_id, tfm_id, sfd_id;
+  double          font_scale, text_width;
+  unsigned char  *strptr;
+  int             length;
+  struct mp_font *font;
 
   if (dpx_stack_depth(stk) < 1)
     return -1; /* stackunderflow */
@@ -267,12 +506,17 @@ static int mps_op__stringwidth (mpsi *p)
   {
     pst_string *data = str->data;
 
-    strptr = ((char *)data->value) + str->comp.off;
+    strptr = data->value + str->comp.off;
   }
   length = str->comp.size;
 
-  error = dvi_font(&font_id, &tfm_id, &sfd_id, &font_scale);
-  // WARN("show called: %g %g font_id=%d scale=%g =>%s<=", cp.x, cp.y, font_id, font_scale, strptr);
+  font = dpx_stack_top(&font_stack);
+  if (!font)
+    return -1;
+  font_id    = font->font_id;
+  tfm_id     = font->tfm_id;
+  sfd_id     = font->subfont_id;
+  font_scale = font->pt_size;
 
   text_width = 0.0;
   if (sfd_id >= 0) {
@@ -306,6 +550,22 @@ static int mps_op__stringwidth (mpsi *p)
     dpx_stack_push(stk, pst_new_real(text_width));
     dpx_stack_push(stk, pst_new_real(0.0));
   }
+
+  return error;
+}
+
+/* NYI */
+static int mps_op__makefont (mpsi *p)
+{
+  int        error = 0;
+  dpx_stack *stk   = &p->stack.operand;
+  pst_obj   *obj;
+
+  if (dpx_stack_depth(stk) < 2)
+    return -1;
+  
+  obj = dpx_stack_pop(stk);
+  pst_release_obj(obj);
 
   return error;
 }
@@ -535,21 +795,6 @@ static int mps_op__pathforall (mpsi *p)
   return error;
 }
 
-static struct mp_font
-{
-  char   *font_name;
-  int     font_id;
-  int     tfm_id;     /* Used for text width calculation */
-  int     subfont_id;
-  double  pt_size;
-} font_stack[PDF_GSAVE_MAX] = {
-  {NULL, -1, -1, -1, 0}
-};
-static int currentfont = 0;
-
-#define CURRENT_FONT() ((currentfont < 0) ? NULL : &font_stack[currentfont])
-#define FONT_DEFINED(f) ((f) && (f)->font_name && ((f)->font_id >= 0))
-
 static void
 clear_mp_font_struct (struct mp_font *font)
 {
@@ -564,6 +809,27 @@ clear_mp_font_struct (struct mp_font *font)
   font->pt_size    = 0.0;
 }
 
+void
+mps_set_currentfont (mpsi *p, const char *font_name, int font_id, int tfm_id, int sfd_id, double pt_size)
+{
+  struct mp_font *font;
+
+  font = dpx_stack_top(&font_stack);
+  if (!font) {
+    font = NEW(1, struct mp_font);
+    font->font_name = NULL;
+    dpx_stack_push(&font_stack, font);
+  }
+
+  clear_mp_font_struct(font);
+  font->font_name = NEW(strlen(font_name)+1, char);
+  strcpy(font->font_name, font_name);
+  font->font_id    = font_id;
+  font->tfm_id     = tfm_id;
+  font->subfont_id = sfd_id;
+  font->pt_size    = pt_size;
+}
+
 static int
 mp_setfont (const char *font_name, double pt_size)
 {
@@ -572,7 +838,17 @@ mp_setfont (const char *font_name, double pt_size)
   int             subfont_id = -1;
   fontmap_rec    *mrec;
 
-  font = CURRENT_FONT();
+  /* NYI */
+  if (!strcmp(font_name, "PSTricksDotFont")) {
+    font_name = "ZapfDingbats";
+  }
+
+  font = dpx_stack_top(&font_stack);
+  if (!font) {
+    font = NEW(1, struct mp_font);
+    font->font_name = NULL;
+    dpx_stack_push(&font_stack, font);
+  }
 
   mrec = pdf_lookup_fontmap_record(font_name);
   if (mrec && mrec->charmap.sfd_name && mrec->charmap.subfont_id) {
@@ -593,8 +869,7 @@ mp_setfont (const char *font_name, double pt_size)
   font->subfont_id = subfont_id;
   font->pt_size    = pt_size;
   font->tfm_id     = tfm_open(font_name, 0); /* Need not exist in MP mode */
-  font->font_id    = pdf_dev_locate_font(name,
-                                         (spt_t) (pt_size * dev_unit_dviunit()));
+  font->font_id    = pdf_dev_locate_font(name, (spt_t) (pt_size * dev_unit_dviunit()));
 
   if (font->font_id < 0) {
     ERROR("MPOST: No physical font assigned for \"%s\".", font_name);
@@ -609,8 +884,8 @@ save_font (void)
 {
   struct mp_font *current, *next;
 
-  current = &font_stack[currentfont++];
-  next    = &font_stack[currentfont  ];
+  current = dpx_stack_top(&font_stack);
+  next    = NEW(1, struct mp_font);
   if (FONT_DEFINED(current)) {
     next->font_name = NEW(strlen(current->font_name)+1, char);
     strcpy(next->font_name, current->font_name);
@@ -625,6 +900,7 @@ save_font (void)
     next->subfont_id = -1;
     next->tfm_id     = -1;
   }
+  dpx_stack_push(&font_stack, next);
 }
 
 static void
@@ -632,34 +908,23 @@ restore_font (void)
 {
   struct mp_font *current;
 
-  current = CURRENT_FONT();
+  current = dpx_stack_pop(&font_stack);
   if (current) {
     clear_mp_font_struct(current);
+    RELEASE(current);
   }
-
-  currentfont--;
 }
 
 static void
 clear_fonts (void)
 {
-  while (currentfont > 0) {
-    clear_mp_font_struct(&font_stack[currentfont]);
-    currentfont--;
+  struct mp_font *font;
+  while ((font = dpx_stack_pop(&font_stack)) != NULL) {
+    clear_mp_font_struct(font);
+    RELEASE(font);
   }
 }
 
-static int
-is_fontname (const char *token)
-{
-  fontmap_rec *mrec;
-
-  mrec = pdf_lookup_fontmap_record(token);
-  if (mrec)
-    return  1;
-
-  return  tfm_exists(token);
-}
 
 /* PostScript Operators */
 
@@ -806,53 +1071,16 @@ static struct operators
 #endif
 };
 
-static struct operators mps_operators[] = {
-  {"fshow",       FSHOW}, /* exch findfont exch scalefont setfont show */
-  {"startTexFig", STEXFIG},
-  {"endTexFig",   ETEXFIG},
-  {"hlw",         HLW}, /* 0 dtransform exch truncate exch idtransform pop setlinewidth */
-  {"vlw",         VLW}, /* 0 exch dtransform truncate idtransform pop setlinewidth pop */
-  {"l",           LINETO},
-  {"r",           RLINETO},
-  {"c",           CURVETO},
-  {"m",           MOVETO},
-  {"p",           CLOSEPATH},
-  {"n",           NEWPATH},
-  {"C",           SETCMYKCOLOR},
-  {"G",           SETGRAY},
-  {"R",           SETRGBCOLOR},
-  {"lj",          SETLINEJOIN},
-  {"ml",          SETMITERLIMIT},
-  {"lc",          SETLINECAP},
-  {"S",           STROKE},
-  {"F",           FILL},
-  {"q",           GSAVE},
-  {"Q",           GRESTORE},
-  {"s",           SCALE},
-  {"t",           CONCAT},
-  {"sd",          SETDASH},
-  {"rd",          RD}, /* [] 0 setdash */
-  {"P",           SHOWPAGE},
-  {"B",           B}, /* gsave fill grestore */
-  {"W",           CLIP}
-};
+#define NUM_PS_OPERATORS_G  (sizeof(ps_operators)/sizeof(ps_operators[0]))
 
-#define NUM_PS_OPERATORS  (sizeof(ps_operators)/sizeof(ps_operators[0]))
-#define NUM_MPS_OPERATORS (sizeof(mps_operators)/sizeof(mps_operators[0]))
 static int
 get_opcode (const char *token)
 {
   int   i;
 
-  for (i = 0; i < NUM_PS_OPERATORS; i++) {
+  for (i = 0; i < NUM_PS_OPERATORS_G; i++) {
     if (!strcmp(token, ps_operators[i].token)) {
       return ps_operators[i].opcode;
-    }
-  }
-
-  for (i = 0; i < NUM_MPS_OPERATORS; i++) {
-    if (!strcmp(token, mps_operators[i].token)) {
-      return mps_operators[i].opcode;
     }
   }
 
@@ -1128,78 +1356,7 @@ do_operator (mpsi *p, const char *token, double x_user, double y_user)
       pop_numbers(p, 1); /* not a number */
     break;
 
-  case SCALE:
-    {
-      int      have_matrix = 0;
-      pst_obj *obj;
- 
-      obj = dpx_stack_top(stk);
-      if (PST_ARRAYTYPE(obj)) {
-        have_matrix = 1;
-        error = get_numbers_2(p, values, 2);
-      } else {
-        have_matrix = 0;   
-        error = get_numbers(p, values, 2);
-      }   
-      if (!error) {
-        switch (p->compat_mode) {
-#ifndef WITHOUT_ASCII_PTEX
-        case MP_CMODE_PTEXVERT:
-          pdf_setmatrix(&matrix, values[1], 0.0, 0.0, values[0], 0.0, 0.0);
-	  break;
-#endif /* !WITHOUT_ASCII_PTEX */
-        default:
-          pdf_setmatrix(&matrix, values[0], 0.0, 0.0, values[1], 0.0, 0.0);
-          break;
-        }
-      }
-      if (!error) {
-        if (have_matrix) {
-          obj = dpx_stack_pop(stk);
-        }
-        pop_numbers(p, 2);
-        if (have_matrix) {
-          matrix_to_array(obj, &matrix);
-          dpx_stack_push(stk, obj);
-        } else {
-          error = pdf_dev_concat(&matrix);
-        }
-      }
-    }
-    break;
     /* Positive angle means clock-wise direction in graphicx-dvips??? */
-  case ROTATE:
-    error = get_numbers(p, values, 1);
-    if (!error) {
-      values[0] = values[0] * M_PI / 180;
-
-      switch (p->compat_mode) {
-      case MP_CMODE_DVIPSK:
-      case MP_CMODE_MPOST: /* Really? */
-#ifndef WITHOUT_ASCII_PTEX
-      case MP_CMODE_PTEXVERT:
-#endif /* !WITHOUT_ASCII_PTEX */
-        pdf_setmatrix(&matrix, cos(values[0]), -sin(values[0]), sin(values[0]), cos(values[0]), 0.0, 0.0);
-        break;
-      default:
-        pdf_setmatrix(&matrix, cos(values[0]), sin(values[0]), -sin(values[0]), cos(values[0]), 0.0, 0.0);
-        break;
-      }
-      error = pdf_dev_concat(&matrix);
-    }
-    if (!error)
-      error = pop_numbers(p, 1);
-    break;
-  case TRANSLATE:
-    error = get_numbers(p, values, 2);
-    if (!error) {
-      pdf_setmatrix(&matrix, 1.0, 0.0, 0.0, 1.0, values[0], values[1]);
-      error = pdf_dev_concat(&matrix);
-    }
-    if (!error)
-      pop_numbers(p, 2);
-    break;
-
   case SETDASH:
     error = get_numbers(p, values, 1);
     if (!error) {
@@ -1442,37 +1599,96 @@ do_operator (mpsi *p, const char *token, double x_user, double y_user)
 #if 1
   case FINDFONT:
     {
-      pst_obj *obj = dpx_stack_pop(&p->stack.operand);
-      pst_release_obj(obj);
-      dpx_stack_push(&p->stack.operand, pst_new_null());
+      dpx_stack *stk = &p->stack.operand;
+      pst_obj   *obj, *dict;
+      char      *fontname;
+      
+      if (dpx_stack_depth(stk) < 1)
+        return -1;
+    
+      obj = dpx_stack_top(stk);
+      if (!PST_NAMETYPE(obj) && !PST_STRINGTYPE(obj))
+        return -1;
+      fontname = (char *) pst_getSV(obj);
+      WARN("findfont: %s", fontname);
+      RELEASE(fontname);
+
+      obj  = dpx_stack_pop(stk);
+      dict = pst_new_dict(-1);
+      {
+        pst_dict *data = dict->data;
+
+        ht_insert_table(data->values, "FontName", strlen("FontName"), obj);
+      }
+      dpx_stack_push(stk, dict);
     }
     break;
   case SETFONT:
     {
-      pst_obj *obj = dpx_stack_pop(&p->stack.operand);
-      pst_release_obj(obj);
+      dpx_stack *stk = &p->stack.operand;
+      pst_obj   *dict, *name, *num;
+      pst_dict  *data;
+      char      *fontname;
+      double     fontscale = 1.0;
+
+      if (dpx_stack_depth(stk) < 1)
+        return -1;
+      dict = dpx_stack_top(stk);
+      if (!PST_DICTTYPE(dict))
+        return -1;
+      data = dict->data;
+      name = ht_lookup_table(data->values, "FontName", strlen("FontName"));
+      if (!name || !PST_NAMETYPE(name))
+        return -1;
+      fontname = (char *) pst_getSV(name);
+      num = ht_lookup_table(data->values, "FontScale", strlen("FontScale"));
+      if (num && PST_NUMBERTYPE(num))
+        fontscale = pst_getRV(num);
+      error = mp_setfont(fontname, fontscale);
+      RELEASE(fontname);
+      if (!error) {
+        dict = dpx_stack_pop(stk);
+        pst_release_obj(dict);
+      }
     }
     break;
   case SCALEFONT:
     {
-      pst_obj *obj1, *obj2;
-      obj1 = dpx_stack_pop(&p->stack.operand);
-      pst_release_obj(obj1);
-      obj2 = dpx_stack_pop(&p->stack.operand);
-      pst_release_obj(obj2);
-      dpx_stack_push(&p->stack.operand, pst_new_null());
+      dpx_stack *stk = &p->stack.operand;
+      pst_obj   *dict, *num;
+      pst_dict  *data;
+      double     fontscale = 1.0;
+
+      if (dpx_stack_depth(stk) < 2)
+        return -1;
+      num  = dpx_stack_at(stk, 0);
+      dict = dpx_stack_at(stk, 1);
+      if (!PST_NUMBERTYPE(num) || !PST_DICTTYPE(dict))
+        return -1;
+      data = dict->data;
+      num  = dpx_stack_pop(stk);
+      fontscale = pst_getRV(num);
+      pst_release_obj(num);
+
+      num  = ht_lookup_table(data->values, "FontScale", strlen("FontScale"));
+      fontscale *= pst_getRV(num);
+      ht_insert_table(data->values, "FontScale", strlen("FontScale"), pst_new_real(fontscale));
     }
     break;
   case CURRENTFONT:
     {
-      pst_obj *obj;
-      pst_dict *data;
+      dpx_stack      *stk = &p->stack.operand;
+      struct mp_font *font = dpx_stack_top(&font_stack);
+      pst_obj        *obj;
+      pst_dict       *data;
 
       obj  = pst_new_dict(-1);
       data = obj->data;
-      ht_insert_table(data->values, "FontType", strlen("FontType"), pst_new_integer(1));
-      ht_insert_table(data->values, "FMapType", strlen("FMapType"), pst_new_integer(0));
-      dpx_stack_push(&p->stack.operand, obj);
+      ht_insert_table(data->values, "FontName",  strlen("FontName"),  pst_new_name(font->font_name, 0));
+      ht_insert_table(data->values, "FontScale", strlen("FontScale"), pst_new_real(font->pt_size));
+      ht_insert_table(data->values, "FontType",  strlen("FontType"),  pst_new_integer(1));
+      ht_insert_table(data->values, "FMapType",  strlen("FMapType"),  pst_new_integer(0));
+      dpx_stack_push(stk, obj);
     }
     break;
 
@@ -1488,37 +1704,6 @@ do_operator (mpsi *p, const char *token, double x_user, double y_user)
     break;
   case CURRENTFONT:
     error = do_currentfont();
-    break;
-
-  case SHOW:
-    error = do_show();
-    break;
-
-  case STRINGWIDTH:
-    error = 1;
-    break;
-#endif
-
-#if 0
-    /* Extensions */
-  case FSHOW:
-    error = do_mpost_bind_def("exch findfont exch scalefont setfont show", x_user, y_user);
-    break;
-  case STEXFIG:
-  case ETEXFIG:
-    error = do_texfig_operator(opcode, x_user, y_user);
-    break;
-  case HLW:
-    error = do_mpost_bind_def("0 dtransform exch truncate exch idtransform pop setlinewidth", x_user, y_user);
-    break;
-  case VLW:
-    error = do_mpost_bind_def("0 exch dtransform truncate idtransform setlinewidth pop", x_user, y_user);
-    break;
-  case RD:
-    error = do_mpost_bind_def("[] 0 setdash", x_user, y_user);
-    break;
-  case B:
-    error = do_mpost_bind_def("gsave fill grestore", x_user, y_user);
     break;
 #endif
 
@@ -1543,11 +1728,26 @@ static int mps_op__graphic (mpsi *p)
   return do_operator(p, mps_current_operator(p), 0, 0);
 }
 
+#define NUM_PS_OPERATORS  (sizeof(operators)/sizeof(operators[0]))
+
+static pst_operator operators[] = {
+  {"%pathforall_loop", mps_op__p_pathforall_loop},
+  {"pathforall",       mps_op__pathforall},
+  {"show",             mps_op__show},
+  {"stringwidth",      mps_op__stringwidth},
+  {"concatmatrix",     mps_op__concatmatrix},
+  {"scale",            mps_op__scale},
+  {"rotate",           mps_op__rotate},
+  {"translate",        mps_op__translate},
+
+  {"makefont",         mps_op__makefont},
+};
+
 int mps_op_graph_load (mpsi *p)
 {
   int   i;
 
-  for (i = 0; i < NUM_PS_OPERATORS; i++) {
+  for (i = 0; i < NUM_PS_OPERATORS_G; i++) {
     pst_obj      *obj;
     pst_operator *op;
 
@@ -1567,52 +1767,12 @@ int mps_op_graph_load (mpsi *p)
   }
 #endif
 
-  {
-    pst_obj      *obj;
-    pst_operator *op;
+  for (i = 0; i < NUM_PS_OPERATORS; i++) {
+    pst_obj  *obj;
 
-    op = NEW(1, pst_operator);
-    op->name   = "%pathforall_loop";
-    op->action = (mps_op_fn_ptr) mps_op__p_pathforall_loop;
-    obj = pst_new_obj(PST_TYPE_OPERATOR, op);
+    obj  = pst_new_obj(PST_TYPE_OPERATOR, &operators[i]);
     obj->attr.is_exec = 1;
-    mps_add_systemdict(p, obj); 
-  }
-
-  {
-    pst_obj      *obj;
-    pst_operator *op;
-
-    op = NEW(1, pst_operator);
-    op->name   = "pathforall";
-    op->action = (mps_op_fn_ptr) mps_op__pathforall;
-    obj = pst_new_obj(PST_TYPE_OPERATOR, op);
-    obj->attr.is_exec = 1;
-    mps_add_systemdict(p, obj); 
-  }
-
-  {
-    pst_obj      *obj;
-    pst_operator *op;
-
-    op = NEW(1, pst_operator);
-    op->name   = "show";
-    op->action = (mps_op_fn_ptr) mps_op__show;
-    obj = pst_new_obj(PST_TYPE_OPERATOR, op);
-    obj->attr.is_exec = 1;
-    mps_add_systemdict(p, obj); 
-  }
-
-  {
-    pst_obj      *obj;
-    pst_operator *op;
-
-    op = NEW(1, pst_operator);
-    op->name   = "stringwidth";
-    op->action = (mps_op_fn_ptr) mps_op__stringwidth;
-    obj = pst_new_obj(PST_TYPE_OPERATOR, op);
-    obj->attr.is_exec = 1;
-    mps_add_systemdict(p, obj); 
+    mps_add_systemdict(p, obj);
   }
 
   return 0;

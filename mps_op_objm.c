@@ -952,7 +952,7 @@ static pst_operator operators[] = {
   {"getinterval",  mps_op__getinterval},
   {"put",          mps_op__put},
   {"putinterval",  mps_op__putinterval},
-  /* {"copy",         mps_op__copy}, */
+  /* "copy" implemented in mps_op_basic.c */
   {"forall",       mps_op__forall},
 };
 

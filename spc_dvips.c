@@ -64,7 +64,7 @@ static int num_ps_headers = 0;
 
 #include "mps_main.h"
 
-static mpsi mps_intrp;
+mpsi mps_intrp;
 static int  tracing = 0;
 static int  first_call = 1;
 

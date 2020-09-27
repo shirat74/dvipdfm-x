@@ -71,6 +71,11 @@
 #include "t1_char.h"
 #include "cff_dict.h"
 
+#if 1
+#include "mpost.h"
+#include "spc_dvips.h"
+#endif
+
 #define DVI_STACK_DEPTH_MAX  256u
 #define TEX_FONTS_ALLOC_SIZE 16u
 #define VF_NESTING_MAX       16u
@@ -138,6 +143,7 @@ static unsigned      lr_width_stack_depth = 0;
 
 static struct loaded_font
 {
+  char  *tfm_name;
   int    type;     /* Type is physical or virtual */
   int    font_id;  /* id returned by dev (for PHYSICAL fonts)
                     * or by vf module for (VIRTUAL fonts)
@@ -825,11 +831,6 @@ void dvi_set_compensation (double x, double y)
   compensation.y = (spt_t) round(y / dvi2pts);
 }
 
-#if 1
-#include "mpost.h"
-#include "spc_dvips.h"
-#endif
-
 static void
 set_string (spt_t       xpos,
             spt_t       ypos,
@@ -849,6 +850,10 @@ set_string (spt_t       xpos,
     char   *str, *p, *endptr;
     double  x_user, y_user;
     const char xchar[] = "0123456789abcdef";
+    struct loaded_font *font;
+
+    font  = &loaded_fonts[current_font];
+    mps_set_currentfont(&mps_intrp, font->tfm_name, font->font_id, font->tfm_id, font->subfont_id, font->size * dvi2pts);
 
     x_user = xpos * dvi2pts;
     y_user = ypos * dvi2pts;
@@ -948,6 +953,8 @@ dvi_locate_font (const char *tfm_name, spt_t ptsize)
   memset(&loaded_fonts[cur_id], 0, sizeof (struct loaded_font));
 
   /* TFM must exist here. */
+  loaded_fonts[cur_id].tfm_name   = NEW(strlen(tfm_name)+1, char);
+  strcpy(loaded_fonts[cur_id].tfm_name, tfm_name);
   loaded_fonts[cur_id].tfm_id     = tfm_open(tfm_name, 1);
   loaded_fonts[cur_id].subfont_id = subfont_id;
   loaded_fonts[cur_id].size       = ptsize;
@@ -1115,6 +1122,8 @@ dvi_locate_native_font (const char *filename, uint32_t index,
 
   memset(&loaded_fonts[cur_id], 0, sizeof (struct loaded_font));
 
+  loaded_fonts[cur_id].tfm_name = NEW(strlen(filename)+1, char);
+  strcpy(loaded_fonts[cur_id].tfm_name, filename);
   loaded_fonts[cur_id].font_id = pdf_dev_locate_font(fontmap_key, ptsize);
   loaded_fonts[cur_id].size    = ptsize;
   loaded_fonts[cur_id].type    = NATIVE;
@@ -1656,6 +1665,12 @@ do_fnt (int32_t tex_id)
     def_fonts[i].font_id = font_id;
   }
   current_font = def_fonts[i].font_id;
+#if 1
+  {
+    struct loaded_font *font = &loaded_fonts[current_font];
+    mps_set_currentfont(&mps_intrp, def_fonts[i].font_name, font->font_id, font->tfm_id, font->subfont_id, font->size * dvi2pts);
+  }
+#endif
 }
 
 static void
@@ -2259,6 +2274,10 @@ dvi_close (void)
 
   for (i = 0; i < num_loaded_fonts; i++)
   {
+    if (loaded_fonts[i].tfm_name)
+      RELEASE(loaded_fonts[i].tfm_name);
+    loaded_fonts[i].tfm_name = NULL;
+
     if (loaded_fonts[i].hvmt != NULL)
       RELEASE(loaded_fonts[i].hvmt);
 
@@ -2724,22 +2743,3 @@ dvi_scan_specials (int page_no,
 #if defined(LIBDPX)
 #include "dvi_ng.c"
 #endif /* LIBDPX */
-
-#if 1
-int
-dvi_font (int *font_id, int *tfm_id, int *sfd_id, double *font_scale)
-{
-  struct loaded_font *font;
-
-  if (current_font < 0)
-    return -1;
-
-  font = &loaded_fonts[current_font];
-  *font_id    = font->font_id;
-  *tfm_id     = font->tfm_id;
-  *sfd_id     = font->subfont_id;
-  *font_scale = font->size * dvi2pts;
-
-  return 0;
-}
-#endif
