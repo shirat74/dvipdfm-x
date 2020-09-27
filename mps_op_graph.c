@@ -194,6 +194,23 @@ array_to_matrix (pdf_tmatrix *M, pst_obj *obj)
   M->f = pst_getRV(data->values[n+5]);
 }
 
+static void
+array_to_rect (pdf_rect *r, pst_obj *obj)
+{
+  pst_array *data;
+  int        n;
+
+  ASSERT(PST_ARRAYTYPE(obj));
+  ASSERT(pst_length_of(obj) >= 4);
+
+  data = obj->data;
+  n    = obj->comp.off;
+  r->llx = pst_getRV(data->values[n]);
+  r->lly = pst_getRV(data->values[n+1]);
+  r->urx = pst_getRV(data->values[n+2]);
+  r->ury = pst_getRV(data->values[n+3]);
+}
+
 static const char *
 mps_current_operator (mpsi *p)
 {
@@ -1657,11 +1674,12 @@ static int mps_op__setcachedevice (mpsi *p)
   error = getinterval_number_value(p, values, 0, 6);
   if (error)
     return error;
+  /* NYI: store info somewhere */
   for (i = 0; i < 6; i++) {
     char buf[256];
     int  len;
 
-    len = sprintf(buf, "%g ", values[i]);
+    len = pdf_sprint_length(buf, values[i]);
     pdf_doc_add_page_content(buf, len);
   }
   pdf_doc_add_page_content("d1 ", strlen("d1 "));
@@ -1688,6 +1706,7 @@ convert_charproc (mpsi *p, const char *glyph, pdf_obj *resource)
   error    = mps_exec_inline(p, &ptr, endptr, 0.0, 0.0); 
   RELEASE(str);
   pdf_doc_end_capture();
+  /* NYI: get width info */
   pdf_dev_pop_gstate();
 
   if (error) {
@@ -1741,18 +1760,44 @@ create_type3_encoding (pst_obj *enc)
 static int
 create_type3_resource (pst_obj *font)
 {
-  pst_dict  *data;
-  pst_obj   *enc;
-  pst_array *enc_data;
-  pdf_obj   *fontdict, *charproc, *resource;
-  pdf_obj   *encoding, *widths;
+  pst_dict    *data;
+  pst_obj     *enc;
+  pst_array   *enc_data;
+  pdf_obj     *fontdict, *charproc, *resource;
+  pdf_obj     *encoding, *widths;
+  pdf_tmatrix  M    = {0.001, 0.0, 0.0, 0.001, 0.0, 0.0};
+  pdf_rect     bbox = {0.0, 0.0, 0.0, 0.0};
 
   ASSERT(PST_DICTTYPE(font));
 
-  fontdict = pdf_new_dict();
-
   data = dict->data;
-  enc  = ht_lookup_table(data->values, "Encoding", strlen("Encoding"));
+  {
+    pst_obj *obj;
+
+    obj = ht_lookup_table(data->values, "FontType", strlen("FontType"));
+    if (!PST_INTEGERTYPE(obj))
+      return -1;
+    if (pst_getIV(obj) != 3)
+      return -1;
+ 
+    obj = ht_lookup_table(data->values, "FontMatrix", strlen("FontMatrix"));
+    if (!PST_ARRAYTYPE(obj))
+      return -1;
+    if (pst_length_of(obj) != 6)
+      return -1;
+    array_to_matrix(&M, obj);
+
+    obj = ht_lookup_table(data->values, "FontBBox", strlen("FontBBox"));
+    if (!PST_ARRAYTYPE(obj))
+      return -1;
+    if (pst_length_of(obj) != 4)
+      return -1;
+    array_to_rect(&bbox, obj)
+  }
+
+  fontdict = pdf_new_dict();
+  pdf_add_dict(fontdict, pdf_new_name("Subtype"), pdf_new_number(3));
+  enc      = ht_lookup_table(data->values, "Encoding", strlen("Encoding"));
   if (!enc)
     return -1; /* undefined */
   if (!PST_ARRAYTYPE(enc))
@@ -1805,7 +1850,7 @@ static int mps_op__definefont (mpsi *p)
   if (!PST_DICTTYPE(dict))
     return -1; /* typecheck */
 
-  /* NYI: define resource here */
+  /* NYI: Add to FontDirectory here */
   fontdict = pst_copy_obj(dict);
   clean_stack(p, 2);
 
