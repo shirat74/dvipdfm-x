@@ -1670,6 +1670,81 @@ static int mps_op__setcachedevice (mpsi *p)
   return error;
 }
 
+static pdf_obj *
+convert_charproc (mpsi *p, const char *glyph, pdf_obj *resource)
+{
+  pdf_obj *content;
+  char    *str, *ptr, *endptr;
+
+  content  = pdf_new_stream(STREAM_COMPRESS);
+
+  pdf_dev_push_gstate();
+  pdf_doc_begin_capture(content, resource);
+  /* stack: --fontdict-- */
+  str      = NEW(strlen("dup begin dup / BuildGlyph end")+strlen(glyph)+1, char);
+  sprintf(str, "dup begin dup /%s BuildGlyph end", glyph);
+  ptr      = str;
+  endptr   = str + strlen(str);
+  error    = mps_exec_inline(p, &ptr, endptr, 0.0, 0.0); 
+  RELEASE(str);
+  pdf_doc_end_capture();
+  pdf_dev_pop_gstate();
+
+  if (error) {
+    pdf_release_obj(content);
+    return NULL;
+  }
+
+  return content;
+}
+
+static int
+create_type3_resource (pst_obj *font)
+{
+  pst_dict  *data;
+  pst_obj   *enc;
+  pst_array *enc_data;
+  pdf_obj   *fontdict, *charproc, *resource;
+  pdf_obj   *encoding, *widths;
+
+  ASSERT(PST_DICTTYPE(font));
+
+  data = dict->data;
+  enc  = ht_lookup_table(data->values, "Encoding", strlen("Encoding"));
+  if (!enc)
+    return -1; /* undefined */
+  if (!PST_ARRAYTYPE(enc))
+    return -1; /* typecheck */
+  enc_data = enc->data;
+  charproc = pdf_new_dict();
+  resource = pdf_new_dict();
+  for (i = enc->comp.off; i < enc->comp.off + enc->comp.size; i++) {
+    pst_obj *gname = enc_data->values[i];
+    char    *glyph;
+
+    if (PST_NULLTYPE(gname))
+      continue;
+    if (!PST_NAMETYPE(gname) && !PST_STRINGTYPE(gname))
+      return -1; /* typecheck */
+    glyph = (char *) pst_getSV(gname);
+    if (strcmp(glyph, ".notdef")) {
+      content = convert_charproc(p, glyph, resource);
+      if (content) {
+        pdf_add_dict(charproc, pdf_new_name(glyph), pdf_ref_obj(content));
+        pdf_release_obj(content);
+      }
+    }
+    RELEASE(glyph);
+  }
+  content = convert_charproc(p, ".notdef", resource);
+  if (content) {
+    pdf_add_dict(charproc, pdf_new_name(".notdef"), pdf_ref_obj(content));
+    pdf_release_obj(content);
+  }
+  
+  return 0;
+}
+
 static int mps_op__definefont (mpsi *p)
 {
   int        error = 0;
@@ -1678,7 +1753,7 @@ static int mps_op__definefont (mpsi *p)
   pst_dict  *data;
   pst_array *enc_data;
   int        i;
-  pdf_obj   *charproc;
+  pdf_obj   *content, *charproc, *resource;
 
   if (dpx_stack_depth(stk) < 2)
     return -1; /* stackunderflow */
@@ -1689,40 +1764,7 @@ static int mps_op__definefont (mpsi *p)
   if (!PST_DICTTYPE(dict))
     return -1; /* typecheck */
 
-  data = dict->data;
-  enc  = ht_lookup_table(data->values, "Encoding", strlen("Encoding"));
-  if (!enc)
-    return -1; /* undefined */
-  if (!PST_ARRAYTYPE(enc))
-    return -1; /* typecheck */
-  enc_data = enc->data;
-  charproc = pdf_new_dict();
-  for (i = enc->comp.off; i < enc->comp.off + enc->comp.size; i++) {
-    pst_obj *gname = enc_data->values[i];
-    char    *glyph;
-
-    if (!PST_NAMETYPE(gname) && !PST_STRINGTYPE(gname))
-      return -1; /* typecheck */
-    glyph = (char *) pst_getSV(gname);
-    {
-      pdf_obj *content, *resource;
-      char    *str, *ptr, *endptr;
-
-      content  = pdf_new_stream(STREAM_COMPRESS);
-      resource = pdf_new_dict();
-      pdf_doc_begin_capture(content, resource);
-      str      = NEW(strlen("dup begin dup / BuildGlyph end")+strlen(glyph)+1, char);
-      sprintf(str, "dup begin dup /%s BuildGlyph end", glyph);
-      ptr      = str;
-      endptr   = str + strlen(str);
-      error    = mps_exec_inline(p, &ptr, endptr, 0.0, 0.0); 
-      RELEASE(str);
-      pdf_doc_end_capture();
-      pdf_add_dict(charproc, pdf_new_name(glyph), pdf_ref_obj(content));
-      pdf_release_obj(content);
-      pdf_release_obj(resource); /* FIXME */
-    }
-  }
+  
   fontdict = pst_copy_obj(dict);
   clean_stack(p, 2);
 
