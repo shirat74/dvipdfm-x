@@ -71,44 +71,6 @@ dpx_stack font_stack = {0, NULL, NULL};
 
 #if 1
 static int
-get_numbers (mpsi *p, double *values, int n)
-{
-  int error = 0, i;
-
-  if (dpx_stack_depth(&p->stack.operand) < n)
-    return -1;
-  for (i = 0; !error && i < n; i++) {
-    pst_obj *obj = dpx_stack_at(&p->stack.operand, i);
-    if (!PST_NUMBERTYPE(obj)) {
-      error = -1;
-      break;
-    }
-    values[n-i-1] = pst_getRV(obj);
-  }
-
-  return 0;
-}
-
-static int
-get_numbers_2 (mpsi *p, double *values, int n)
-{
-  int error = 0, i;
-
-  if (dpx_stack_depth(&p->stack.operand) < n + 1)
-    return -1;
-  for (i = 1; !error && i < n + 1; i++) {
-    pst_obj *obj = dpx_stack_at(&p->stack.operand, i);
-    if (!PST_NUMBERTYPE(obj)) {
-      error = -1;
-      break;
-    }
-    values[n-i] = pst_getRV(obj);
-  }
-
-  return 0;
-}
-
-static int
 getinterval_number_value (mpsi *p, double *values, int at, int n)
 {
   int error = 0, i;
@@ -126,23 +88,9 @@ getinterval_number_value (mpsi *p, double *values, int at, int n)
 
   return 0;
 }
+
 static int
 clean_stack (mpsi *p, int n)
-{
-  int i;
-
-  if (dpx_stack_depth(&p->stack.operand) < n)
-    return -1;
-  for (i = 0; i < n; i++) {
-    pst_obj *obj = dpx_stack_pop(&p->stack.operand);
-    pst_release_obj(obj);
-  }
-
-  return 0;
-}
-
-static int
-pop_numbers (mpsi *p, int n)
 {
   int i;
 
