@@ -1709,6 +1709,8 @@ create_type3_resource (pst_obj *font)
 
   ASSERT(PST_DICTTYPE(font));
 
+  fontdict = pdf_new_dict();
+
   data = dict->data;
   enc  = ht_lookup_table(data->values, "Encoding", strlen("Encoding"));
   if (!enc)
@@ -1741,7 +1743,10 @@ create_type3_resource (pst_obj *font)
     pdf_add_dict(charproc, pdf_new_name(".notdef"), pdf_ref_obj(content));
     pdf_release_obj(content);
   }
-  
+
+  pdf_add_dict(fontdict, pdf_new_name("CharProcs"), pdf_ref_obj(charproc));
+  pdf_release_obj(charproc);
+
   return 0;
 }
 
@@ -1749,11 +1754,7 @@ static int mps_op__definefont (mpsi *p)
 {
   int        error = 0;
   dpx_stack *stk   = &p->stack.operand;
-  pst_obj   *fontdict, *name, *dict, *enc;
-  pst_dict  *data;
-  pst_array *enc_data;
-  int        i;
-  pdf_obj   *content, *charproc, *resource;
+  pst_obj   *fontdict, *name, *dict;
 
   if (dpx_stack_depth(stk) < 2)
     return -1; /* stackunderflow */
@@ -1764,12 +1765,9 @@ static int mps_op__definefont (mpsi *p)
   if (!PST_DICTTYPE(dict))
     return -1; /* typecheck */
 
-  
+  /* NYI: define resource here */
   fontdict = pst_copy_obj(dict);
   clean_stack(p, 2);
-
-  pdf_ref_obj(charproc);
-  pdf_release_obj(charproc);
 
   dpx_stack_push(stk, fontdict);
 
