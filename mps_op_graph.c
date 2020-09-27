@@ -109,6 +109,39 @@ get_numbers_2 (mpsi *p, double *values, int n)
 }
 
 static int
+getinterval_number_value (mpsi *p, double *values, int at, int n)
+{
+  int error = 0, i;
+
+  if (dpx_stack_depth(&p->stack.operand) < n + at)
+    return -1;
+  for (i = 0; !error && i < n; i++) {
+    pst_obj *obj = dpx_stack_at(&p->stack.operand, i + at);
+    if (!PST_NUMBERTYPE(obj)) {
+      error = -1;
+      break;
+    }
+    values[n-i-1] = pst_getRV(obj);
+  }
+
+  return 0;
+}
+static int
+clean_stack (mpsi *p, int n)
+{
+  int i;
+
+  if (dpx_stack_depth(&p->stack.operand) < n)
+    return -1;
+  for (i = 0; i < n; i++) {
+    pst_obj *obj = dpx_stack_pop(&p->stack.operand);
+    pst_release_obj(obj);
+  }
+
+  return 0;
+}
+
+static int
 pop_numbers (mpsi *p, int n)
 {
   int i;
@@ -256,7 +289,7 @@ static int mps_op__concatmatrix (mpsi *p)
   obj1 = dpx_stack_pop(stk);
   matrix_to_array(obj1, &M);
 
-  pop_numbers(p, 2);
+  clean_stack(p, 2);
 
   dpx_stack_push(stk, obj1);
 
@@ -277,10 +310,10 @@ static int mps_op__scale (mpsi *p)
   obj = dpx_stack_top(stk);
   if (PST_ARRAYTYPE(obj)) {
     have_matrix = 1;
-    error = get_numbers_2(p, values, 2);
+    error = getinterval_number_value(p, values, 1, 2);
   } else {
     have_matrix = 0;   
-    error = get_numbers(p, values, 2);
+    error = getinterval_number_value(p, values, 0, 2);
   }   
   if (error)
     return error;
@@ -303,7 +336,7 @@ static int mps_op__scale (mpsi *p)
   
   if (have_matrix)
     obj = dpx_stack_pop(stk);
-  pop_numbers(p, 2);
+  clean_stack(p, 2);
   if (have_matrix) {
     matrix_to_array(obj, &matrix);
     dpx_stack_push(stk, obj);
@@ -326,10 +359,10 @@ static int mps_op__rotate (mpsi *p)
   obj = dpx_stack_top(stk);
   if (PST_ARRAYTYPE(obj)) {
     have_matrix = 1;
-    error = get_numbers_2(p, values, 1);
+    error = getinterval_number_value(p, values, 1, 1);
   } else {
     have_matrix = 0;   
-    error = get_numbers(p, values, 1);
+    error = getinterval_number_value(p, values, 0, 1);
   }   
   if (error)
     return error;
@@ -357,7 +390,7 @@ static int mps_op__rotate (mpsi *p)
   
   if (have_matrix)
     obj = dpx_stack_pop(stk);
-  pop_numbers(p, 1);
+  clean_stack(p, 1);
   if (have_matrix) {
     matrix_to_array(obj, &matrix);
     dpx_stack_push(stk, obj);
@@ -380,10 +413,10 @@ static int mps_op__translate (mpsi *p)
   obj = dpx_stack_top(stk);
   if (PST_ARRAYTYPE(obj)) {
     have_matrix = 1;
-    error = get_numbers_2(p, values, 2);
+    error = getinterval_number_value(p, values, 1, 2);
   } else {
     have_matrix = 0;   
-    error = get_numbers(p, values, 2);
+    error = getinterval_number_value(p, values, 0, 2);
   }   
   if (error)
     return error;
@@ -398,7 +431,7 @@ static int mps_op__translate (mpsi *p)
   
   if (have_matrix)
     obj = dpx_stack_pop(stk);
-  pop_numbers(p, 2);
+  clean_stack(p, 2);
   if (have_matrix) {
     matrix_to_array(obj, &matrix);
     dpx_stack_push(stk, obj);
@@ -482,6 +515,7 @@ static int mps_op__show (mpsi *p)
     pdf_dev_rmoveto(text_width, 0.0);
   }
   graphics_mode();
+  clean_stack(p, 1);
 
   return error;
 }
@@ -520,29 +554,19 @@ static int mps_op__stringwidth (mpsi *p)
 
   text_width = 0.0;
   if (sfd_id >= 0) {
-    unsigned short  uch;
-    unsigned char  *ustr;
-    int      i;
+    int i;
 
-    ustr = NEW(length * 2, unsigned char);
     for (i = 0; i < length; i++) {
-      uch = lookup_sfd_record(sfd_id, strptr[i]);
-      ustr[2*i  ] = uch >> 8;
-      ustr[2*i+1] = uch & 0xff;
-      if (tfm_id >= 0) {
-        text_width += tfm_get_width(tfm_id, strptr[i]);
-      }
+      text_width += tfm_get_width(tfm_id, strptr[i]);
     }
     text_width *= font_scale;
-    RELEASE(ustr);
-  } else {
+  } else if (tfm_id >= 0) {
 #define FWBASE ((double) (1<<20))
-    if (tfm_id >= 0) {
-      text_width = (double) tfm_string_width(tfm_id, strptr, length)/FWBASE;
-      text_width *= font_scale;
-    }
+    text_width = (double) tfm_string_width(tfm_id, strptr, length)/FWBASE;
+    text_width *= font_scale;
   }
 
+  clean_stack(p, 1);
   if (pdf_dev_get_font_wmode(font_id)) {
     dpx_stack_push(stk, pst_new_real(0.0));
     dpx_stack_push(stk, pst_new_real(text_width));
@@ -594,12 +618,7 @@ static int mps_op__p_pathforall_loop (mpsi *p)
     return -1;
 
   if (pst_length_of(path) < 1) {
-    int i;
-    
-    for (i = 0; i < 5; i++) {
-      pst_obj *obj = dpx_stack_pop(stk);
-      pst_release_obj(obj);
-    }
+    clean_stack(p, 5);
     return 0;
   } else if (pst_length_of(path) % 2) {
     return -1;
@@ -751,11 +770,6 @@ static int mps_op__pathforall (mpsi *p)
       !PST_ARRAYTYPE(proc[3]) || !proc[3]->attr.is_exec)
     return -1;
 
-  proc[3] = dpx_stack_pop(stk);
-  proc[2] = dpx_stack_pop(stk);
-  proc[1] = dpx_stack_pop(stk);
-  proc[0] = dpx_stack_pop(stk);
-
   num_paths = pdf_dev_path_length();
   if (num_paths > 0) {
     pst_array   *data;
@@ -787,10 +801,8 @@ static int mps_op__pathforall (mpsi *p)
     pst_release_obj(path);
   }
 
-  pst_release_obj(proc[0]);
-  pst_release_obj(proc[1]);
-  pst_release_obj(proc[2]);
-  pst_release_obj(proc[3]);
+  if (!error)
+    clean_stack(p, 4);
 
   return error;
 }
@@ -1135,11 +1147,11 @@ do_operator (mpsi *p, const char *token, double x_user, double y_user)
     mps_push_stack(p, pst_new_integer(1));
     break;
   case SETFLAT:
-    error = get_numbers(p, values, 1);
+    error = getinterval_number_value(p, values, 0, 1);
     if (!error)
       error = pdf_dev_setflat(values[0]);
     if (!error)
-      error = pop_numbers(p, 1);
+      clean_stack(p, 1);
     break;
   case CLIPPATH:
     break;
@@ -1221,31 +1233,16 @@ do_operator (mpsi *p, const char *token, double x_user, double y_user)
       } else if (pst_length_of(obj) != 6) {
         error = -1; /* rangecheck */
       } else {
-        pst_array *data = obj->data;
-        int        i, n;
-        double     v[6];
+        pdf_tmatrix M;
 
-        n = obj->comp.off;
-        for (i = 0; i < 6 && !error; i++) {
-          pst_obj *elem = data->values[n+i];
-          if (!elem || !PST_NUMBERTYPE(elem)) {
-            error = -1; /* typecheck */
-          } else {
-            v[i] = pst_getRV(elem);
-          }
-        }
+        error = array_to_matrix(&matrix, obj);
         if (!error) {
-          /* FIXME */
-          pdf_tmatrix M;
-
           /* NYI: should implement pdf_dev_setmatrix */
-          pdf_setmatrix(&matrix, v[0], v[1], v[2], v[3], v[4], v[5]);
           pdf_dev_currentmatrix(&M);
           pdf_invertmatrix(&M);
           pdf_dev_concat(&M);
           pdf_dev_concat(&matrix);
-          obj = dpx_stack_pop(&p->stack.operand);
-          pst_release_obj(obj);
+          clean_stack(p, 1);
         }
       }
     }
@@ -1253,67 +1250,63 @@ do_operator (mpsi *p, const char *token, double x_user, double y_user)
   
     /* Path construction */
   case MOVETO:
-    error = get_numbers(p, values, 2);
+    error = getinterval_number_value(p, values, 0, 2);
     if (!error)
       error = pdf_dev_moveto(values[0], values[1]);
     if (!error)
-      error = pop_numbers(p, 2);
+      error = clean_stack(p, 2);
     break;
   case RMOVETO:
-    error = get_numbers(p, values, 2);
+    error = getinterval_number_value(p, values, 0, 2);
     if (!error)
       error = pdf_dev_rmoveto(values[0], values[1]);
     if (!error)
-      error = pop_numbers(p, 2);
+      error = clean_stack(p, 2);
     break;
   case LINETO:
-    error = get_numbers(p, values, 2);
+    error = getinterval_number_value(p, values, 0, 2);
     if (!error)
       error = pdf_dev_lineto(values[0], values[1]);
     if (!error)
-      error = pop_numbers(p, 2);
+      error = clean_stack(p, 2);
     break;
   case RLINETO:
-    error = get_numbers(p, values, 2);
+    error = getinterval_number_value(p, values, 0, 2);
     if (!error)
       error = pdf_dev_rlineto(values[0], values[1]);
     if (!error)
-      error = pop_numbers(p, 2);
+      error = clean_stack(p, 2);
     break;
   case CURVETO:
-    error = get_numbers(p, values, 6);
+    error = getinterval_number_value(p, values, 0, 6);
     if (!error)
       error = pdf_dev_curveto(values[0], values[1], values[2], values[3], values[4], values[5]);
     if (!error)
-      error = pop_numbers(p, 6);
+      error = clean_stack(p, 6);
     break;
   case RCURVETO:
-    error = get_numbers(p, values, 6);
+    error = getinterval_number_value(p, values, 0, 6);
     if (!error)
       error = pdf_dev_rcurveto(values[0], values[1], values[2], values[3], values[4], values[5]);
     if (!error)
-      error = pop_numbers(p, 6);
+      error = clean_stack(p, 6);
     break;
   case CLOSEPATH:
     error = pdf_dev_closepath();
     break;
   case ARC:
-    error = get_numbers(p, values, 5);
+    error = getinterval_number_value(p, values, 0, 5);
     if (!error)
-      error = pdf_dev_arc(values[0], values[1],
-			                    values[2], /* rad */
-			                    values[3], values[4]);
+      error = pdf_dev_arc(values[0], values[1], values[2], values[3], values[4]);
     if (!error)
-      error = pop_numbers(p, 5);
+      error = clean_stack(p, 5);
     break;
   case ARCN:
-    error = get_numbers(p, values, 5);
+    error = getinterval_number_value(p, values, 0, 5);
     if (!error)
-      error = pdf_dev_arcn(values[0], values[1],
-			                     values[2], /* rad */
-			                     values[3], values[4]);
+      error = pdf_dev_arcn(values[0], values[1], values[2], values[3], values[4]);
     if (!error)
-      error = pop_numbers(p, 5);
+      error = clean_stack(p, 5);
     break;
     
   case NEWPATH:
@@ -1353,7 +1346,7 @@ do_operator (mpsi *p, const char *token, double x_user, double y_user)
       error = pdf_dev_concat(&matrix);
     }
     if (!error)
-      pop_numbers(p, 1); /* not a number */
+      clean_stack(p, 1); /* not a number */
     break;
 
     /* Positive angle means clock-wise direction in graphicx-dvips??? */
@@ -1389,39 +1382,39 @@ do_operator (mpsi *p, const char *token, double x_user, double y_user)
       RELEASE(dvalues);
     }
     if (!error)
-      error = pop_numbers(p, 2); /* actually not number */
+      clean_stack(p, 2);
     break;
   case SETLINECAP:
-    error = get_numbers(p, values, 1);
+    error = getinterval_number_value(p, values, 0, 1);
     if (!error)
       error = pdf_dev_setlinecap((int)values[0]);
     if (!error)
-      error = pop_numbers(p, 1);
+      clean_stack(p, 1);
     break;
   case SETLINEJOIN:
-    error = get_numbers(p, values, 1);
+    error = getinterval_number_value(p, values, 0, 1);
     if (!error)
       error = pdf_dev_setlinejoin((int)values[0]);
     if (!error)
-      error = pop_numbers(p, 1);
+      clean_stack(p, 1);
     break;
   case SETLINEWIDTH:
-    error = get_numbers(p, values, 1);
+    error = getinterval_number_value(p, values, 0, 1);
     if (!error)
       error = pdf_dev_setlinewidth(values[0]);
     if (!error)
-      error = pop_numbers(p, 1);
+      clean_stack(p, 1);
     break;
   case SETMITERLIMIT:
-    error = get_numbers(p, values, 1);
+    error = getinterval_number_value(p, values, 0, 1);
     if (!error)
       error = pdf_dev_setmiterlimit(values[0]);
     if (!error)
-      error = pop_numbers(p, 1);
+      clean_stack(p, 1);
     break;
 
   case SETCMYKCOLOR:
-    error = get_numbers(p, values, 4);
+    error = getinterval_number_value(p, values, 0, 4);
     /* Not handled properly */
     if (!error) {
       pdf_color_cmykcolor(&color, values[0], values[1], values[2], values[3]);
@@ -1429,28 +1422,28 @@ do_operator (mpsi *p, const char *token, double x_user, double y_user)
       pdf_dev_set_nonstrokingcolor(&color);
     }
     if (!error)
-      pop_numbers(p, 4);
+      clean_stack(p, 4);
     break;
   case SETGRAY:
     /* Not handled properly */
-    error = get_numbers(p, values, 1);
+    error = getinterval_number_value(p, values, 0, 1);
     if (!error) {
       pdf_color_graycolor(&color, values[0]);
       pdf_dev_set_strokingcolor(&color);
       pdf_dev_set_nonstrokingcolor(&color);
     }
     if (!error)
-      pop_numbers(p, 1);
+      clean_stack(p, 1);
     break;
   case SETRGBCOLOR:
-    error = get_numbers(p, values, 3);
+    error = getinterval_number_value(p, values, 0, 3);
     if (!error) {
       pdf_color_rgbcolor(&color, values[0], values[1], values[2]);
       pdf_dev_set_strokingcolor(&color);
       pdf_dev_set_nonstrokingcolor(&color);
     }
     if (!error)
-      pop_numbers(p, 3);
+      clean_stack(p, 3);
     break;
 
   case SHOWPAGE: /* Let's ignore this for now */
@@ -1469,16 +1462,16 @@ do_operator (mpsi *p, const char *token, double x_user, double y_user)
       int      has_matrix = 0;
       pst_obj *obj = dpx_stack_top(&p->stack.operand);
       if (PST_ARRAYTYPE(obj)) {
-	      error = mps_cvr_array(p, values, 6);
-	      if (error)
-	        break;
-	      pdf_setmatrix(&matrix, values[0], values[1], values[2], values[3],  values[4], values[5]);
-	      has_matrix = 1;
+        error = mps_cvr_array(p, values, 6);
+        if (error)
+          break;
+        pdf_setmatrix(&matrix, values[0], values[1], values[2], values[3], values[4], values[5]);
+        has_matrix = 1;
       }
       if (has_matrix) {
-        error = get_numbers_2(p, values, 2);
+        error = getinterval_number_value(p, values, 1, 2);
       } else {
-        error = get_numbers(p, values, 2);
+        error = getinterval_number_value(p, values, 0, 2);
       }
       if (error)
         break;
@@ -1489,11 +1482,9 @@ do_operator (mpsi *p, const char *token, double x_user, double y_user)
       	ps_dev_CTM(&matrix); /* Here, we need real PostScript CTM */
       }
       pdf_dev_dtransform(&cp, &matrix);
+      clean_stack(p, has_matrix ? 3 : 2); 
       mps_push_stack(p, pst_new_real(cp.x));
       mps_push_stack(p, pst_new_real(cp.y));
-
-      if (!error)
-        pop_numbers(p, has_matrix ? 3 : 2);
     }
     break;
 
@@ -1502,16 +1493,16 @@ do_operator (mpsi *p, const char *token, double x_user, double y_user)
       int      has_matrix = 0;
       pst_obj *obj = dpx_stack_top(&p->stack.operand);
       if (PST_ARRAYTYPE(obj)) {
-	      error = mps_cvr_array(p, values, 6);
-	      if (error)
-	        break;
-	      pdf_setmatrix(&matrix, values[0], values[1], values[2], values[3],  values[4], values[5]);
-	      has_matrix = 1;
+        error = mps_cvr_array(p, values, 6);
+        if (error)
+          break;
+        pdf_setmatrix(&matrix, values[0], values[1], values[2], values[3], values[4], values[5]);
+        has_matrix = 1;
       }
       if (has_matrix) {
-        error = get_numbers_2(p, values, 2);
+        error = getinterval_number_value(p, values, 1, 2);
       } else {
-        error = get_numbers(p, values, 2);
+        error = getinterval_number_value(p, values, 0, 2);
       }
       if (error)
         break;
@@ -1522,11 +1513,9 @@ do_operator (mpsi *p, const char *token, double x_user, double y_user)
       	ps_dev_CTM(&matrix); /* Here, we need real PostScript CTM */
       }
       pdf_dev_idtransform(&cp, &matrix);
+      clean_stack(p, has_matrix ? 3 : 2);
       mps_push_stack(p, pst_new_real(cp.x));
       mps_push_stack(p, pst_new_real(cp.y));
-      
-      if (!error)
-        pop_numbers(p, has_matrix ? 3 : 2);
     }
     break;
 
@@ -1535,16 +1524,16 @@ do_operator (mpsi *p, const char *token, double x_user, double y_user)
       int      has_matrix = 0;
       pst_obj *obj = dpx_stack_top(&p->stack.operand);
       if (PST_ARRAYTYPE(obj)) {
-	      error = mps_cvr_array(p, values, 6);
-	      if (error)
-	        break;
-	      pdf_setmatrix(&matrix, values[0], values[1], values[2], values[3],  values[4], values[5]);
-	      has_matrix = 1;
+        error = mps_cvr_array(p, values, 6);
+        if (error)
+          break;
+        pdf_setmatrix(&matrix, values[0], values[1], values[2], values[3],  values[4], values[5]);
+        has_matrix = 1;
       }
       if (has_matrix) {
-        error = get_numbers_2(p, values, 2);
+        error = getinterval_number_value(p, values, 1, 2);
       } else {
-        error = get_numbers(p, values, 2);
+        error = getinterval_number_value(p, values, 0, 2);
       }
       if (error)
         break;
@@ -1555,11 +1544,9 @@ do_operator (mpsi *p, const char *token, double x_user, double y_user)
       	ps_dev_CTM(&matrix); /* Here, we need real PostScript CTM */
       }
       pdf_dev_transform(&cp, &matrix);
+      clean_stack(p, has_matrix ? 3 : 2);
       mps_push_stack(p, pst_new_real(cp.x));
       mps_push_stack(p, pst_new_real(cp.y));
-      
-      if (!error)
-        pop_numbers(p, has_matrix ? 3 : 2);
     }
     break;
 
