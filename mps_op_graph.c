@@ -1765,8 +1765,9 @@ create_type3_resource (pst_obj *font)
   pst_array   *enc_data;
   pdf_obj     *fontdict, *charproc, *resource;
   pdf_obj     *encoding, *widths;
-  pdf_tmatrix  M    = {0.001, 0.0, 0.0, 0.001, 0.0, 0.0};
-  pdf_rect     bbox = {0.0, 0.0, 0.0, 0.0};
+  pdf_obj     *bbox, *matrix;
+  pdf_tmatrix  M = {0.001, 0.0, 0.0, 0.001, 0.0, 0.0};
+  pdf_rect     r = {0.0, 0.0, 0.0, 0.0};
 
   ASSERT(PST_DICTTYPE(font));
 
@@ -1792,7 +1793,7 @@ create_type3_resource (pst_obj *font)
       return -1;
     if (pst_length_of(obj) != 4)
       return -1;
-    array_to_rect(&bbox, obj)
+    array_to_rect(&r, obj)
   }
 
   fontdict = pdf_new_dict();
@@ -1831,6 +1832,28 @@ create_type3_resource (pst_obj *font)
 
   pdf_add_dict(fontdict, pdf_new_name("CharProcs"), pdf_ref_obj(charproc));
   pdf_release_obj(charproc);
+
+  encoding = create_type3_encoding(enc);
+  pdf_add_dict(fontdict, pdf_new_name("Encoding"), pdf_ref_obj(encoding));
+  pdf_release_obj(encoding);
+
+  bbox = pdf_new_array();
+  pdf_add_array(bbox, pdf_new_number(r.llx));
+  pdf_add_array(bbox, pdf_new_number(r.lly));
+  pdf_add_array(bbox, pdf_new_number(r.urx));
+  pdf_add_array(bbox, pdf_new_number(r.ury));
+
+  pdf_add_dict(fontdict, pdf_new_name("FontBBox"), bbox);
+
+  matrix = pdf_new_array();
+  pdf_add_array(matrix, pdf_new_number(M.a));
+  pdf_add_array(matrix, pdf_new_number(M.b));
+  pdf_add_array(matrix, pdf_new_number(M.c));
+  pdf_add_array(matrix, pdf_new_number(M.d));
+  pdf_add_array(matrix, pdf_new_number(M.e));
+  pdf_add_array(matrix, pdf_new_number(M.f));
+
+  pdf_add_dict(fontdict, pdf_new_name("FontMatrix"), matrix);
 
   return 0;
 }
