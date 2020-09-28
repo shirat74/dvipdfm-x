@@ -511,8 +511,12 @@ mps_init_intrp (mpsi *p)
 
   dpx_stack_init(&p->stack.exec);
 
-  p->rand_seed = 0;
-  p->compat_mode = MP_CMODE_NATIVE; /* Don't know why */
+  p->FontDirectory = pst_new_dict(-1);
+
+  p->rand_seed     = 0;
+  p->compat_mode   = MP_CMODE_NATIVE;
+
+  dpx_stack_init(&p->font);
 
   return 0;
 }
@@ -537,6 +541,10 @@ mps_clean_intrp (mpsi *p)
   pst_release_obj(p->systemdict);
   pst_release_obj(p->globaldict);
   pst_release_obj(p->userdict);
+
+  pst_release_obj(p->FontDirectory);
+
+  /* NYI: clean font stack */
 
   return 0;
 }
