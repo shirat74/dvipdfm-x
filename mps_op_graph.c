@@ -70,6 +70,29 @@ dpx_stack font_stack = {0, NULL, NULL};
 #define FONT_DEFINED(f) ((f) && (f)->font_name && ((f)->font_id >= 0))
 
 #if 1
+pst_obj *
+mps_findfont_FontDirectory (mpsi *p, const char *key)
+{
+  pst_obj  *obj;
+  pst_dict *dict;
+
+  dict = p->FontDirectory->data;
+  obj  = ht_lookup_table(dict->values, key, strlen(key));
+
+  return obj;
+}
+
+static int
+mps_definefont (mpsi *p, const char *name, pst_obj *obj)
+{
+  pst_dict *dict;
+
+  dict = p->FontDirectory->data;
+  ht_insert_table(dict->values, key, strlen(key), obj);
+
+  return 0;
+}
+
 static int
 getinterval_number_value (mpsi *p, double *values, int at, int n)
 {
@@ -1561,7 +1584,7 @@ do_operator (mpsi *p, const char *token, double x_user, double y_user)
   case FINDFONT:
     {
       dpx_stack *stk = &p->stack.operand;
-      pst_obj   *obj, *dict;
+      pst_obj   *obj, *fontdict;
       char      *fontname;
       
       if (dpx_stack_depth(stk) < 1)
@@ -1572,16 +1595,21 @@ do_operator (mpsi *p, const char *token, double x_user, double y_user)
         return -1;
       fontname = (char *) pst_getSV(obj);
       WARN("findfont: %s", fontname);
+
+      obj = mps_findfont_FontDirectory(p, fontname);
+      if (obj) {
+        fontdict = pst_copy_obj(obj);
+      } else {
+        fontdict = mps_findfont(p, fontname);
+      }
       RELEASE(fontname);
 
-      obj  = dpx_stack_pop(stk);
-      dict = pst_new_dict(-1);
-      {
-        pst_dict *data = dict->data;
-
-        ht_insert_table(data->values, "FontName", strlen("FontName"), obj);
+      if (!fontdict) {
+        error = -1;
+      } else {
+        clean_stack(p, 1);
+        dpx_stack_push(stk, fontdict);
       }
-      dpx_stack_push(stk, dict);
     }
     break;
   case SETFONT:
@@ -1863,6 +1891,7 @@ static int mps_op__definefont (mpsi *p)
   int        error = 0;
   dpx_stack *stk   = &p->stack.operand;
   pst_obj   *fontdict, *name, *dict;
+  char      *fontname;
 
   if (dpx_stack_depth(stk) < 2)
     return -1; /* stackunderflow */
@@ -1873,8 +1902,11 @@ static int mps_op__definefont (mpsi *p)
   if (!PST_DICTTYPE(dict))
     return -1; /* typecheck */
 
-  /* NYI: Add to FontDirectory here */
+  fontname = pst_getSV(name);
   fontdict = pst_copy_obj(dict);
+  mps_definefont(p, fontname, pst_copy_obj(fontdict));
+  RELEASE(fontname);
+
   clean_stack(p, 2);
 
   dpx_stack_push(stk, fontdict);
