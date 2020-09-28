@@ -490,14 +490,14 @@ pdf_close_fonts (void)
 
     font = &font_cache.fonts[font_id];
     if ((font->flags & PDF_FONT_FLAG_IS_ALIAS) ||
-        (font->flags & PDF_FONT_FLAG_IS_REENCODE) ||
-        !font->reference) {
+        (font->flags & PDF_FONT_FLAG_IS_REENCODE)) {
       continue;
     }
     if (font->subtype == PDF_FONT_FONTTYPE_CIDTYPE0 ||
-        font->subtype == PDF_FONT_FONTTYPE_CIDTYPE2) {
+        font->subtype == PDF_FONT_FONTTYPE_CIDTYPE2)
       continue;
-    }
+    if (font->flags & PDF_FONT_FLAG_USERDEFINED)
+      continue;
 
     if (dpx_conf.verbose_level > 0) {
       if (font->subtype != PDF_FONT_FONTTYPE_TYPE0) {
@@ -569,8 +569,7 @@ pdf_close_fonts (void)
     pdf_font *font = &font_cache.fonts[font_id];
 
     if ((font->flags & PDF_FONT_FLAG_IS_ALIAS) ||
-        (font->flags & PDF_FONT_FLAG_IS_REENCODE) ||
-        !font->reference) {
+        (font->flags & PDF_FONT_FLAG_IS_REENCODE)) {
       continue;
     }
 
@@ -588,8 +587,7 @@ pdf_close_fonts (void)
     font = &font_cache.fonts[font_id];
 
     if ((font->flags & PDF_FONT_FLAG_IS_ALIAS) ||
-        (font->flags & PDF_FONT_FLAG_IS_REENCODE) ||
-        !font->reference) {
+        (font->flags & PDF_FONT_FLAG_IS_REENCODE)) {
       pdf_clean_font_struct(font);
       continue;
     }
@@ -649,6 +647,26 @@ pdf_close_fonts (void)
 }
 
 int
+pdf_font_defineresource (const char *ident, pdf_obj *resource)
+{
+  pdf_font *font;
+
+  if (font_cache.count >= font_cache.capacity) {
+    font_cache.capacity += CACHE_ALLOC_SIZE;
+    font_cache.fonts     = RENEW(font_cache.fonts, font_cache.capacity, pdf_font);
+  }
+  font = &font_cache.fonts[font_cache.count];
+  pdf_init_font_struct(font);
+  font->ident = NEW(strlen(ident)+1, char);
+  strcpy(font->ident, ident);
+  font->resource = resource;
+  font->subtype  = PDF_FONT_FONTTYPE_TYPE3;
+  font->flags   |= PDF_FONT_FLAG_USERDEFINED;
+
+  return font_cache.count++;
+}
+
+int
 pdf_font_findresource (const char *ident, double scale)
 {
   int font_id, found = 0;
@@ -672,7 +690,11 @@ pdf_font_findresource (const char *ident, double scale)
      *
      * TODO: a PK font with two encodings makes no sense. Change?
      */
-      if (!strcmp(ident, font->ident) && scale == font->point_size) {
+      if (font->flags & PDF_FONT_FLAG_USERDEFINED) {
+        if (!strcmp(ident, font->ident)) {
+          found = 1;
+        }
+      } else if (!strcmp(ident, font->ident) && scale == font->point_size) {
         found = 1;
       }
       break;
@@ -964,7 +986,14 @@ pdf_font_load_font (const char *ident, double font_scale, fontmap_rec *mrec)
          *
          * TODO: a PK font with two encodings makes no sense. Change?
          */
-        if (!strcmp(fontname, font->filename) && font_scale == font->point_size) {
+        if (font->flags & PDF_FONT_FLAG_USERDEFINED) {
+          if (!strcmp(fontname, font->ident)) {
+            if (dpx_conf.verbose_level > 0) {
+              MESG("\npdf_font>> Simple font \"%s\" (enc_id=%d) found at id=%d.\n", fontname, encoding_id, font_id);
+            }
+            return font_id;
+          }
+        } else if (!strcmp(fontname, font->filename) && font_scale == font->point_size) {
           if (dpx_conf.verbose_level > 0) {
             MESG("\npdf_font>> Simple font \"%s\" (enc_id=%d) found at id=%d.\n", fontname, encoding_id, font_id);
           }

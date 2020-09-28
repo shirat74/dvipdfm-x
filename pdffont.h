@@ -46,12 +46,12 @@ extern void pdf_font_set_dpi (int font_dpi);
 #define PDF_FONT_FLAG_IS_REENCODE     (1 << 5)
 #define PDF_FONT_FLAG_ACCFONT         (1 << 6)
 #define PDF_FONT_FLAG_UCSFONT         (1 << 7)
-
+#define PDF_FONT_FLAG_USERDEFINED     (1 << 8)
 /* FIXME */
 /* Converted from Type 1 */
-#define CIDFONT_FLAG_TYPE1      (1 << 8)
-#define CIDFONT_FLAG_TYPE1C     (1 << 9)
-#define CIDFONT_FLAG_TRUETYPE   (1 << 10)
+#define CIDFONT_FLAG_TYPE1      (1 << 9)
+#define CIDFONT_FLAG_TYPE1C     (1 << 10)
+#define CIDFONT_FLAG_TRUETYPE   (1 << 11)
 
 #define PDF_FONT_PARAM_DESIGN_SIZE 1
 #define PDF_FONT_PARAM_POINT_SIZE  2
@@ -132,8 +132,9 @@ extern void     pdf_close_fonts (void);
  * It might be necessary if dvipdfmx supports font format with
  * various optical sizes supported in the future.
  */
-extern int      pdf_font_findresource  (const char *tex_name, double font_scale);
-extern int      pdf_font_load_font     (const char *tex_name, double font_scale, fontmap_rec *mrec);
+extern int      pdf_font_findresource   (const char *tex_name, double font_scale);
+extern int      pdf_font_load_font      (const char *tex_name, double font_scale, fontmap_rec *mrec);
+extern int      pdf_font_defineresource (const char *fontname, pdf_obj *resource);
 
 extern pdf_font *pdf_get_font_data      (int font_id);
 

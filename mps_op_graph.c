@@ -65,53 +65,19 @@ struct mp_font
   double  pt_size;
 };
 
-dpx_stack font_stack = {0, NULL, NULL};
-
 #define FONT_DEFINED(f) ((f) && (f)->font_name && ((f)->font_id >= 0))
 
 #if 1
-pst_obj *
-mps_findfont_FontDirectory (mpsi *p, const char *key)
-{
-  pst_obj  *obj;
-  pst_dict *dict;
-
-  dict = p->FontDirectory->data;
-  obj  = ht_lookup_table(dict->values, key, strlen(key));
-
-  return obj;
-}
-
-static int
-mps_definefont (mpsi *p, const char *name, pst_obj *obj)
-{
-  pst_dict *dict;
-
-  dict = p->FontDirectory->data;
-  ht_insert_table(dict->values, key, strlen(key), obj);
-
-  return 0;
-}
 
 static void
-put_private_data (pst_obj *fontdict, strict mp_font *font)
+pst_put_dict (pst_obj *dict, const char *key, int keylen, pst_obj *value)
 {
-  pst_dict  *data = fontdict->data;
-  pst_obj   *obj;
-  pst_array *priv;
-  int        i;
+  pst_dict *data;
 
-  obj  = pst_new_array(4);
-  priv = obj->data;
-  for (i = obj->comp.off; i < obj->comp.off + 4; i++) {
-    pst_release_obj(priv->values[i]);
-  }
-  priv->values[0] = pst_new_integer(font->font_id);
-  priv->values[1] = pst_new_integer(font->tfm_id);
-  priv->values[2] = pst_new_integer(font->subfont_id);
-  priv->values[3] = pst_new_real(font->pt_size);
+  ASSERT(dict && PST_DICTTYPE(dict));
 
-  ht_insert_table(data->values, "%private", strlen("%private"), obj); 
+  data = dict->data;
+  ht_insert_table(data->values, key, keylen, value);
 }
 
 static int
@@ -268,6 +234,329 @@ mps_push_stack (mpsi *p, pst_obj *obj)
 
   return 0;
 }
+
+static pst_obj *
+mps_findfont (mpsi *p, const char *fontname)
+{
+  pst_obj  *obj;
+  pst_dict *dict;
+
+  dict = p->FontDirectory->data;
+  obj  = ht_lookup_table(dict->values, fontname, strlen(fontname));
+  if (!obj) {
+    obj = pst_new_dict(-1);
+    pst_put_dict(obj, "FontNmae", strlen("FontName"), pst_new_name(fontname, 0));
+  }
+
+  return obj;
+}
+
+static int
+mps_definefont (mpsi *p, const char *fontname, pst_obj *obj)
+{
+  pst_dict *dict;
+
+  dict = p->FontDirectory->data;
+  ht_insert_table(dict->values, fontname, strlen(fontname), obj);
+
+  return 0;
+}
+
+static void
+clear_mp_font_struct (struct mp_font *font)
+{
+  ASSERT(font);
+
+  if (font->font_name)
+    RELEASE(font->font_name);
+  font->font_name  = NULL;
+  font->font_id    = -1;
+  font->tfm_id     = -1;
+  font->subfont_id = -1;
+  font->pt_size    = 0.0;
+}
+
+void
+mps_set_currentfont (mpsi *p, const char *font_name, int font_id, int tfm_id, int sfd_id, double pt_size)
+{
+  struct mp_font *font;
+
+  font = dpx_stack_top(&p->font);
+  if (!font) {
+    font = NEW(1, struct mp_font);
+    font->font_name = NULL;
+    dpx_stack_push(&p->font, font);
+  }
+
+  clear_mp_font_struct(font);
+  font->font_name = NEW(strlen(font_name)+1, char);
+  strcpy(font->font_name, font_name);
+  font->font_id    = font_id;
+  font->tfm_id     = tfm_id;
+  font->subfont_id = sfd_id;
+  font->pt_size    = pt_size;
+}
+
+static int
+mp_setfont (mpsi *p, const char *font_name, double pt_size)
+{
+  const char     *name = font_name;
+  struct mp_font *font;
+  int             subfont_id = -1;
+  fontmap_rec    *mrec;
+
+#if 0
+  /* NYI */
+  if (!strcmp(font_name, "PSTricksDotFont")) {
+    font_name = "ZapfDingbats";
+  }
+#endif
+
+  font = dpx_stack_top(&p->font);
+  if (!font) {
+    font = NEW(1, struct mp_font);
+    font->font_name = NULL;
+    dpx_stack_push(&p->font, font);
+  }
+
+  mrec = pdf_lookup_fontmap_record(font_name);
+  if (mrec && mrec->charmap.sfd_name && mrec->charmap.subfont_id) {
+    subfont_id = sfd_load_record(mrec->charmap.sfd_name, mrec->charmap.subfont_id);
+  }
+
+  /* See comments in dvi_locate_font() in dvi.c. */
+  if (mrec && mrec->map_name) {
+    name = mrec->map_name;
+  } else {
+    name = font_name;
+  }
+
+  if (font->font_name)
+    RELEASE(font->font_name);
+  font->font_name  = NEW(strlen(font_name) + 1, char);
+  strcpy(font->font_name, font_name);
+  font->subfont_id = subfont_id;
+  font->pt_size    = pt_size;
+  font->tfm_id     = tfm_open(font_name, 0); /* Need not exist in MP mode */
+  font->font_id    = pdf_dev_locate_font(name, (spt_t) (pt_size * dev_unit_dviunit()));
+
+  if (font->font_id < 0) {
+    ERROR("MPOST: No physical font assigned for \"%s\".", font_name);
+    return 1;
+  }
+
+  return  0;
+}
+
+static void
+save_font (mpsi *p)
+{
+  struct mp_font *current, *next;
+
+  current = dpx_stack_top(&p->font);
+  next    = NEW(1, struct mp_font);
+  if (FONT_DEFINED(current)) {
+    next->font_name = NEW(strlen(current->font_name)+1, char);
+    strcpy(next->font_name, current->font_name);
+    next->font_id    = current->font_id;
+    next->pt_size    = current->pt_size;
+    next->subfont_id = current->subfont_id;
+    next->tfm_id     = current->tfm_id;    
+  } else {
+    next->font_name  = NULL;
+    next->font_id    = -1;
+    next->pt_size    = 0.0;
+    next->subfont_id = -1;
+    next->tfm_id     = -1;
+  }
+  dpx_stack_push(&p->font, next);
+}
+
+static void
+restore_font (mpsi *p)
+{
+  struct mp_font *current;
+
+  current = dpx_stack_pop(&p->font);
+  if (current) {
+    clear_mp_font_struct(current);
+    RELEASE(current);
+  }
+}
+
+static void
+clear_fonts (mpsi *p)
+{
+  struct mp_font *font;
+  while ((font = dpx_stack_pop(&p->font)) != NULL) {
+    clear_mp_font_struct(font);
+    RELEASE(font);
+  }
+}
+
+static void
+put_private_data (pst_obj *fontdict, struct mp_font *font)
+{
+  pst_dict  *data = fontdict->data;
+  pst_obj   *obj;
+  pst_array *priv;
+  int        i;
+
+  obj  = pst_new_array(4);
+  priv = obj->data;
+  for (i = obj->comp.off; i < obj->comp.off + 4; i++) {
+    pst_release_obj(priv->values[i]);
+  }
+  priv->values[0] = pst_new_integer(font->font_id);
+  priv->values[1] = pst_new_integer(font->tfm_id);
+  priv->values[2] = pst_new_integer(font->subfont_id);
+  priv->values[3] = pst_new_real(font->pt_size);
+
+  ht_insert_table(data->values, "%private", strlen("%private"), obj); 
+}
+
+static int mps_op__findfont (mpsi *p)
+{
+  int        error = 0;
+  dpx_stack *stk   = &p->stack.operand;
+  pst_obj   *obj, *fontdict = NULL;
+  char      *fontname;
+      
+  if (dpx_stack_depth(stk) < 1)
+    return -1;
+    
+  obj = dpx_stack_top(stk);
+  if (!PST_NAMETYPE(obj) && !PST_STRINGTYPE(obj))
+    return -1;
+  fontname = (char *) pst_getSV(obj);
+  WARN("findfont: %s", fontname);
+
+  obj = mps_findfont(p, fontname);
+  if (obj) {
+    fontdict = pst_copy_obj(obj);
+    pst_put_dict(fontdict, "FontName", strlen("FontName"), pst_new_name(fontname, 0));
+  }
+  RELEASE(fontname);
+
+  if (!fontdict) {
+    error = -1;
+  } else {
+    clean_stack(p, 1);
+    dpx_stack_push(stk, fontdict);
+  }
+
+  return error;
+}
+
+static int mps_op__setfont (mpsi *p)
+{
+  int        error = 0;
+  dpx_stack *stk   = &p->stack.operand;
+  pst_obj   *dict, *name, *num;
+  pst_dict  *data;
+  char      *fontname;
+  double     fontscale = 1.0;
+
+  if (dpx_stack_depth(stk) < 1)
+    return -1;
+  dict = dpx_stack_top(stk);
+  if (!PST_DICTTYPE(dict))
+    return -1;
+  data = dict->data;
+  name = ht_lookup_table(data->values, "FontName", strlen("FontName"));
+  if (!name || !PST_NAMETYPE(name))
+    return -1;
+  fontname = (char *) pst_getSV(name);
+  num = ht_lookup_table(data->values, "FontScale", strlen("FontScale"));
+  if (num && PST_NUMBERTYPE(num))
+    fontscale = pst_getRV(num);
+  error = mp_setfont(p, fontname, fontscale);
+  RELEASE(fontname);
+  if (!error) {
+    dict = dpx_stack_pop(stk);
+    pst_release_obj(dict);
+  }
+
+  return error;
+}
+
+static int mps_op__scalefont (mpsi *p)
+{
+  dpx_stack *stk = &p->stack.operand;
+  pst_obj   *dict, *num;
+  pst_dict  *data;
+  double     fontscale = 1.0;
+
+  if (dpx_stack_depth(stk) < 2)
+    return -1;
+  num  = dpx_stack_at(stk, 0);
+  dict = dpx_stack_at(stk, 1);
+  if (!PST_NUMBERTYPE(num) || !PST_DICTTYPE(dict))
+    return -1;
+  data = dict->data;
+  num  = dpx_stack_pop(stk);
+  fontscale = pst_getRV(num);
+  pst_release_obj(num);
+
+  num  = ht_lookup_table(data->values, "FontScale", strlen("FontScale"));
+  fontscale *= pst_getRV(num);
+  ht_insert_table(data->values, "FontScale", strlen("FontScale"), pst_new_real(fontscale));
+
+  return 0;
+}
+
+/* NYI */
+static int mps_op__makefont (mpsi *p)
+{
+  int          error = 0;
+  dpx_stack   *stk   = &p->stack.operand;
+  pdf_tmatrix  M;
+  pst_obj     *obj;
+
+  if (dpx_stack_depth(stk) < 2)
+    return -1;
+  
+  obj = dpx_stack_at(stk, 0);
+  error = check_array_matrix_value(obj);
+  if (error)
+    return error;
+  array_to_matrix(&M, obj);
+  obj = dpx_stack_at(stk, 1);
+
+  {
+    pst_dict *data = obj->data;
+    pst_obj  *num;
+    double    fontscale = (M.a + M.d) * 0.5;
+  
+    num  = ht_lookup_table(data->values, "FontScale", strlen("FontScale"));
+    if (num)
+      fontscale *= pst_getRV(num);
+    ht_insert_table(data->values, "FontScale", strlen("FontScale"), pst_new_real(fontscale));
+  }
+
+  clean_stack(p, 1);
+
+  return error;
+}
+
+static int mps_op__currentfont (mpsi *p)
+{
+  dpx_stack      *stk = &p->stack.operand;
+  struct mp_font *font = dpx_stack_top(&p->font);
+  pst_obj        *obj;
+  pst_dict       *data;
+
+  obj  = pst_new_dict(-1);
+  data = obj->data;
+  ht_insert_table(data->values, "FontName",  strlen("FontName"),  pst_new_name(font->font_name, 0));
+  ht_insert_table(data->values, "FontScale", strlen("FontScale"), pst_new_real(font->pt_size));
+  ht_insert_table(data->values, "FontType",  strlen("FontType"),  pst_new_integer(1));
+  ht_insert_table(data->values, "FMapType",  strlen("FMapType"),  pst_new_integer(0));
+  dpx_stack_push(stk, obj);
+
+  return 0;
+}
+
 #endif
 
 static int mps_op__matrix (mpsi *p)
@@ -557,7 +846,7 @@ static int mps_op__show (mpsi *p)
   }
   length = str->comp.size;
 
-  font = dpx_stack_top(&font_stack);
+  font = dpx_stack_top(&p->font);
   if (!font)
     return -1;
   font_id    = font->font_id;
@@ -632,7 +921,7 @@ static int mps_op__stringwidth (mpsi *p)
   }
   length = str->comp.size;
 
-  font = dpx_stack_top(&font_stack);
+  font = dpx_stack_top(&p->font);
   if (!font)
     return -1;
   font_id    = font->font_id;
@@ -662,22 +951,6 @@ static int mps_op__stringwidth (mpsi *p)
     dpx_stack_push(stk, pst_new_real(text_width));
     dpx_stack_push(stk, pst_new_real(0.0));
   }
-
-  return error;
-}
-
-/* NYI */
-static int mps_op__makefont (mpsi *p)
-{
-  int        error = 0;
-  dpx_stack *stk   = &p->stack.operand;
-  pst_obj   *obj;
-
-  if (dpx_stack_depth(stk) < 2)
-    return -1;
-  
-  obj = dpx_stack_pop(stk);
-  pst_release_obj(obj);
 
   return error;
 }
@@ -895,137 +1168,6 @@ static int mps_op__pathforall (mpsi *p)
   return error;
 }
 
-static void
-clear_mp_font_struct (struct mp_font *font)
-{
-  ASSERT(font);
-
-  if (font->font_name)
-    RELEASE(font->font_name);
-  font->font_name  = NULL;
-  font->font_id    = -1;
-  font->tfm_id     = -1;
-  font->subfont_id = -1;
-  font->pt_size    = 0.0;
-}
-
-void
-mps_set_currentfont (mpsi *p, const char *font_name, int font_id, int tfm_id, int sfd_id, double pt_size)
-{
-  struct mp_font *font;
-
-  font = dpx_stack_top(&font_stack);
-  if (!font) {
-    font = NEW(1, struct mp_font);
-    font->font_name = NULL;
-    dpx_stack_push(&font_stack, font);
-  }
-
-  clear_mp_font_struct(font);
-  font->font_name = NEW(strlen(font_name)+1, char);
-  strcpy(font->font_name, font_name);
-  font->font_id    = font_id;
-  font->tfm_id     = tfm_id;
-  font->subfont_id = sfd_id;
-  font->pt_size    = pt_size;
-}
-
-static int
-mp_setfont (const char *font_name, double pt_size)
-{
-  const char     *name = font_name;
-  struct mp_font *font;
-  int             subfont_id = -1;
-  fontmap_rec    *mrec;
-
-  /* NYI */
-  if (!strcmp(font_name, "PSTricksDotFont")) {
-    font_name = "ZapfDingbats";
-  }
-
-  font = dpx_stack_top(&font_stack);
-  if (!font) {
-    font = NEW(1, struct mp_font);
-    font->font_name = NULL;
-    dpx_stack_push(&font_stack, font);
-  }
-
-  mrec = pdf_lookup_fontmap_record(font_name);
-  if (mrec && mrec->charmap.sfd_name && mrec->charmap.subfont_id) {
-    subfont_id = sfd_load_record(mrec->charmap.sfd_name, mrec->charmap.subfont_id);
-  }
-
-  /* See comments in dvi_locate_font() in dvi.c. */
-  if (mrec && mrec->map_name) {
-    name = mrec->map_name;
-  } else {
-    name = font_name;
-  }
-
-  if (font->font_name)
-    RELEASE(font->font_name);
-  font->font_name  = NEW(strlen(font_name) + 1, char);
-  strcpy(font->font_name, font_name);
-  font->subfont_id = subfont_id;
-  font->pt_size    = pt_size;
-  font->tfm_id     = tfm_open(font_name, 0); /* Need not exist in MP mode */
-  font->font_id    = pdf_dev_locate_font(name, (spt_t) (pt_size * dev_unit_dviunit()));
-
-  if (font->font_id < 0) {
-    ERROR("MPOST: No physical font assigned for \"%s\".", font_name);
-    return 1;
-  }
-
-  return  0;
-}
-
-static void
-save_font (void)
-{
-  struct mp_font *current, *next;
-
-  current = dpx_stack_top(&font_stack);
-  next    = NEW(1, struct mp_font);
-  if (FONT_DEFINED(current)) {
-    next->font_name = NEW(strlen(current->font_name)+1, char);
-    strcpy(next->font_name, current->font_name);
-    next->font_id    = current->font_id;
-    next->pt_size    = current->pt_size;
-    next->subfont_id = current->subfont_id;
-    next->tfm_id     = current->tfm_id;    
-  } else {
-    next->font_name  = NULL;
-    next->font_id    = -1;
-    next->pt_size    = 0.0;
-    next->subfont_id = -1;
-    next->tfm_id     = -1;
-  }
-  dpx_stack_push(&font_stack, next);
-}
-
-static void
-restore_font (void)
-{
-  struct mp_font *current;
-
-  current = dpx_stack_pop(&font_stack);
-  if (current) {
-    clear_mp_font_struct(current);
-    RELEASE(current);
-  }
-}
-
-static void
-clear_fonts (void)
-{
-  struct mp_font *font;
-  while ((font = dpx_stack_pop(&font_stack)) != NULL) {
-    clear_mp_font_struct(font);
-    RELEASE(font);
-  }
-}
-
-
 /* PostScript Operators */
 
 /* Acoid conflict with SET... from <wingdi.h>.  */
@@ -1081,11 +1223,6 @@ clear_fonts (void)
 #define CURRENTMATRIX    85
 #define MATRIX           86
 #define SETMATRIX        87
-
-#define FINDFONT        201
-#define SCALEFONT       202
-#define SETFONT         203
-#define CURRENTFONT     204
 
 #define STRINGWIDTH     210
 
@@ -1155,11 +1292,6 @@ static struct operators
   {"idtransform",   IDTRANSFORM},
   {"transform",     TRANSFORM},
   {"itransform",    ITRANSFORM},
-
-  {"findfont",     FINDFONT},
-  {"scalefont",    SCALEFONT},
-  {"setfont",      SETFONT},
-  {"currentfont",  CURRENTFONT},
 
   {"flattenpath",  FLATTENPATH},
 #if 1
@@ -1350,11 +1482,11 @@ do_operator (mpsi *p, const char *token, double x_user, double y_user)
     /* Graphics state operators: */
   case GSAVE:
     error = pdf_dev_gsave();
-    save_font();
+    save_font(p);
     break;
   case GRESTORE:
     error = pdf_dev_grestore();
-    restore_font();
+    restore_font(p);
     break;
 
   case CONCAT:
@@ -1601,108 +1733,6 @@ do_operator (mpsi *p, const char *token, double x_user, double y_user)
     }
     break;
 
-#if 1
-  case FINDFONT:
-    {
-      dpx_stack *stk = &p->stack.operand;
-      pst_obj   *obj, *fontdict;
-      char      *fontname;
-      
-      if (dpx_stack_depth(stk) < 1)
-        return -1;
-    
-      obj = dpx_stack_top(stk);
-      if (!PST_NAMETYPE(obj) && !PST_STRINGTYPE(obj))
-        return -1;
-      fontname = (char *) pst_getSV(obj);
-      WARN("findfont: %s", fontname);
-
-      obj = mps_findfont_FontDirectory(p, fontname);
-      if (obj) {
-        fontdict = pst_copy_obj(obj);
-      } else {
-        fontdict = mps_findfont(p, fontname);
-      }
-      RELEASE(fontname);
-
-      if (!fontdict) {
-        error = -1;
-      } else {
-        clean_stack(p, 1);
-        dpx_stack_push(stk, fontdict);
-      }
-    }
-    break;
-  case SETFONT:
-    {
-      dpx_stack *stk = &p->stack.operand;
-      pst_obj   *dict, *name, *num;
-      pst_dict  *data;
-      char      *fontname;
-      double     fontscale = 1.0;
-
-      if (dpx_stack_depth(stk) < 1)
-        return -1;
-      dict = dpx_stack_top(stk);
-      if (!PST_DICTTYPE(dict))
-        return -1;
-      data = dict->data;
-      name = ht_lookup_table(data->values, "FontName", strlen("FontName"));
-      if (!name || !PST_NAMETYPE(name))
-        return -1;
-      fontname = (char *) pst_getSV(name);
-      num = ht_lookup_table(data->values, "FontScale", strlen("FontScale"));
-      if (num && PST_NUMBERTYPE(num))
-        fontscale = pst_getRV(num);
-      error = mp_setfont(fontname, fontscale);
-      RELEASE(fontname);
-      if (!error) {
-        dict = dpx_stack_pop(stk);
-        pst_release_obj(dict);
-      }
-    }
-    break;
-  case SCALEFONT:
-    {
-      dpx_stack *stk = &p->stack.operand;
-      pst_obj   *dict, *num;
-      pst_dict  *data;
-      double     fontscale = 1.0;
-
-      if (dpx_stack_depth(stk) < 2)
-        return -1;
-      num  = dpx_stack_at(stk, 0);
-      dict = dpx_stack_at(stk, 1);
-      if (!PST_NUMBERTYPE(num) || !PST_DICTTYPE(dict))
-        return -1;
-      data = dict->data;
-      num  = dpx_stack_pop(stk);
-      fontscale = pst_getRV(num);
-      pst_release_obj(num);
-
-      num  = ht_lookup_table(data->values, "FontScale", strlen("FontScale"));
-      fontscale *= pst_getRV(num);
-      ht_insert_table(data->values, "FontScale", strlen("FontScale"), pst_new_real(fontscale));
-    }
-    break;
-  case CURRENTFONT:
-    {
-      dpx_stack      *stk = &p->stack.operand;
-      struct mp_font *font = dpx_stack_top(&font_stack);
-      pst_obj        *obj;
-      pst_dict       *data;
-
-      obj  = pst_new_dict(-1);
-      data = obj->data;
-      ht_insert_table(data->values, "FontName",  strlen("FontName"),  pst_new_name(font->font_name, 0));
-      ht_insert_table(data->values, "FontScale", strlen("FontScale"), pst_new_real(font->pt_size));
-      ht_insert_table(data->values, "FontType",  strlen("FontType"),  pst_new_integer(1));
-      ht_insert_table(data->values, "FMapType",  strlen("FMapType"),  pst_new_integer(0));
-      dpx_stack_push(stk, obj);
-    }
-    break;
-#endif
-
   default:
     ERROR("Unknown operator: %s", token);
     break;
@@ -1729,9 +1759,10 @@ static int mps_op__setcachedevice (mpsi *p)
     int  len;
 
     len = pdf_sprint_length(buf, values[i]);
+    pdf_doc_add_page_content(" ", strlen(" "));
     pdf_doc_add_page_content(buf, len);
   }
-  pdf_doc_add_page_content("d1 ", strlen("d1 "));
+  pdf_doc_add_page_content(" d1", strlen(" d1"));
   clean_stack(p, 6);
 
   return error;
@@ -1740,6 +1771,7 @@ static int mps_op__setcachedevice (mpsi *p)
 static pdf_obj *
 convert_charproc (mpsi *p, const char *glyph, pdf_obj *resource)
 {
+  int      error = 0;
   pdf_obj *content;
   char    *str, *ptr, *endptr;
 
@@ -1767,7 +1799,7 @@ convert_charproc (mpsi *p, const char *glyph, pdf_obj *resource)
 }
 
 static pdf_obj *
-create_type3_encoding (pst_obj *enc)
+create_type3_encoding (mpsi *p, pst_obj *enc)
 {
   pdf_obj   *encoding;
   pdf_obj   *differences;
@@ -1806,52 +1838,54 @@ create_type3_encoding (pst_obj *enc)
   return encoding; 
 }
 
-static int
-create_type3_resource (pst_obj *font)
+static pdf_obj *
+create_type3_resource (mpsi *p, pst_obj *font)
 {
   pst_dict    *data;
   pst_obj     *enc;
   pst_array   *enc_data;
   pdf_obj     *fontdict, *charproc, *resource;
-  pdf_obj     *encoding, *widths;
+  pdf_obj     *content, *encoding, *widths;
   pdf_obj     *bbox, *matrix;
   pdf_tmatrix  M = {0.001, 0.0, 0.0, 0.001, 0.0, 0.0};
   pdf_rect     r = {0.0, 0.0, 0.0, 0.0};
+  int          i;
 
   ASSERT(PST_DICTTYPE(font));
 
-  data = dict->data;
+  data = font->data;
   {
     pst_obj *obj;
 
     obj = ht_lookup_table(data->values, "FontType", strlen("FontType"));
     if (!PST_INTEGERTYPE(obj))
-      return -1;
+      return NULL;
     if (pst_getIV(obj) != 3)
-      return -1;
+      return NULL;
  
     obj = ht_lookup_table(data->values, "FontMatrix", strlen("FontMatrix"));
     if (!PST_ARRAYTYPE(obj))
-      return -1;
+      return NULL;
     if (pst_length_of(obj) != 6)
-      return -1;
+      return NULL;
     array_to_matrix(&M, obj);
 
     obj = ht_lookup_table(data->values, "FontBBox", strlen("FontBBox"));
     if (!PST_ARRAYTYPE(obj))
-      return -1;
+      return NULL;
     if (pst_length_of(obj) != 4)
-      return -1;
-    array_to_rect(&r, obj)
+      return NULL;
+    array_to_rect(&r, obj);
   }
 
   fontdict = pdf_new_dict();
-  pdf_add_dict(fontdict, pdf_new_name("Subtype"), pdf_new_number(3));
+  pdf_add_dict(fontdict, pdf_new_name("Type"), pdf_new_name("Font"));
+  pdf_add_dict(fontdict, pdf_new_name("Subtype"), pdf_new_name("Type3"));
   enc      = ht_lookup_table(data->values, "Encoding", strlen("Encoding"));
   if (!enc)
-    return -1; /* undefined */
+    return NULL;
   if (!PST_ARRAYTYPE(enc))
-    return -1; /* typecheck */
+    return NULL;
   enc_data = enc->data;
   charproc = pdf_new_dict();
   resource = pdf_new_dict();
@@ -1862,7 +1896,7 @@ create_type3_resource (pst_obj *font)
     if (PST_NULLTYPE(gname))
       continue;
     if (!PST_NAMETYPE(gname) && !PST_STRINGTYPE(gname))
-      return -1; /* typecheck */
+      return NULL;
     glyph = (char *) pst_getSV(gname);
     if (strcmp(glyph, ".notdef")) {
       content = convert_charproc(p, glyph, resource);
@@ -1882,7 +1916,7 @@ create_type3_resource (pst_obj *font)
   pdf_add_dict(fontdict, pdf_new_name("CharProcs"), pdf_ref_obj(charproc));
   pdf_release_obj(charproc);
 
-  encoding = create_type3_encoding(enc);
+  encoding = create_type3_encoding(p, enc);
   pdf_add_dict(fontdict, pdf_new_name("Encoding"), pdf_ref_obj(encoding));
   pdf_release_obj(encoding);
 
@@ -1904,8 +1938,20 @@ create_type3_resource (pst_obj *font)
 
   pdf_add_dict(fontdict, pdf_new_name("FontMatrix"), matrix);
 
-  return 0;
+#if 1
+  /* NYI */
+  pdf_add_dict(fontdict, pdf_new_name("FirstChar"), pdf_new_number(0));
+  pdf_add_dict(fontdict, pdf_new_name("LastChar"), pdf_new_number(0));
+  widths = pdf_new_array();
+  pdf_add_array(widths, pdf_new_number(0.0));
+  pdf_add_dict(fontdict, pdf_new_name("Widths"), pdf_ref_obj(widths));
+  pdf_release_obj(widths);
+#endif
+
+  return fontdict;
 }
+
+#include "pdffont.h"
 
 static int mps_op__definefont (mpsi *p)
 {
@@ -1923,9 +1969,16 @@ static int mps_op__definefont (mpsi *p)
   if (!PST_DICTTYPE(dict))
     return -1; /* typecheck */
 
-  fontname = pst_getSV(name);
+  fontname = (char *) pst_getSV(name);
   fontdict = pst_copy_obj(dict);
   mps_definefont(p, fontname, pst_copy_obj(fontdict));
+
+  {
+    pdf_obj *obj = create_type3_resource(p, fontdict);
+    if (obj) {
+      pdf_font_defineresource(fontname, obj);
+    }
+  }
   RELEASE(fontname);
 
   clean_stack(p, 2);
@@ -1955,7 +2008,12 @@ static pst_operator operators[] = {
   {"rotate",           mps_op__rotate},
   {"translate",        mps_op__translate},
 
+  {"findfont",         mps_op__findfont},
+  {"setfont",          mps_op__setfont},
+  {"scalefont",        mps_op__scalefont},
+  {"currentfont",      mps_op__currentfont},
   {"makefont",         mps_op__makefont},
+
   {"definefont",       mps_op__definefont},
   {"setcachedevice",   mps_op__setcachedevice},
 };
