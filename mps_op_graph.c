@@ -93,6 +93,27 @@ mps_definefont (mpsi *p, const char *name, pst_obj *obj)
   return 0;
 }
 
+static void
+put_private_data (pst_obj *fontdict, strict mp_font *font)
+{
+  pst_dict  *data = fontdict->data;
+  pst_obj   *obj;
+  pst_array *priv;
+  int        i;
+
+  obj  = pst_new_array(4);
+  priv = obj->data;
+  for (i = obj->comp.off; i < obj->comp.off + 4; i++) {
+    pst_release_obj(priv->values[i]);
+  }
+  priv->values[0] = pst_new_integer(font->font_id);
+  priv->values[1] = pst_new_integer(font->tfm_id);
+  priv->values[2] = pst_new_integer(font->subfont_id);
+  priv->values[3] = pst_new_real(font->pt_size);
+
+  ht_insert_table(data->values, "%private", strlen("%private"), obj); 
+}
+
 static int
 getinterval_number_value (mpsi *p, double *values, int at, int n)
 {
