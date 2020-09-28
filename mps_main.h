@@ -36,12 +36,15 @@ struct mpsi {
     dpx_stack dict;
     dpx_stack exec;
   } stack;
-  pst_obj *systemdict;
-  pst_obj *globaldict;
-  pst_obj *userdict;
+  pst_obj  *systemdict;
+  pst_obj  *globaldict;
+  pst_obj  *userdict;
+
+  pst_obj  *FontDirectory;
   
-  int      rand_seed;
-  int      compat_mode;
+  int       rand_seed;
+  int       compat_mode;
+  dpx_stack font;
 };
 
 /* Compatibility */
