@@ -174,4 +174,5 @@ extern void   graphics_mode (void);
 extern void   pdf_dev_begin_actualtext (uint16_t *unicodes, int len);
 extern void   pdf_dev_end_actualtext   (void);
 
+extern int    pdf_dev_font_minbytes    (int font_id);
 #endif /* _PDFDEV_H_ */
