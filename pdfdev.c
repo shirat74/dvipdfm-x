@@ -1854,10 +1854,10 @@ pdf_dev_font_minbytes (int font_id)
   int              minbytes = 1;
 
   font = GET_FONT(p, font_id);
-  if (font) {
+  if (font && font->format == PDF_FONTTYPE_COMPOSITE) {
     CMap *cmap;
 
-    cmap     = CMap_cache_get(cmap_id);
+    cmap     = CMap_cache_get(font->enc_id);
     minbytes = CMap_get_profile(cmap, CMAP_PROF_TYPE_INBYTES_MIN);
   }
 
