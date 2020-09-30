@@ -1307,11 +1307,19 @@ dvi_set (int32_t ch)
   cbytes = font->minbytes;
   switch (font->type) {
   case  PHYSICAL:
-    if (ch > 65535) { /* FIXME */
-      wbuf[0] = (ch >> 24) & 0xff;
-      wbuf[1] = (ch >> 16) & 0xff;
-      wbuf[2] = (ch >>  8) & 0xff;
-      wbuf[3] =  ch        & 0xff;
+    if (ch > 65535) {
+      /* FIXME: uptex specific undocumented */
+      if (tfm_is_jfm(font->tfm_id)) {
+        wbuf[0] = (UTF32toUTF16HS(ch) >> 8) & 0xff;
+        wbuf[1] =  UTF32toUTF16HS(ch)       & 0xff;
+        wbuf[2] = (UTF32toUTF16LS(ch) >> 8) & 0xff;
+        wbuf[3] =  UTF32toUTF16LS(ch)       & 0xff;
+      } else {
+        wbuf[0] = (ch >> 24) & 0xff;
+        wbuf[1] = (ch >> 16) & 0xff;
+        wbuf[2] = (ch >>  8) & 0xff;
+        wbuf[3] =  ch        & 0xff;
+      }
       cbytes  = 4;
     } else if (ch > 255) {
       wbuf[2] = (ch >> 8) & 0xff;
@@ -1369,11 +1377,19 @@ dvi_put (int32_t ch)
   cbytes = font->minbytes;
   switch (font->type) {
   case  PHYSICAL:
-    if (ch > 65535) { /* FIXME */
-      wbuf[0] = (ch >> 24) & 0xff;
-      wbuf[1] = (ch >> 16) & 0xff;
-      wbuf[2] = (ch >>  8) & 0xff;
-      wbuf[3] =  ch        & 0xff;
+    if (ch > 65535) {
+      /* FIXME: uptex specific undocumented */
+      if (tfm_is_jfm(font->tfm_id)) {
+        wbuf[0] = (UTF32toUTF16HS(ch) >> 8) & 0xff;
+        wbuf[1] =  UTF32toUTF16HS(ch)       & 0xff;
+        wbuf[2] = (UTF32toUTF16LS(ch) >> 8) & 0xff;
+        wbuf[3] =  UTF32toUTF16LS(ch)       & 0xff;
+      } else {
+        wbuf[0] = (ch >> 24) & 0xff;
+        wbuf[1] = (ch >> 16) & 0xff;
+        wbuf[2] = (ch >>  8) & 0xff;
+        wbuf[3] =  ch        & 0xff;
+      }
       cbytes  = 4;
     } else if (ch > 255) {
       wbuf[2] = (ch >> 8) & 0xff;
