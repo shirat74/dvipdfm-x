@@ -132,9 +132,8 @@ extern void     pdf_close_fonts (void);
  * It might be necessary if dvipdfmx supports font format with
  * various optical sizes supported in the future.
  */
-extern int      pdf_font_findresource   (const char *tex_name, double font_scale);
-extern int      pdf_font_load_font      (const char *tex_name, double font_scale, fontmap_rec *mrec);
-extern int      pdf_font_defineresource (const char *fontname, pdf_obj *resource);
+extern int      pdf_font_findresource  (const char *tex_name, double font_scale);
+extern int      pdf_font_load_font     (const char *tex_name, double font_scale, const fontmap_rec *mrec);
 
 extern pdf_font *pdf_get_font_data      (int font_id);
 
