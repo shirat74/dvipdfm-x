@@ -840,8 +840,7 @@ set_string (spt_t       xpos,
             const void *instr_ptr,
             int         instr_len,
             spt_t       width,
-            int         font_id,
-            int         ctype)
+            int         font_id)
 {
   xpos -= compensation.x;
   ypos -= compensation.y;
@@ -1366,7 +1365,7 @@ dvi_set (int32_t ch)
     } else {
       wbuf[3] = (unsigned char) ch;
     }
-    set_string(dvi_state.h, -dvi_state.v, wbuf + 4 - cbytes, cbytes, width, font->font_id, 0);
+    set_string(dvi_state.h, -dvi_state.v, wbuf + 4 - cbytes, cbytes, width, font->font_id);
     if (dvi_is_tracking_boxes()) {
       pdf_rect rect;
 
@@ -1441,7 +1440,7 @@ dvi_put (int32_t ch)
     } else {
       wbuf[3] = (unsigned char) ch;
     }
-    set_string(dvi_state.h, -dvi_state.v, wbuf + 4 - cbytes, cbytes, width, font->font_id, 0);
+    set_string(dvi_state.h, -dvi_state.v, wbuf + 4 - cbytes, cbytes, width, font->font_id);
     if (dvi_is_tracking_boxes()) {
       pdf_rect rect;
 
@@ -1695,7 +1694,7 @@ do_fnt (int32_t tex_id)
 #if 1
   {
     struct loaded_font *font = &loaded_fonts[current_font];
-    mps_set_currentfont(&mps_intrp, def_fonts[i].font_name, font->font_id, font->tfm_id, font->subfont_id, font->size * dvi2pts);
+    mps_set_currentfont(&mps_intrp, font->font_id, font->tfm_id, font->subfont_id, font->size * dvi2pts);
   }
 #endif
 }
@@ -1970,7 +1969,7 @@ do_glyphs (int do_actual_text)
 
     wbuf[0] = glyph_id >> 8;
     wbuf[1] = glyph_id & 0xff;
-    set_string(dvi_state.h + xloc[i], -dvi_state.v - yloc[i], wbuf, 2, glyph_width, font->font_id, -1);
+    set_string(dvi_state.h + xloc[i], -dvi_state.v - yloc[i], wbuf, 2, glyph_width, font->font_id);
   }
 
   if (font->rgba_used == 1) {
