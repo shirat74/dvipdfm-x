@@ -856,7 +856,7 @@ set_string (spt_t       xpos,
     struct loaded_font *font;
 
     font  = &loaded_fonts[current_font];
-    mps_set_currentfont(&mps_intrp, font->tfm_name, font->font_id, font->tfm_id, font->subfont_id, font->size * dvi2pts);
+    mps_set_currentfont(&mps_intrp, font->font_id, font->tfm_id, font->subfont_id, font->size * dvi2pts);
 
     x_user = xpos * dvi2pts;
     y_user = ypos * dvi2pts;
@@ -956,8 +956,6 @@ dvi_locate_font (const char *tfm_name, spt_t ptsize)
   memset(&loaded_fonts[cur_id], 0, sizeof (struct loaded_font));
 
   /* TFM must exist here. */
-  loaded_fonts[cur_id].tfm_name   = NEW(strlen(tfm_name)+1, char);
-  strcpy(loaded_fonts[cur_id].tfm_name, tfm_name);
   loaded_fonts[cur_id].tfm_id     = tfm_open(tfm_name, 1);
   loaded_fonts[cur_id].subfont_id = subfont_id;
   loaded_fonts[cur_id].size       = ptsize;
@@ -1138,8 +1136,6 @@ dvi_locate_native_font (const char *filename, uint32_t index,
 
   memset(&loaded_fonts[cur_id], 0, sizeof (struct loaded_font));
 
-  loaded_fonts[cur_id].tfm_name = NEW(strlen(filename)+1, char);
-  strcpy(loaded_fonts[cur_id].tfm_name, filename);
   loaded_fonts[cur_id].font_id    = pdf_dev_locate_font(fontmap_key, ptsize);
   loaded_fonts[cur_id].size       = ptsize;
   loaded_fonts[cur_id].type       = NATIVE;
@@ -2305,10 +2301,6 @@ dvi_close (void)
 
   for (i = 0; i < num_loaded_fonts; i++)
   {
-    if (loaded_fonts[i].tfm_name)
-      RELEASE(loaded_fonts[i].tfm_name);
-    loaded_fonts[i].tfm_name = NULL;
-
     if (loaded_fonts[i].hvmt != NULL)
       RELEASE(loaded_fonts[i].hvmt);
 
