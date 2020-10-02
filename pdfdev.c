@@ -914,8 +914,7 @@ pdf_dev_set_font (pdf_dev *p, int font_id)
 static unsigned char sbuf0[FORMAT_BUF_SIZE];
 
 static int
-handle_multibyte_string (struct dev_font *font,
-                         const unsigned char **str_ptr, int *str_len, int ctype)
+handle_multibyte_string (struct dev_font *font, const unsigned char **str_ptr, int *str_len)
 {
   const unsigned char *p;
   int                  length;
@@ -930,9 +929,9 @@ handle_multibyte_string (struct dev_font *font,
    */
   if (font->enc_id >= 0) {
     const unsigned char *inbuf;
-    unsigned char *outbuf;
-    int            inbytesleft, outbytesleft;
-    CMap          *cmap;
+    unsigned char       *outbuf;
+    int                  inbytesleft, outbytesleft;
+    CMap                *cmap;
 
     cmap         = CMap_cache_get(font->enc_id);
     inbuf        = p;
@@ -940,8 +939,7 @@ handle_multibyte_string (struct dev_font *font,
     inbytesleft  = length;
     outbytesleft = FORMAT_BUF_SIZE;
 
-    CMap_decode(cmap,
-                &inbuf, &inbytesleft, &outbuf, &outbytesleft);
+    CMap_decode(cmap, &inbuf, &inbytesleft, &outbuf, &outbytesleft);
     if (inbytesleft != 0) {
       WARN("CMap conversion failed. (%d bytes remains)", inbytesleft);
       return -1;
@@ -955,23 +953,9 @@ handle_multibyte_string (struct dev_font *font,
   return 0;
 }
 
-/*
- * ctype:
- *  -1 input string contains 2-byte Freetype glyph index values
- *     (XeTeX only)
- *  0  byte-width of char can be variable and input string
- *     is properly encoded.
- *  n  Single character cosumes n bytes in input string.
- *
- * _FIXME_
- * -->
- * selectfont(font_name, point_size) and show_string(pos, string)
- */
 void
 pdf_dev_set_string (spt_t xpos, spt_t ypos,
-                    const void *instr_ptr, int instr_len,
-                    spt_t width,
-                    int   font_id, int ctype)
+                    const void *instr_ptr, int instr_len, spt_t width, int font_id)
 {
   pdf_dev             *p = current_device();
   struct dev_font     *font;
@@ -1002,7 +986,7 @@ pdf_dev_set_string (spt_t xpos, spt_t ypos,
   length  = instr_len;
 
   if (font->format == PDF_FONTTYPE_COMPOSITE) {
-    if (handle_multibyte_string(font, &str_ptr, &length, ctype) < 0) {
+    if (handle_multibyte_string(font, &str_ptr, &length) < 0) {
       ERROR("Error in converting input string...");
       return;
     }

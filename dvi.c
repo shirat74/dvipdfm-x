@@ -840,7 +840,7 @@ set_string (spt_t       xpos,
 {
   xpos -= compensation.x;
   ypos -= compensation.y;
-  pdf_dev_set_string(xpos, ypos, instr_ptr, instr_len, width, font_id, ctype);
+  pdf_dev_set_string(xpos, ypos, instr_ptr, instr_len, width, font_id);
 }
 
 static void
@@ -1035,7 +1035,7 @@ dvi_locate_font (const char *tfm_name, spt_t ptsize)
   }
   memset(loaded_fonts[cur_id].padbytes, 0, 4);
   if (mrec) {
-    if (mrec->mapc >= 0) {
+    if (mrec->opt.mapc >= 0) {
       loaded_fonts[cur_id].padbytes[2] = (mrec->opt.mapc >> 8) & 0xff; 
     }
     if (mrec->enc_name && !strcmp(mrec->enc_name, "unicode")) {
@@ -1377,6 +1377,11 @@ dvi_put (int32_t ch)
   cbytes = font->minbytes;
   switch (font->type) {
   case  PHYSICAL:
+    width = tfm_get_fw_width(font->tfm_id, ch);
+    width = sqxfw(font->size, width);  
+    /* Treat a single character as a one byte string and use the
+     * string routine.
+     */    
     if (ch > 65535) {
       /* FIXME: uptex specific undocumented */
       if (tfm_is_jfm(font->tfm_id)) {

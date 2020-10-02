@@ -104,7 +104,7 @@ extern double dev_unit_dviunit  (void);
  */
 extern void   pdf_dev_set_string (spt_t xpos, spt_t ypos,
                                   const void *instr_ptr, int instr_len,
-                                  spt_t text_width, int font_id, int ctype);
+                                  spt_t text_width, int font_id);
 extern void   pdf_dev_set_rule   (spt_t xpos, spt_t ypos, spt_t width, spt_t height);
 
 /* Place XObject: rect returned */
