@@ -40,6 +40,7 @@ extern int  mps_exec_inline  (const char **buffer, const char *endptr,
 extern int  mps_stack_depth  (void);
 #else
 #include "mps_main.h"
+extern void mps_set_currentfont (mpsi *p, int font_id, int tfm_id, int sfd_id, double pt_size);
 extern int  mps_init_intrp   (mpsi *p);
 extern int  mps_clean_intrp  (mpsi *p);
 extern int  mps_exec_inline  (mpsi *p, const char **buf, const char *endptr, double x_user, double y_user);
