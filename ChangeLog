@@ -1,6 +1,54 @@
-2020-09-22  Akira Kakuto  <kakuto@w32tex.org>
+2020-10-06  Akira Kakuto  <kakuto@w32tex.org>
 
-	* xdvipdfmx.test: Disable PK test temporarily.
+	* spc_dvips.c: Add an option -dALLOWPSTRANSPARENCY in
+	GS_CALCULATOR to obtain correct results in PSTrics for XeTeX
+	in the case of newer Ghostscript such as gs-9.53.3.
+	Reported in
+	https://tug.org/pipermail/dvipdfmx/2020-October/000109.html
+
+2020-10-06  Shunsaku Hirata  <shunsaku.hirata74@gmail.com>
+
+	* dvipdfmx.c: Fix a bug that printing output file name is wrong.
+	* dvi.c: Change XeTeX font handling. Convert glyph metrics to
+	an internal format at load time. Don't interpret type1
+	CharStrings again and again.
+	* configure.ac: Version 20201006.
+
+2020-10-05  Karl Berry  <karl@tug.org>
+
+	* man/dvipdfmx.1: update date.
+
+2020-10-05  Shunsaku Hirata  <shunsaku.hirata74@gmail.com>
+
+	* man/dvipdfmx.1: Fix a problem in the man page as reported in
+	https://tug.org/pipermail/dvipdfmx/2020-October/000107.html.
+
+2020-10-03  Shunsaku Hirata  <shunsaku.hirata74@gmail.com>
+
+	* cid.c, cid.h: Add "const" attribute to arguments fontmap_rec
+	and fmap_opt.
+	* cmap.c: Correct calculation of min-bytes and max-bytes. Fix
+	indentation.
+	* dvi.c, mpost.c, pdfdev.[ch], pdffont.[ch]: Simplify input
+	text handling. The "mapc" option is handled in dvi.c.
+	* configure.ac: Version 20201003.
+
+2020-09-26  Shunsaku Hirata  <shunsaku.hirata74@gmail.com>
+
+	* pdfobj.c: Fix a bug that the max number of indirect objects
+	is wrongly set, causing a problem when too many indirect
+	objects are created.
+	* pdflimit.h: Add PDF_NUM_INDIRECT_MAX indicating the maximum
+	number of indirect objects which can be allocated as described
+	in PDF Ref. v.1.7 and ISO 32000-1.
+	* configure.ac: Version 20200926.
+
+2020-09-24  Shunsaku Hirata  <shunsaku.hirata74@gmail.com>
+
+	* pdffont.c: Fix a bug introduced by the recent font related
+	changes which can cause a problem when there is a font
+	defined but not used.
+	* configure.ac: Version 20200924.
 
 2020-09-22  Shunsaku Hirata  <shunsaku.hirata74@gmail.com>
 
