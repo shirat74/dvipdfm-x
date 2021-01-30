@@ -174,8 +174,8 @@ show_version (void)
   if (*my_name == 'x')
     printf ("an extended version of DVIPDFMx, which in turn was\n");
   printf ("an extended version of dvipdfm-0.13.2c developed by Mark A. Wicks.\n");
-  printf ("\nCopyright (C) 2002-2020 the DVIPDFMx project team\n");
-  printf ("Copyright (C) 2006-2020 SIL International.\n");
+  printf ("\nCopyright (C) 2002-2021 the DVIPDFMx project team\n");
+  printf ("Copyright (C) 2006-2021 SIL International.\n");
   printf ("\nThis is free software; you can redistribute it and/or modify\n");
   printf ("it under the terms of the GNU General Public License as published by\n");
   printf ("the Free Software Foundation; either version 2 of the License, or\n");
@@ -1148,6 +1148,11 @@ main (int argc, char *argv[])
   MESG("%s -> %s\n", dvi_filename ? dvi_filename : "stdin",
                      pdf_filename ? pdf_filename : "stdout");
 
+  /* Kpathsea messages:
+   * really_quiet > 1 is actually for suppressing error messages in dvipdfmx.
+   */
+  kpse_make_tex_discard_errors = really_quiet;
+
   /* Setup Options */
   settings.ver_major = pdf_version_major;
   settings.ver_minor = pdf_version_minor;
@@ -1155,7 +1160,7 @@ main (int argc, char *argv[])
   /* PDF trailer ID. */
   if (!has_id) {
 #define PRODUCER \
-"%s-%s, Copyright 2002-2020 by Jin-Hwan Cho, Matthias Franz, and Shunsaku Hirata"
+"%s-%s, Copyright 2002-2021 by Jin-Hwan Cho, Matthias Franz, and Shunsaku Hirata"
     char producer[256];
     
     sprintf(producer, PRODUCER, my_name, VERSION);

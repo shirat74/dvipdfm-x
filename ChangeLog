@@ -1,3 +1,31 @@
+2021-01-26  Shunsaku Hirata  <shunsaku.hirata74@gmail.com>
+
+	* dvipdfmx.c: Set the runtime flag suppressing error messages
+	for kpathsea library when "-q" option is used.
+	* dvipdfmx.c, xbb.c: Update copyright year.
+	https://tug.org/pipermail/dvipdfmx/2021-January/000216.html
+
+2021-01-24  Shunsaku Hirata  <shunsaku.hirata74@gmail.com>
+
+	* spc_misc.c: Add a compatibility special pdffontattr.
+	* configure.ac: Version 20210124.
+
+2021-01-22  Shunsaku Hirata  <shunsaku.hirata74@gmail.com>
+
+	* cidtype0.c: Fix the VORG bug reported in
+	https://tug.org/pipermail/dvipdfmx/2021-January/000193.html
+	* configure.ac: Version 20210122.
+
+2021-01-16  Shunsaku Hirata  <shunsaku.hirata74@gmail.com>
+
+	* pdfximage.c: Dvipdfmx behavior changed. Now it stops
+	processing and exits with non-zero exit status when image
+	inclusion fails.
+	* dvi.c: Ignore dvi_set with invalid gid when processing DVI
+	files created by dvilua[la]tex.
+	* dvipdfmx.c: Bump copyright year.
+	* configure.ac: Version 20210116.
+
 2021-01-15  Shunsaku Hirata  <shunsaku.hirata74@gmail.com>
 
 	* dvi.c, dvipdfmx.c, pdfdoc.[ch]: Experimental support for
